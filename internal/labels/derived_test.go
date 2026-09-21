@@ -82,3 +82,36 @@ func TestCategoryOfInheritsFromHotWallet(t *testing.T) {
 		t.Errorf("categoryOf for an unknown wallet = %q, want the exchange default", got)
 	}
 }
+
+// Only directly established hot wallets anchor the deposit heuristic. A label
+// the heuristic produced must never anchor it, or each run would label the
+// senders of the previous run's deposit wallets and the error would compound.
+func TestDepositAnchorsExcludeDerivedDeposits(t *testing.T) {
+	got := DepositAnchors([]Label{
+		{ID: 1, Address: "THot", Category: "exchange", Source: "curated", Confidence: 0.95},
+		{ID: 2, Address: "TDeposit", Category: "exchange", Source: "derived:deposit", Confidence: 0.8},
+		{ID: 3, Address: "TRisky", Category: "high_risk_exchange", Source: "curated", Confidence: 0.95},
+		{ID: 4, Address: "TScam", Category: "scam", Source: "scamsniffer", Confidence: 0.5},
+	})
+	if len(got) != 2 {
+		t.Fatalf("got %d anchors, want 2: %v", len(got), got)
+	}
+	for _, addr := range []string{"THot", "TRisky"} {
+		if _, ok := got[addr]; !ok {
+			t.Errorf("missing anchor %s", addr)
+		}
+	}
+	if _, ok := got["TDeposit"]; ok {
+		t.Error("a derived deposit wallet must not anchor the heuristic")
+	}
+}
+
+func TestDepositAnchorsPickMostConfidentLabel(t *testing.T) {
+	got := DepositAnchors([]Label{
+		{ID: 7, Address: "THot", Category: "exchange", Source: "curated", Confidence: 0.95, Entity: "Curated name"},
+		{ID: 3, Address: "THot", Category: "high_risk_exchange", Source: "dune", Confidence: 0.8, Entity: "Dune name"},
+	})
+	if got["THot"].Entity != "Curated name" {
+		t.Errorf("picked %q, want the more confident label", got["THot"].Entity)
+	}
+}

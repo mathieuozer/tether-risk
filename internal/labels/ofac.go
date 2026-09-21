@@ -143,6 +143,19 @@ func ParseOFAC(ctx context.Context, r io.Reader) (*OFACResult, []Label, error) {
 		}
 	}
 
+	// A list that parses to nothing is a format mismatch, not an empty
+	// sanctions list. Treating it as success is how the ingester once ran
+	// every day against OFAC's "enhanced" XML, whose schema this parser does
+	// not read, and silently added nothing (docs/DECISIONS.md D20). SPEC.md
+	// §9.1 makes a sanctions miss build-breaking, so this fails the run.
+	if res.EntriesScanned == 0 {
+		return nil, nil, fmt.Errorf("ofac: no sdnEntry elements parsed; " +
+			"the file is not the classic SDN XML this parser reads (check the source URL)")
+	}
+	if res.AddressesFound == 0 {
+		return nil, nil, fmt.Errorf("ofac: %d entries parsed but no Digital Currency Address found; "+
+			"the schema may have changed", res.EntriesScanned)
+	}
 	return res, out, nil
 }
 

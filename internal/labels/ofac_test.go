@@ -243,3 +243,27 @@ func TestBNBBeaconChainIsNotBSC(t *testing.T) {
 		t.Errorf("a hex BNB address should map to bsc, got %q/%v", got, ok)
 	}
 }
+
+// The enhanced export has a different schema. Parsing it must fail, never
+// succeed with zero labels: that silent success once meant no sanctions
+// update was ever applied (docs/DECISIONS.md D20).
+func TestParseOFACRejectsUnreadableFormat(t *testing.T) {
+	enhanced := `<?xml version="1.0" encoding="utf-8"?>
+<sanctionsData xmlns="https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/ENHANCED_XML">
+  <entities><entity id="1"><features><feature><type>Digital Currency Address - TRX</type>
+  <value>TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t</value></feature></features></entity></entities>
+</sanctionsData>`
+	if _, _, err := ParseOFAC(context.Background(), strings.NewReader(enhanced)); err == nil {
+		t.Fatal("an unreadable format must be an error, not an empty success")
+	}
+}
+
+func TestParseOFACRejectsListWithNoCryptoAddresses(t *testing.T) {
+	noCrypto := `<?xml version="1.0" standalone="yes"?>
+<sdnList xmlns="https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/XML">
+  <sdnEntry><uid>1</uid><lastName>EXAMPLE</lastName><sdnType>Entity</sdnType></sdnEntry>
+</sdnList>`
+	if _, _, err := ParseOFAC(context.Background(), strings.NewReader(noCrypto)); err == nil {
+		t.Fatal("a list with no digital currency addresses must be an error")
+	}
+}

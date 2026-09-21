@@ -171,6 +171,8 @@ Cold query for a 1,000-transfer address < 30 s, warm < 2 s. Measured and recorde
 - [x] Curated mixer/protocol list checked into the repo
 - [x] Derived deposit-wallet heuristic, config-driven thresholds, reasoning
       written to `evidence`
+      *(2026-09-21: the command fed it an empty label map, so it never ran
+      end to end until then. See DECISIONS.md D20.)*
 - [ ] Precision measurement against a hand-labelled sample → METHODOLOGY.md
 - [x] Resolution rules: highest confidence wins, ties by source priority,
       sanctions always win, conflicts recorded never silently merged

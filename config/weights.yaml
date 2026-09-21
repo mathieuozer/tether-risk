@@ -99,6 +99,8 @@ labels:
     - un
     - eu
     - curated
+    - htx_por
+    - poloniex_por
     - dune
     - derived:deposit
     - derived:service

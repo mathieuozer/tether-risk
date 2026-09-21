@@ -506,3 +506,120 @@ runs never reached. Five counterfeit "USDT" contracts accounted for 10 rows:
 `TLMRyoRTCetaz8HK1gLqq4N1feGHoqLriQ` carried $10 to $4,117, amounts that no
 value filter would have caught. After repricing, stored TRON USDT totals $753
 million across 73,710 transfers. The largest single transfer is $8.5 million.
+
+---
+
+## D19 — exchange addresses come from exchanges' own lists and our own test transfers
+
+**Date:** 2026-09-21 · **Status:** active · **Follows:** D14, D15
+
+Exchange labels are the largest coverage gap. On a sampled address, a
+commercial screener attributed 61% of flow to exchanges, and we attributed
+none, because we held no exchange labels. D14 left exchanges' own
+proof-of-reserves lists as the most promising open route. They were tried on
+2026-09-21:
+
+| Exchange | Where | TRON addresses | Terms |
+|---|---|---|---|
+| Binance | PoR endpoint on binance.com | 25 | **prohibited** (below) |
+| HTX | exchange's own GitHub, signed per address | 15 | MIT |
+| Poloniex | exchange's own GitHub, signed per address | 7 | MIT |
+| OKX | tool on GitHub; address file only on okx.com | – | not yet read |
+| Gate, KuCoin, Bitget | web endpoints | – | refused, or totals only |
+
+**Binance is blocked.** Its Terms of Use prohibit "web crawlers, bots, spiders
+or other automatic devices, programs, scripts... or any similar or equivalent
+manual processes to access, obtain, copy or monitor any part of the
+Platform". Under SPEC.md §6.2 we stop rather than work around this, and the
+"equivalent manual processes" wording excludes copying by hand too. The list
+downloaded while checking was deleted and nothing from it was stored.
+
+That list did validate D15's detector. Every Binance wallet present in stored
+data (10 of 25) was already among our 25 behaviourally detected unnamed
+services, so the detector finds real exchange hot wallets unassisted. It
+cannot name them.
+
+**HTX and Poloniex are ingested** (`htx_por`, `poloniex_por`) at confidence
+0.9 and category `unnamed_service`, with the exchange named as entity. A
+reserve list proves who controls an address. It says nothing about KYC
+standards, and KYC standards are what separate `exchange` (weight 2) from
+`high_risk_exchange` (weight 40). This is D15's rule again: identify, but do
+not assert a risk tier without a basis. None of the 22 addresses appears in
+stored data yet, so today this changes no score.
+
+**The route that scales is a controlled test transfer.** Withdraw from
+exchange A to your own deposit address at exchange B. The withdrawal's sender
+is A's hot wallet. B then sweeps the deposit, usually after topping it up with
+TRX, into its collection wallet. Each address is proven by a transaction the
+maintainer made, with no third-party list involved. `labeler trace-tx <txid>`
+follows a transfer and prints evidence links and a `curated_labels.yaml`
+snippet for review. It writes nothing itself, because a curated label ends
+traversal at 0.95 and will be believed. These entries are `exchange`, because
+testing an exchange means holding an account there, and holding one means
+going through its KYC.
+
+Privacy: the repository is public. Evidence links reveal the maintainer's
+deposit addresses, so notes stay generic, and test deposit addresses should
+not be reused for real funds.
+
+---
+
+## D20 — two pipeline stages were silently doing nothing
+
+**Date:** 2026-09-21 · **Status:** fixed
+
+Both were found while wiring the daily schedule. Both reported success.
+
+**The deposit-wallet heuristic could never fire.** `labeler derive` passed an
+empty label map to `DeriveDeposits`, with a comment deferring the lookup to a
+caller that did not exist. So however many hot wallets were curated, the
+heuristic would report "no exchange labels". PLAN.md Phase 2 had it ticked.
+It now loads the snapshot's `exchange` and `high_risk_exchange` labels.
+Labels the heuristic produced itself are excluded as anchors. Otherwise each
+run would treat the previous run's deposit wallets as hot wallets and label
+their senders, pushing the error one hop further every day. When nothing
+anchors, the run says so and exits cleanly, so the nightly schedule does not
+fail every night until the first hot wallet exists.
+
+**The OFAC refresh parsed nothing.** `sources.yaml` pointed at
+`SDN_ENHANCED.XML`, whose schema the parser does not read. Every run parsed
+zero entries and upserted zero labels without an error. The 466 stored OFAC
+labels came from an earlier run against the classic `SDN.XML`, so no
+designation added since would ever have arrived. Measured on the live files,
+the classic list gives 19,393 entries and 1,059 digital currency addresses,
+of which 466 are on supported chains. The source now points at the classic
+file, and a parse with no entries or no digital currency addresses fails the
+run. SPEC.md §9.1 treats a sanctions miss as build-breaking, and a silent
+empty success is the same miss arrived at quietly.
+
+The common failure: an empty result reported as success. It is the pattern D2,
+D16 and D18 each found in a different stage, and the reason the daily run
+fails loudly and posts a desktop notification rather than only writing a log.
+
+**Found, not fixed:** the service sampler paces itself at 120 ms between
+requests, about 8 per second. D17 measured TronGrid's usable ceiling at about
+3 per second without a key, which is the likely reason `derive-services`
+takes around 30 minutes and hits rate limits.
+
+---
+
+## D21 — no `token_contract` category: measured at one transfer
+
+**Date:** 2026-09-21 · **Status:** active · **Reaffirms:** D13
+
+The commercial screener's breakdown includes "Token contract" at 0.7%. Before
+revisiting D13 for it, the stored data was measured. The 58 token contracts
+we know (every contract seen as a transfer's asset, plus the canonical
+stablecoins) are a counterparty in **1 of 279,497 TRON transfers**, worth $6.
+
+That is structural. A TRC-20 transfer moves value from A to B, and the
+contract only names the token. A contract becomes a counterparty only when
+someone sends tokens to the contract address itself, almost always by
+mistake. The competitor's figure more likely counts spam and airdrop token
+transfers as "connections". We deliberately leave those unpriced since D18,
+and pricing them would reopen that hole.
+
+**Decision:** no new category. A category that is always about zero is what
+D13 warns against. Smart contracts in general (DEX routers, bridges, lending
+pools) are real counterparties and may be worth a category. That is to be
+measured first, against the largest counterparties.

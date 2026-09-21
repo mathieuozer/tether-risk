@@ -59,6 +59,53 @@ vet: ## Vet
 	$(GO) vet ./...
 
 # ---------------------------------------------------------------------------
+# Daily refresh (scripts/daily.sh), scheduled with launchd
+# ---------------------------------------------------------------------------
+
+DAILY_HOUR   ?= 3
+DAILY_MINUTE ?= 0
+DAILY_LABEL  := com.tether-risk.daily
+DAILY_PLIST  := $(HOME)/Library/LaunchAgents/$(DAILY_LABEL).plist
+
+.PHONY: daily
+daily: ## Run the daily refresh now
+	scripts/daily.sh
+
+.PHONY: daily-install
+daily-install: ## Schedule the daily refresh at DAILY_HOUR:DAILY_MINUTE (default 03:00)
+	@mkdir -p $(HOME)/Library/LaunchAgents .data/logs
+	@printf '%s\n' \
+		'<?xml version="1.0" encoding="UTF-8"?>' \
+		'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+		'<plist version="1.0"><dict>' \
+		'  <key>Label</key><string>$(DAILY_LABEL)</string>' \
+		'  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$(CURDIR)/scripts/daily.sh</string></array>' \
+		'  <key>WorkingDirectory</key><string>$(CURDIR)</string>' \
+		'  <key>StartCalendarInterval</key><dict>' \
+		'    <key>Hour</key><integer>$(DAILY_HOUR)</integer>' \
+		'    <key>Minute</key><integer>$(DAILY_MINUTE)</integer>' \
+		'  </dict>' \
+		'  <key>StandardOutPath</key><string>$(CURDIR)/.data/logs/launchd.log</string>' \
+		'  <key>StandardErrorPath</key><string>$(CURDIR)/.data/logs/launchd.log</string>' \
+		'</dict></plist>' > $(DAILY_PLIST)
+	@launchctl bootout gui/$$(id -u)/$(DAILY_LABEL) 2>/dev/null || true
+	@launchctl bootstrap gui/$$(id -u) $(DAILY_PLIST)
+	@printf 'daily refresh scheduled at %02d:%02d; logs in .data/logs/\n' $(DAILY_HOUR) $(DAILY_MINUTE)
+
+.PHONY: daily-uninstall
+daily-uninstall: ## Remove the daily schedule
+	@launchctl bootout gui/$$(id -u)/$(DAILY_LABEL) 2>/dev/null || true
+	@rm -f $(DAILY_PLIST)
+	@echo "daily refresh unscheduled"
+
+.PHONY: daily-status
+daily-status: ## Show the schedule and the latest run's summary
+	@launchctl print gui/$$(id -u)/$(DAILY_LABEL) 2>/dev/null | grep -E 'state|last exit|Hour|Minute' || echo "not scheduled"
+	@latest=$$(ls -t .data/logs/daily-*.log 2>/dev/null | head -1); \
+		if [ -n "$$latest" ]; then echo "--- $$latest"; grep -E '^[0-9-]+ [0-9:]+ (ok|FAIL|===)' "$$latest"; \
+		else echo "no runs yet"; fi
+
+# ---------------------------------------------------------------------------
 # Build gates
 # ---------------------------------------------------------------------------
 

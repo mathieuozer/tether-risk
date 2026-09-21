@@ -233,6 +233,24 @@ func (s *Store) ForAddresses(ctx context.Context, snapshotID int64, chainID stri
 	return out, nil
 }
 
+// ByCategories returns every label of the given categories on a chain at a
+// snapshot.
+func (s *Store) ByCategories(ctx context.Context, snapshotID int64, chainID string, categories []string) ([]Label, error) {
+	rows, err := s.pg.QueryContext(ctx, `
+		SELECT id, chain, address, entity, category, confidence, source, evidence
+		FROM labels
+		WHERE chain = $1 AND category = ANY($2)
+		  AND valid_from_snapshot <= $3
+		  AND (valid_to_snapshot IS NULL OR valid_to_snapshot > $3)
+		ORDER BY address, id`,
+		chainID, categories, snapshotID)
+	if err != nil {
+		return nil, fmt.Errorf("read labels by category: %w", err)
+	}
+	defer rows.Close()
+	return scanLabels(rows)
+}
+
 func scanLabels(rows *sql.Rows) ([]Label, error) {
 	var out []Label
 	for rows.Next() {

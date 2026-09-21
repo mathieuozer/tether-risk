@@ -19,11 +19,14 @@ sources:
     status: allowed
     confidence: 1.0
     schedule: daily
-    url: "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN_ENHANCED.XML"
+    # The classic SDN XML. The "enhanced" export (SDN_ENHANCED.XML) uses a
+    # different schema that the parser does not read; it was configured here
+    # until 2026-09-21 and silently produced no labels (docs/DECISIONS.md D20).
+    url: "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN.XML"
     format: xml
     licence: "US Government work, public domain (17 U.S.C. §105)"
     redistribution: permitted
-    checked: 2026-09-20
+    checked: 2026-09-21
     notes: >
       Crypto addresses appear as Digital Currency Address features (XBT, ETH,
       USDT, TRX and others). Parse the feature type to recover the chain
@@ -156,6 +159,71 @@ sources:
     licence: "MIT"
     redistribution: permitted
     checked: 2026-09-20
+
+  # -------------------------------------------------------------------------
+  # Exchange proof-of-reserves address lists. docs/DECISIONS.md D19.
+  #
+  # Published by each exchange about its own wallets, usually with a signed
+  # message per address proving control. Labelled unnamed_service with the
+  # exchange named as entity: a reserve list establishes who controls an
+  # address, not the exchange's KYC standard, which is what separates
+  # `exchange` from `high_risk_exchange`.
+  # -------------------------------------------------------------------------
+  - id: htx_por
+    name: "HTX proof-of-reserves addresses"
+    status: allowed
+    confidence: 0.9
+    schedule: weekly
+    url: "https://raw.githubusercontent.com/huobiapi/Tool-Node.js-VerifyAddress/main/snapshot/huobi_por.csv"
+    format: csv
+    licence: "MIT"
+    redistribution: permitted
+    checked: 2026-09-21
+    notes: >
+      The exchange's own GitHub organisation (huobiapi). 15 TRON addresses as
+      of the 2026-09-08 snapshot, 14 with an ownership signature.
+
+  - id: poloniex_por
+    name: "Poloniex proof-of-reserves addresses"
+    status: allowed
+    confidence: 0.9
+    schedule: weekly
+    url: "https://raw.githubusercontent.com/poloniex/tools-nodejs-address-verify/master/snapshot/poloniex_por.csv"
+    format: csv
+    licence: "MIT"
+    redistribution: permitted
+    checked: 2026-09-21
+    notes: >
+      The exchange's own GitHub organisation. 7 TRON addresses as of the
+      2026-09-15 snapshot, 6 with an ownership signature.
+
+  - id: binance_por
+    name: "Binance proof-of-reserves wallet addresses"
+    status: blocked
+    confidence: 0.9
+    checked: 2026-09-21
+    blocked_reason: >
+      The list is served from binance.com (bapi/apex/.../por/address), not
+      from Binance's documented trading API. Binance's Terms of Use prohibit
+      using "web crawlers, bots, spiders or other automatic devices,
+      programs, scripts, algorithms or methods, or any similar or equivalent
+      manual processes to access, obtain, copy or monitor any part of the
+      Platform". The "equivalent manual processes" wording rules out copying
+      the list by hand as well. SPEC.md §6.2 directs us to stop rather than
+      work around this. It is the most valuable exchange list for TRON, and
+      the loss is real: every Binance wallet in stored data had already been
+      detected as an unnamed service (docs/DECISIONS.md D19).
+    substitutes: ["derived:service", "controlled test transfers (labeler trace-tx)"]
+
+  - id: okx_por
+    name: "OKX proof-of-reserves addresses"
+    status: needs_review
+    confidence: 0.9
+    checked: 2026-09-21
+    blocked_reason: >
+      OKX's GitHub repository holds only the verification tool; the address
+      file is downloaded from okx.com. OKX's website terms have not been read,
+      so this stays disabled until they are.
 
   # -------------------------------------------------------------------------
   # Curated in-repo list. SPEC.md §6.5.

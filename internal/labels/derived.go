@@ -51,6 +51,39 @@ type DepositCandidate struct {
 // Thresholds come from config (SPEC.md §6 requires they be configuration, not
 // constants), and every judgement — including the rejections — is returned so
 // the heuristic's precision can be measured rather than assumed.
+// DepositAnchorCategories are the categories whose labels can anchor the
+// deposit-wallet heuristic.
+var DepositAnchorCategories = []string{"exchange", "high_risk_exchange"}
+
+// DepositAnchors picks the hot wallets the deposit heuristic may anchor on.
+//
+// Labels the heuristic itself produced are excluded even though they carry an
+// exchange category. A deposit wallet is not a hot wallet: anchoring on it
+// would label its own senders as deposit wallets too, and each run would push
+// the error one hop further out. Only directly established hot wallets anchor.
+//
+// Where an address carries several qualifying labels, the most confident
+// wins, ties broken by source then id so the choice is deterministic
+// (docs/DECISIONS.md D6).
+func DepositAnchors(in []Label) map[string]Label {
+	out := map[string]Label{}
+	for _, l := range in {
+		if l.Source == "derived:deposit" {
+			continue
+		}
+		if l.Category != "exchange" && l.Category != "high_risk_exchange" {
+			continue
+		}
+		cur, ok := out[l.Address]
+		if !ok || l.Confidence > cur.Confidence ||
+			(l.Confidence == cur.Confidence && (l.Source < cur.Source ||
+				(l.Source == cur.Source && l.ID < cur.ID))) {
+			out[l.Address] = l
+		}
+	}
+	return out
+}
+
 func DeriveDeposits(ctx context.Context, ch *sql.DB, cfg *config.Config, snapshotLabels map[string]Label, chainID string) ([]DepositCandidate, []Label, error) {
 	rules := cfg.Weights.DerivedDeposit
 	if !rules.Enabled {

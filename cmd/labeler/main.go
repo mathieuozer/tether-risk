@@ -34,6 +34,8 @@ func main() {
 		chainID   = flag.String("chain", "tron", "chain to derive labels for")
 		ofacFile  = flag.String("ofac-file", "", "use a local SDN XML file instead of downloading")
 		verbose   = flag.Bool("v", false, "debug logging")
+		fromEx    = flag.String("from-exchange", "", "trace-tx: exchange the test withdrawal was made from")
+		toEx      = flag.String("to-exchange", "", "trace-tx: exchange the deposit address belongs to")
 	)
 	flag.Parse()
 
@@ -52,6 +54,23 @@ func main() {
 		os.Exit(2)
 	}
 
+	if cmd == "trace-tx" {
+		// Needs only the chain API, not the label store.
+		cfg, err := config.Load(*configDir)
+		if err == nil {
+			if flag.Arg(1) == "" {
+				err = fmt.Errorf("trace-tx needs a transaction id")
+			} else {
+				err = traceTx(ctx, cfg, *chainID, flag.Arg(1), *fromEx, *toEx, log)
+			}
+		}
+		if err != nil {
+			log.Error("failed", "command", cmd, "error", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := run(ctx, cmd, *configDir, *chainID, *ofacFile, log); err != nil {
 		log.Error("failed", "command", cmd, "error", err)
 		os.Exit(1)
@@ -67,6 +86,8 @@ commands:
   derive       run the deposit-wallet heuristic against stored chain data
   counts       per-source label counts for the latest sealed snapshot
   conflicts    unreviewed category conflicts
+  trace-tx <txid>  follow a controlled test transfer to its hot wallets;
+                   prints a curated_labels snippet for review, writes nothing
 
 flags:
 `)
@@ -191,6 +212,35 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 		total = add(total, res)
 	}
 
+	// --- exchange proof-of-reserves lists (docs/DECISIONS.md D19) ---
+	// Like the abuse feeds, not load-bearing: a missing list reduces coverage
+	// rather than opening a sanctions gap, so the run continues and says so.
+	for _, por := range []struct{ id, exchange string }{
+		{"htx_por", "HTX"},
+		{"poloniex_por", "Poloniex"},
+	} {
+		src, ok := cfg.Source(por.id)
+		if !ok || !src.Ingestible() {
+			continue
+		}
+		batch, pres, err := ingestPoR(ctx, src.URL, por.exchange, por.id, src.Confidence)
+		if err != nil {
+			log.Error("proof-of-reserves list failed; its labels are missing from this snapshot",
+				"source", por.id, "error", err)
+			continue
+		}
+		for _, m := range pres.Malformed {
+			log.Warn("proof-of-reserves row could not be parsed", "source", por.id, "detail", m)
+		}
+		res, err := st.Upsert(ctx, snapshotID, batch)
+		if err != nil {
+			return err
+		}
+		log.Info("proof-of-reserves list ingested", "source", por.id,
+			"tron_addresses", pres.Addresses, "signed", pres.Signed, "inserted", res.Inserted)
+		total = add(total, res)
+	}
+
 	// --- sources declared but not yet implemented ---
 	// Named explicitly rather than passed over in silence: a source that is
 	// configured as permitted but contributes nothing is a coverage gap, and
@@ -201,7 +251,7 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 				"and its absence reduces coverage", "source", id)
 		}
 	}
-	for _, id := range []string{"etherscan", "bscscan", "tronscan", "chainabuse", "dune"} {
+	for _, id := range []string{"etherscan", "bscscan", "tronscan", "chainabuse", "dune", "binance_por", "okx_por"} {
 		if src, ok := cfg.Source(id); ok && !src.Ingestible() {
 			log.Info("source deliberately not ingested",
 				"source", id, "status", src.Status)
@@ -296,6 +346,26 @@ func ingestAbuse(ctx context.Context, url string,
 	}
 	for _, m := range res.Malformed {
 		log.Warn("abuse feed entry could not be parsed", "detail", m)
+	}
+	return out, res, nil
+}
+
+func ingestPoR(ctx context.Context, url, exchange, sourceID string, confidence float64) ([]labels.Label, *labels.PoRResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := (&http.Client{Timeout: 2 * time.Minute}).Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	res, out, err := labels.ParsePoRCSV(ctx, resp.Body, exchange, sourceID, url, confidence)
+	if err != nil {
+		return nil, nil, err
 	}
 	return out, res, nil
 }
@@ -410,12 +480,25 @@ func derive(ctx context.Context, cfg *config.Config, st *labels.Store, chainID s
 		return err
 	}
 
-	// The heuristic anchors on known exchange hot wallets, so it needs the
-	// resolved label set for the snapshot.
-	known := map[string]labels.Label{}
-	// Deliberately left to the caller to populate from the curated set; with
-	// no exchange labels DeriveDeposits reports that plainly rather than
-	// returning an empty result that reads like "no deposit wallets exist".
+	// The heuristic anchors on known exchange hot wallets. This map was once
+	// left empty here, so the heuristic could never fire whatever the label
+	// set held (docs/DECISIONS.md D20).
+	exchangeLabels, err := st.ByCategories(ctx, snapshotID, chainID, labels.DepositAnchorCategories)
+	if err != nil {
+		return err
+	}
+	known := labels.DepositAnchors(exchangeLabels)
+	log.Info("deposit anchors loaded", "snapshot", snapshotID, "hot_wallets", len(known))
+	if len(known) == 0 {
+		// Not a failure of this run: there is simply nothing to anchor on
+		// yet. Said plainly, and without a non-zero exit, so the scheduled
+		// daily run does not report a failure every night until the first
+		// hot wallet is curated.
+		log.Warn("no exchange hot wallets are labelled yet, so no deposit wallets can be derived; " +
+			"add verified hot wallets to config/curated_labels.yaml")
+		fmt.Println("skipped: no exchange hot wallets labelled")
+		return nil
+	}
 
 	candidates, derived, err := labels.DeriveDeposits(ctx, ch, cfg, known, chainID)
 	if err != nil {
@@ -446,7 +529,6 @@ func derive(ctx context.Context, cfg *config.Config, st *labels.Store, chainID s
 		}
 		log.Info("derived labels written", "snapshot", snap, "inserted", res.Inserted)
 	}
-	_ = snapshotID
 	return nil
 }
 
