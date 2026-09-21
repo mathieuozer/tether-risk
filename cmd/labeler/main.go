@@ -63,6 +63,7 @@ func usage() {
 
 commands:
   ingest       run every permitted source into a new snapshot
+  derive-services  detect high-volume service addresses from behaviour
   derive       run the deposit-wallet heuristic against stored chain data
   counts       per-source label counts for the latest sealed snapshot
   conflicts    unreviewed category conflicts
@@ -90,6 +91,8 @@ func run(ctx context.Context, cmd, configDir, chainID, ofacFile string, log *slo
 	switch cmd {
 	case "ingest":
 		return ingest(ctx, cfg, st, resolver, configDir, ofacFile, log)
+	case "derive-services":
+		return deriveServices(ctx, cfg, st, chainID, log)
 	case "derive":
 		return derive(ctx, cfg, st, chainID, log)
 	case "counts":
@@ -295,6 +298,104 @@ func ingestAbuse(ctx context.Context, url string,
 		log.Warn("abuse feed entry could not be parsed", "detail", m)
 	}
 	return out, res, nil
+}
+
+// deriveServices detects high-volume service addresses from behaviour.
+//
+// Candidates are the busiest addresses already in the edge table, by
+// counterparty count. Sampling costs an API call per page, so the candidate
+// set is bounded and ordered by how likely each is to be a service.
+func deriveServices(ctx context.Context, cfg *config.Config, st *labels.Store,
+	chainID string, log *slog.Logger) error {
+
+	ch, err := store.OpenClickHouse(ctx)
+	if err != nil {
+		return err
+	}
+	defer ch.Close()
+
+	chainCfg, ok := cfg.Chain(chainID)
+	if !ok || !chainCfg.Available() {
+		return fmt.Errorf("chain %s has no live data path, so behaviour cannot be sampled", chainID)
+	}
+
+	// Rank by distinct counterparties rather than by value: a service is
+	// defined by breadth, and a single large transfer says nothing about it.
+	rows, err := ch.QueryContext(ctx, `
+		SELECT addr, uniqExact(cp) AS counterparties
+		FROM (
+			SELECT from_address AS addr, to_address AS cp FROM edges_current WHERE chain = ?
+			UNION ALL
+			SELECT to_address AS addr, from_address AS cp FROM edges_current WHERE chain = ?
+		)
+		GROUP BY addr
+		HAVING counterparties >= 5
+		ORDER BY counterparties DESC, addr ASC
+		LIMIT 200`, chainID, chainID)
+	if err != nil {
+		return fmt.Errorf("select candidates: %w", err)
+	}
+	defer rows.Close()
+
+	var candidates []string
+	for rows.Next() {
+		var addr string
+		var n uint64
+		if err := rows.Scan(&addr, &n); err != nil {
+			return err
+		}
+		candidates = append(candidates, addr)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	if len(candidates) == 0 {
+		fmt.Println("no candidates: ingest some addresses first")
+		return nil
+	}
+	log.Info("sampling candidates", "count", len(candidates), "chain", chainID)
+
+	sampler := labels.NewTronSampler(chainCfg.URL, os.Getenv("TRONGRID_API_KEY"))
+	judged, derived, err := labels.DetectServices(ctx, sampler, cfg, chainID, candidates)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("candidates sampled: %d\n", len(judged))
+	fmt.Printf("detected services:  %d\n", labels.AcceptedCount(judged))
+
+	for _, c := range judged {
+		if c.Accepted {
+			fmt.Printf("  SERVICE  %s  (%d transfers, %d counterparties, more=%v)\n",
+				c.Address, c.Sample.Transfers, c.Sample.Counterparties, c.Sample.MorePages)
+		}
+	}
+
+	if len(derived) == 0 {
+		return nil
+	}
+
+	snap, err := st.OpenSnapshot(ctx, "derived service detection")
+	if err != nil {
+		return err
+	}
+	res, err := st.Upsert(ctx, snap, derived)
+	if err != nil {
+		return err
+	}
+	counts, err := st.SealSnapshot(ctx, snap)
+	if err != nil {
+		return err
+	}
+
+	log.Info("service labels written", "snapshot", snap,
+		"inserted", res.Inserted, "updated", res.Updated, "unchanged", res.Unchanged)
+	fmt.Printf("snapshot %d sealed\n", snap)
+	for _, src := range sortedKeys(counts) {
+		fmt.Printf("  %-18s %d\n", src, counts[src])
+	}
+	return nil
 }
 
 func derive(ctx context.Context, cfg *config.Config, st *labels.Store, chainID string, log *slog.Logger) error {

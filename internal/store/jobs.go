@@ -122,6 +122,27 @@ func (j *Jobs) Fail(ctx context.Context, id int64, cause error) error {
 	return err
 }
 
+// Release returns a job to the queue without the attempt counting against it.
+//
+// Used on shutdown. A worker stopping is not the job failing, and counting it
+// as one means a job unlucky enough to be in flight during a few restarts gets
+// abandoned for reasons that have nothing to do with the address. Abandoned
+// jobs leave no freshness entry, so the address simply never gets fetched and
+// the resulting coverage gap has no visible cause.
+func (j *Jobs) Release(ctx context.Context, id int64) error {
+	_, err := j.pg.ExecContext(ctx, `
+		UPDATE fetch_jobs SET
+			state        = 'pending',
+			attempts     = GREATEST(attempts - 1, 0),
+			leased_by    = NULL,
+			leased_until = NULL
+		WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("release job %d: %w", id, err)
+	}
+	return nil
+}
+
 // ReclaimExpired returns jobs whose lease ran out to the pending queue. A
 // worker that crashed mid-job must not strand its address forever.
 func (j *Jobs) ReclaimExpired(ctx context.Context) (int64, error) {

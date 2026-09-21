@@ -176,6 +176,22 @@ sources:
   # -------------------------------------------------------------------------
   # Derived. Not an external source; produced by our own heuristics.
   # -------------------------------------------------------------------------
+  - id: "derived:service"
+    name: "Derived high-volume service addresses"
+    status: allowed
+    confidence: 0.75
+    schedule: after_ingest
+    licence: "Derived from chain data"
+    redistribution: permitted
+    checked: 2026-09-21
+    notes: >
+      Behavioural detection: an address transacting with hundreds of distinct
+      counterparties and still paginating after a deep sample is a service.
+      The evidence proves that it is a service, not which one, so matches are
+      labelled unnamed_service and never exchange. A verified name from the
+      curated source outranks this and should replace it. Thresholds in
+      weights.yaml under derived_service.
+
   - id: "derived:deposit"
     name: "Derived exchange deposit wallets"
     status: allowed

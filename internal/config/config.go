@@ -45,7 +45,21 @@ type Weights struct {
 	Coverage       Coverage       `yaml:"coverage"`
 	Labels         LabelRules     `yaml:"labels"`
 	DerivedDeposit DerivedDeposit `yaml:"derived_deposit"`
+	DerivedService DerivedService `yaml:"derived_service"`
 	Pricing        Pricing        `yaml:"pricing"`
+}
+
+// DerivedService configures behavioural service detection. The evidence
+// proves an address is a service, not which one, so matches are labelled
+// unnamed_service rather than exchange.
+type DerivedService struct {
+	Enabled             bool    `yaml:"enabled"`
+	SamplePages         int     `yaml:"sample_pages"`
+	PageSize            int     `yaml:"page_size"`
+	MinTransfersSampled int     `yaml:"min_transfers_sampled"`
+	MinCounterparties   int     `yaml:"min_counterparties"`
+	RequireMorePages    bool    `yaml:"require_more_pages"`
+	Confidence          float64 `yaml:"confidence"`
 }
 
 // Pricing controls how raw amounts become USD values. docs/PLAN.md F3.

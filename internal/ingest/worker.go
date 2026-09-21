@@ -118,8 +118,16 @@ func (w *Worker) Run(ctx context.Context) error {
 
 		if err := w.process(ctx, job); err != nil {
 			if ctx.Err() != nil {
-				// Return the job rather than burning an attempt on shutdown.
-				_ = w.jobs.Fail(context.WithoutCancel(ctx), job.ID, fmt.Errorf("worker shutting down"))
+				// A worker stopping is not the job failing. Release returns it
+				// to the queue with its attempt count restored, so a job that
+				// happens to be in flight across a few restarts is not
+				// abandoned for reasons unrelated to the address.
+				//
+				// WithoutCancel because the context that just expired is the
+				// reason we are here; the release still has to be written.
+				if rerr := w.jobs.Release(context.WithoutCancel(ctx), job.ID); rerr != nil {
+					w.log.Error("releasing job on shutdown failed", "error", rerr)
+				}
 				return ctx.Err()
 			}
 			w.log.Error("job failed",

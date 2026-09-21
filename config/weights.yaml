@@ -101,6 +101,7 @@ labels:
     - curated
     - dune
     - derived:deposit
+    - derived:service
     - chainabuse
     - cryptoscamdb
     - scamsniffer
@@ -167,3 +168,51 @@ pricing:
   # An asset in neither list contributes no USD value and is counted as
   # unpriced. It is never assumed to be worth zero — `unpriced_count` on each
   # edge carries that forward so coverage can reflect it.
+
+# ---------------------------------------------------------------------------
+# Derived service detection.
+#
+# An address transacting with hundreds of distinct counterparties, still
+# paginating after a deep sample, is a service: an exchange, a payment
+# processor, a desk, a bridge. The behaviour proves *that* it is a service. It
+# does not reveal *which*, and this configuration deliberately does not pretend
+# otherwise — matches are labelled `unnamed_service`, never `exchange`.
+#
+# That distinction has teeth. `exchange` carries weight 2 because reaching a
+# regulated exchange is close to reassuring; `unnamed_service` carries 15
+# because an unidentified service might be a no-KYC swapper. Labelling a real
+# exchange as unnamed_service overstates its users' risk, which is why a
+# verified name from `curated` outranks this source and should replace it
+# whenever one is available.
+#
+# Thresholds calibrated against measured samples on 2026-09-21:
+#   514 distinct counterparties in 600 sampled transfers, still paginating -> service
+#    52 in  78, exhausted -> not a service
+#    31 in  39, exhausted -> not a service
+#    20 in 237, exhausted -> concentrated, not a service
+# ---------------------------------------------------------------------------
+derived_service:
+  enabled: true
+
+  # How much history to sample before judging. Costs one API call per page.
+  sample_pages: 3
+  page_size: 200
+
+  # An address must exceed all three to qualify.
+  #
+  # min_counterparties is the discriminating signal. A ratio alone does not
+  # work: a 39-transfer wallet scored 0.795 distinct-per-transfer in testing,
+  # which is higher than some genuine services, because small samples are
+  # trivially diverse.
+  min_transfers_sampled: 400
+  min_counterparties: 250
+
+  # The sample must not have exhausted the address's history. An address whose
+  # entire life fits in three pages is not a service however diverse it looks.
+  require_more_pages: true
+
+  # High, because the behavioural evidence for "this is a service" is strong
+  # and unambiguous. The uncertainty in this label is about *which* service,
+  # and that uncertainty is carried by the category's weight rather than by
+  # the confidence.
+  confidence: 0.75

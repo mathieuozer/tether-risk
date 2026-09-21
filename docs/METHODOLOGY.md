@@ -164,6 +164,32 @@ Every emitted label records the full arithmetic in `evidence` — the hot wallet
 transfer counts, value shares and the thresholds in force — so a reviewer can
 recompute the judgement rather than trust it.
 
+## 4b. Behavioural service detection
+
+No citable source for named TRON exchange hot wallets exists within the
+project's constraints, so services are detected from behaviour instead. An
+address transacting with hundreds of distinct counterparties while still
+paginating after a deep sample is a service.
+
+| Threshold | Value |
+|---|---|
+| Transfers sampled | 400 minimum |
+| Distinct counterparties | 250 minimum |
+| History must not be exhausted | yes |
+| Confidence emitted | 0.75 |
+
+**These are labelled `unnamed_service`, never `exchange`.** The behaviour
+proves an address is a service; it does not identify which one. `exchange`
+carries weight 2 and `unnamed_service` 15, so the distinction changes a score
+sevenfold. A verified name from the curated source outranks this and should
+replace it.
+
+Every label records the measurement and a URL that reproduces it.
+
+First live result, 2026-09-21: one service detected from 14 candidates, which
+took TRON coverage above zero for the first time — a screened address reported
+12.6% inbound attribution through that service.
+
 ### Measured precision
 
 **Not yet measured.** The heuristic anchors on known exchange hot wallets, and

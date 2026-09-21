@@ -345,3 +345,70 @@ rules out ("no commercial data feeds. Zero licence spend").
 
 None of these is a drop-in replacement, and the coverage figure will keep
 reporting the gap honestly until one is done.
+
+---
+
+## D15 — behavioural service detection labels `unnamed_service`, never `exchange`
+
+**Date:** 2026-09-21 · **Status:** active
+
+Exchange labels are the coverage bottleneck, and after D14 removed the Dune
+route there is no citable source for named TRON exchange hot wallets: block
+explorers are blocked by their terms (F2), and exchanges' proof-of-reserves
+pages gate their address lists behind JavaScript. Writing addresses from
+recall into a file carrying 0.95 confidence that terminates traversal is
+exactly the failure this system exists to avoid.
+
+What remains is behaviour. An address transacting with hundreds of distinct
+counterparties while still paginating after a deep sample is a service.
+Nothing else produces that shape.
+
+**Decision:** detect services behaviourally and label them `unnamed_service`,
+never `exchange`.
+
+The distinction is the whole point. SPEC.md §7 weights `exchange` at 2 because
+reaching a regulated exchange is close to reassuring, and `unnamed_service` at
+15 because an unidentified service might be a no-KYC swapper. Behaviour proves
+*that* an address is a service; it says nothing about *which*. Claiming
+otherwise would understate every user's exposure sevenfold.
+
+The consequence runs the other way too: a real exchange detected this way is
+labelled at weight 15 and its users look slightly riskier than they are. That
+is the conservative direction, and a verified name from `curated` outranks
+this source and should replace it whenever one is available.
+
+**Thresholds**, calibrated against measured samples rather than guessed:
+
+| Address | Sampled | Counterparties | More pages | Verdict |
+|---|---|---|---|---|
+| TZ8Ksz21… | 600 | 514 | yes | service |
+| TAythDdK… | 78 | 52 | no | not a service |
+| TNwf8VB… | 39 | 31 | no | not a service |
+| TR5e7yK… | 237 | 20 | no | not a service |
+
+The distinct-per-transfer ratio alone does not work: the 39-transfer wallet
+scores 0.795, higher than some genuine services, because small samples are
+trivially diverse. Volume and breadth together are what separate.
+
+Every label records the measurement and a URL that reproduces it, so a
+reviewer can re-run the judgement rather than trust it.
+
+---
+
+## D16 — unpriced data is reported, not rendered as silence
+
+**Date:** 2026-09-21 · **Status:** active
+
+An edge whose transfers carry no USD price contributes nothing to the
+proportional split, so an address with real history but no prices loaded
+traced to nothing and reported "no traced value" — which reads as "this
+address never moved funds".
+
+Found in practice: an address with 96 outbound edges and 494 transfers
+reported as though it were inactive, because the worker had ingested it after
+the last pricing backfill.
+
+**Decision:** traversal counts unpriced transfers and the result distinguishes
+a pricing gap from an inactive address, naming the transfer count and the
+command that fixes it. This is the same class of failure as the dead-end bug
+in D2's neighbourhood: an empty result that looks like a clean answer.

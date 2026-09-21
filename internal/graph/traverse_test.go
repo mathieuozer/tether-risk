@@ -424,3 +424,56 @@ func TestPartialCoverageWithDeadEnds(t *testing.T) {
 		t.Errorf("coverage = %s, want %s", res.Coverage(), want)
 	}
 }
+
+// An address with real history but no prices loaded must not report "no traced
+// value". That reads as "this address never moved funds", which is a different
+// and wrong finding — and an unpriced edge is invisible in every other number
+// on the result, so nothing else would reveal the gap.
+func TestUnpricedDataIsDistinguishedFromNoActivity(t *testing.T) {
+	// Edges exist and carry transfers, but none have a USD value.
+	edges := newFakeEdges().
+		addEdge("TOrigin", "TCounterparty1", 0, 300).
+		addEdge("TOrigin", "TCounterparty2", 0, 194)
+
+	tr := New(edges, newFakeLabels(), testConfig(t))
+	res, err := tr.Traverse(context.Background(), "tron", "TOrigin", Outbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !res.HasUnpricedData() {
+		t.Error("494 unpriced transfers were not reported; the result would read " +
+			"as an inactive address")
+	}
+	if res.UnpricedTransfers != 494 {
+		t.Errorf("unpriced transfers = %d, want 494", res.UnpricedTransfers)
+	}
+}
+
+// A genuinely inactive address must not be mistaken for a pricing gap either.
+func TestNoActivityIsNotReportedAsUnpriced(t *testing.T) {
+	tr := New(newFakeEdges(), newFakeLabels(), testConfig(t))
+	res, err := tr.Traverse(context.Background(), "tron", "TQuiet", Outbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.HasUnpricedData() {
+		t.Error("an address with no edges at all was reported as a pricing gap")
+	}
+}
+
+// Priced data must not be flagged, even when some transfers on an edge lack a
+// price.
+func TestPricedDataIsNotFlagged(t *testing.T) {
+	edges := newFakeEdges().addEdge("TOrigin", "TExchange", 1000, 5)
+	lbls := newFakeLabels().add("TExchange", "Some Exchange", "exchange", "curated", 0.95)
+
+	tr := New(edges, lbls, testConfig(t))
+	res, err := tr.Traverse(context.Background(), "tron", "TOrigin", Outbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.HasUnpricedData() {
+		t.Error("a fully priced traversal was flagged as a pricing gap")
+	}
+}

@@ -107,6 +107,21 @@ type Result struct {
 	// result is honest about being truncated.
 	FanoutCapped    bool
 	HopLimitReached bool
+
+	// UnpricedTransfers counts transfers on edges that carried no USD value.
+	//
+	// Without this an address with real history but no prices loaded reports
+	// "no traced value", which reads as "this address never moved funds". The
+	// two are entirely different findings and the second one is wrong. An
+	// unpriced edge contributes nothing to the split, so it is invisible in
+	// every other number on the result.
+	UnpricedTransfers uint64
+}
+
+// HasUnpricedData reports that edges existed but carried no USD value, so any
+// emptiness in this result is a pricing gap rather than an absence of activity.
+func (r Result) HasUnpricedData() bool {
+	return r.UnpricedTransfers > 0 && !r.TotalTraced.IsPositive()
 }
 
 // Coverage is attributed over total traced value (SPEC.md §7).
@@ -223,6 +238,9 @@ func (t *Traverser) Traverse(ctx context.Context, chainID, address string, dir D
 			total := decimal.Zero
 			for _, n := range ex.neighbours {
 				total = total.Add(n.USDValue)
+				if !n.USDValue.IsPositive() {
+					res.UnpricedTransfers += n.TransferCount
+				}
 			}
 
 			// A node we expanded that leads nowhere — no neighbours, or none

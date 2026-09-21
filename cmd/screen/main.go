@@ -142,6 +142,15 @@ func printDirection(title string, d *scoring.DirectionResult) {
 	fmt.Println(strings.Repeat("-", len(title)))
 
 	if len(d.Categories) == 0 && d.UnattributedPct.IsZero() {
+		// "No traced value" and "we hold history we have not priced" are
+		// different findings, and only the first means the address is quiet.
+		if d.HasUnpricedData {
+			fmt.Printf("  NO USABLE VALUE: %d transfers exist here but carry no USD price,\n",
+				d.UnpricedTransfers)
+			fmt.Println("  so nothing could be traced. This is a pricing gap, not an inactive")
+			fmt.Println("  address. Run `price backfill` and screen again.")
+			return
+		}
 		fmt.Println("  no traced value")
 		return
 	}

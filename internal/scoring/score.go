@@ -53,6 +53,12 @@ type DirectionResult struct {
 	FanoutCapped    bool
 	HopLimitReached bool
 	NodesVisited    int
+
+	// UnpricedTransfers is how many transfers carried no USD value. When this
+	// is non-zero and nothing was traced, the result is empty because prices
+	// are missing, not because the address is inactive.
+	UnpricedTransfers uint64
+	HasUnpricedData   bool
 }
 
 // Result is the full screening outcome.
@@ -115,15 +121,17 @@ func New(cfg *config.Config) *Scorer { return &Scorer{cfg: cfg} }
 // ScoreDirection converts one traversal into a scored breakdown.
 func (s *Scorer) ScoreDirection(tr *graph.Result) (*DirectionResult, error) {
 	out := &DirectionResult{
-		Direction:       tr.Direction,
-		TotalTraced:     tr.TotalTraced,
-		Attributed:      tr.Attributed,
-		Coverage:        tr.Coverage(),
-		FanoutCapped:    tr.FanoutCapped,
-		HopLimitReached: tr.HopLimitReached,
-		NodesVisited:    tr.NodesVisited,
-		Score:           decimal.Zero,
-		UnattributedPct: decimal.Zero,
+		Direction:         tr.Direction,
+		TotalTraced:       tr.TotalTraced,
+		Attributed:        tr.Attributed,
+		Coverage:          tr.Coverage(),
+		FanoutCapped:      tr.FanoutCapped,
+		HopLimitReached:   tr.HopLimitReached,
+		NodesVisited:      tr.NodesVisited,
+		Score:             decimal.Zero,
+		UnattributedPct:   decimal.Zero,
+		UnpricedTransfers: tr.UnpricedTransfers,
+		HasUnpricedData:   tr.HasUnpricedData(),
 	}
 
 	if !tr.TotalTraced.IsPositive() {
