@@ -145,7 +145,7 @@ func (w *Worker) Run(ctx context.Context) error {
 			}
 			w.log.Error("job failed",
 				"address", job.Address, "attempt", job.Attempts, "error", err)
-			if ferr := w.jobs.Fail(ctx, job.ID, err); ferr != nil {
+			if ferr := w.jobs.Fail(ctx, job.ID, job.Attempts, err); ferr != nil {
 				w.log.Error("recording failure failed", "error", ferr)
 			}
 			continue

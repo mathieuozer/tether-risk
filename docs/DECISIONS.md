@@ -676,3 +676,26 @@ every run 60–80% of requests were throttled. Without an API key, TronGrid was
 throttling this IP harder than D17 measured that morning. The pacing change
 spends 25% fewer requests for the same result. The remedy for the slowness
 is `TRONGRID_API_KEY` in `.env`, which the worker and the daily run now load.
+
+## D24 — a failed fetch job waits before it is retried
+
+**Date:** 2026-09-21 · **Status:** active
+
+Job 238 (`TB37WWozkkenGVYWD7Do2N5WT2CedqDktJ`) was abandoned after five
+attempts, all rejected by TronGrid with 429. Each one failed on a different
+page (3, 25, 3, 5, 2), so the address itself was fine. The attempts ran from
+19:27 to 19:31, right after a single keyless worker had drained three
+addresses to the 50-page limit back to back. `Fail` returned the job to
+`pending` straight away, a worker reclaimed it within a second, and every
+attempt landed in the same rate-limit window. An abandoned job leaves no
+freshness entry, so screenings reported the address as a coverage gap until
+someone re-queued it by hand.
+
+**Decision:** `Fail` sets `not_before`, and `Claim` skips a job until that
+time has passed. The wait is one minute after the first failure and doubles
+each time after that, capped at 15 minutes: 1, 2, 4 and 8 minutes across the
+default five attempts. A job now has to fail for about a quarter of an hour
+before it is abandoned, which a rate-limit window does not last. `Release`
+clears `not_before`, because a worker shutting down is not a failure.
+Nothing waits on a job finishing: screening scores what is stored and says
+what is still being fetched, so the backoff only delays the retry.

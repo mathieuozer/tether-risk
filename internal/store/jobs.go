@@ -82,6 +82,7 @@ func (j *Jobs) Claim(ctx context.Context, workerID string, lease time.Duration) 
 		WHERE id = (
 			SELECT id FROM fetch_jobs
 			WHERE state = 'pending'
+			  AND (not_before IS NULL OR not_before <= now())
 			ORDER BY priority, created_at
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
@@ -100,22 +101,48 @@ func (j *Jobs) Claim(ctx context.Context, workerID string, lease time.Duration) 
 	return &job, nil
 }
 
-// Complete marks a job done.
+// Complete marks a job done. It clears last_error, which would otherwise
+// leave a finished job reading as if its final attempt had failed.
 func (j *Jobs) Complete(ctx context.Context, id int64) error {
 	_, err := j.pg.ExecContext(ctx, `
 		UPDATE fetch_jobs
-		SET state = 'done', finished_at = now(), leased_by = NULL, leased_until = NULL
+		SET state = 'done', finished_at = now(), leased_by = NULL, leased_until = NULL,
+		    last_error = NULL
 		WHERE id = $1`, id)
 	return err
 }
 
-// Fail records an error and returns the job to the queue, or abandons it once
-// attempts are exhausted.
+// RetryBackoff is the wait after a job's first failure. It doubles with each
+// further failure, up to RetryBackoffCap: 1, 2, 4 and 8 minutes with the
+// default five attempts, so a job survives a quarter of an hour of rate
+// limiting before it is abandoned.
+const (
+	RetryBackoff    = time.Minute
+	RetryBackoffCap = 15 * time.Minute
+)
+
+// retryDelay is the wait before a job that has failed `attempts` times may be
+// claimed again.
+func retryDelay(attempts int) time.Duration {
+	d := RetryBackoff
+	for i := 1; i < attempts && d < RetryBackoffCap; i++ {
+		d *= 2
+	}
+	return min(d, RetryBackoffCap)
+}
+
+// Fail records an error and returns the job to the queue after a backoff, or
+// abandons it once attempts are exhausted.
+//
+// The backoff matters because most failures are rate limits, which clear with
+// time and not with retries. Returning the job at once let a worker reclaim it
+// within a second and spend every attempt inside one 429 window
+// (docs/DECISIONS.md D24).
 //
 // An abandoned job is not a silent loss: the address keeps no freshness entry,
 // so any query needing it will find it missing and the result will report
 // reduced coverage rather than pretending the history was complete.
-func (j *Jobs) Fail(ctx context.Context, id int64, cause error) error {
+func (j *Jobs) Fail(ctx context.Context, id int64, attempts int, cause error) error {
 	_, err := j.pg.ExecContext(ctx, `
 		UPDATE fetch_jobs SET
 			state = CASE WHEN attempts >= max_attempts THEN 'abandoned'::job_state
@@ -123,8 +150,11 @@ func (j *Jobs) Fail(ctx context.Context, id int64, cause error) error {
 			last_error   = $2,
 			leased_by    = NULL,
 			leased_until = NULL,
+			not_before   = CASE WHEN attempts >= max_attempts THEN NULL
+			                    ELSE now() + $3::interval END,
 			finished_at  = CASE WHEN attempts >= max_attempts THEN now() ELSE NULL END
-		WHERE id = $1`, id, cause.Error())
+		WHERE id = $1`, id, cause.Error(),
+		fmt.Sprintf("%d seconds", int(retryDelay(attempts).Seconds())))
 	return err
 }
 
@@ -141,7 +171,8 @@ func (j *Jobs) Release(ctx context.Context, id int64) error {
 			state        = 'pending',
 			attempts     = GREATEST(attempts - 1, 0),
 			leased_by    = NULL,
-			leased_until = NULL
+			leased_until = NULL,
+			not_before   = NULL
 		WHERE id = $1`, id)
 	if err != nil {
 		return fmt.Errorf("release job %d: %w", id, err)
