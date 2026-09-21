@@ -204,18 +204,28 @@ chains:
 
   - id: ethereum
     status: unavailable
-    adapter: "evm-jsonrpc + bigquery"
-    auth: "requires ETH_RPC_URL and/or GCP billing for bigquery-public-data"
-    checked: 2026-09-20
+    adapter: "evm-jsonrpc"
+    url: "https://ethereum-rpc.publicnode.com"
+    auth: "requires an archive-capable endpoint; ETH_RPC_URL overrides the default"
+    rate_limit_per_sec: 10
+    checked: 2026-09-21
     unavailable_reason: >
-      No JSON-RPC endpoint key and no GCP billing account available. The
-      adapter is implemented and fixture-tested but has no live data path.
-      The API returns chain_unavailable rather than an empty result. See
-      docs/PLAN.md flag F1.
+      The adapter works and is verified against this endpoint for recent
+      blocks, but per-address history needs archive access and no public
+      endpoint serves it usably: publicnode refuses archive requests outright,
+      ankr and drpc require authentication, and 1rpc and pokt cap ranges at 50
+      blocks, which is roughly 520,000 requests to cover the chain. Set
+      ETH_RPC_URL to an archive-capable endpoint to enable this chain. See
+      docs/METHODOLOGY.md §2.
 
   - id: bsc
     status: unavailable
     adapter: "evm-jsonrpc"
-    auth: "requires BSC_RPC_URL"
-    checked: 2026-09-20
-    unavailable_reason: "As ethereum. See docs/PLAN.md flag F1."
+    url: "https://bsc-rpc.publicnode.com"
+    auth: "requires an archive-capable endpoint; BSC_RPC_URL overrides the default"
+    rate_limit_per_sec: 10
+    checked: 2026-09-21
+    unavailable_reason: >
+      As ethereum, and worse: bsc-dataseed rate-limits eth_getLogs below
+      usefulness even for a ten-block span. Set BSC_RPC_URL to an
+      archive-capable endpoint to enable this chain.

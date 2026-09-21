@@ -32,13 +32,36 @@ clean.
 | Chain | Source | Status |
 |---|---|---|
 | TRON | TronGrid public API, free tier | Live |
-| Ethereum | BigQuery public dataset + JSON-RPC | **No live path** |
-| BSC | JSON-RPC | **No live path** |
+| Ethereum | JSON-RPC (BigQuery backfill not built) | **Partial — recent blocks only** |
+| BSC | JSON-RPC | **Partial — recent blocks only** |
 
-Ethereum and BSC adapters are implemented and fixture-tested but have no
-credentials, so no address on those chains can be scored against real data. The
-API returns `chain_unavailable` rather than an empty result, because an empty
-result reads as "no activity".
+The EVM adapter is implemented and tested, including against a live endpoint:
+it parses ERC-20 Transfer logs correctly, honours per-endpoint block-range
+caps by narrowing automatically, and skips logs from reorganised blocks. What
+it **cannot** do is fetch an address's history, and the reason is worth stating
+precisely because it is a property of the available endpoints rather than of
+the code.
+
+Raw JSON-RPC has no per-address history call. Substituting for one means
+scanning every block since the address first appeared with a topic filter,
+which needs archive access. Measured across nine public endpoints on
+2026-09-21:
+
+| Endpoint | Archive behaviour |
+|---|---|
+| publicnode.com | refused outright |
+| ankr, drpc | authentication required |
+| 1rpc.io, pokt | served, capped at **50 blocks per request** |
+| bsc-dataseed | `eth_getLogs` rate-limited below usefulness |
+
+A 50-block cap is roughly 520,000 requests to cover Ethereum's history. So
+demand-driven ingestion on these chains needs either a provider key with
+archive access or the BigQuery backfill path, and until one exists
+`FetchAddress` returns a typed `ErrArchiveRequired` rather than an empty page.
+An empty page would read as "this address has no history", which is a
+different and wrong claim.
+
+The API returns `chain_unavailable` for these chains for the same reason.
 
 Ingestion is demand-driven per address rather than full-chain, with results
 cached by a TTL and by fetch depth.

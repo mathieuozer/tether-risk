@@ -22,7 +22,12 @@ Status key: `[ ]` not started, `[~]` in progress, `[x]` done and gated.
 SPEC.md §11 requires these be raised rather than papered over. Each one gets a
 matching entry in `docs/DECISIONS.md` and a `status:` field in `sources.yaml`.
 
-**F1 — ETH and BSC have no live data path.**
+**F1 — ETH and BSC have no live data path.** *(Updated 2026-09-21: the
+adapter is now built and verified against a live endpoint — it parsed 563 real
+USDT transfers from five blocks. The blocker is narrower than originally
+stated: recent blocks work on public endpoints, but archive access does not,
+so per-address history remains impossible without a provider key. See
+docs/METHODOLOGY.md §2.)*
 The spec's bulk backfill is BigQuery (`bigquery-public-data.crypto_ethereum`),
 which needs a GCP billing account, and the recent tail needs a JSON-RPC
 endpoint. Neither is available. Both adapters will be written to the same
