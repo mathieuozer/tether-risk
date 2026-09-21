@@ -54,7 +54,11 @@ func TestConnectionsSortsAndSplitsMinorCategories(t *testing.T) {
 	if !(ex < svc && svc < minor && minor < scam) {
 		t.Errorf("wrong order:\n%s", out)
 	}
-	if strings.Contains(out, "Scam - ") {
+	// Found, but too small to round: it must not read as 0.1%.
+	if !strings.Contains(out, "Scam - found, under 0.1%") {
+		t.Errorf("a found category under 0.1%% should say so:\n%s", out)
+	}
+	if strings.Contains(out, "•   Scam - ") {
 		t.Errorf("a category under 0.1%% should not get a percentage:\n%s", out)
 	}
 }
@@ -89,5 +93,51 @@ func TestConnectionsWithNoTracedValue(t *testing.T) {
 	out := Connections(ConnectionsInput{Address: "TAddr", Chain: "tron", Band: "low"})
 	if !strings.Contains(out, "No traced value") {
 		t.Errorf("expected an explicit no-traced-value line:\n%s", out)
+	}
+}
+
+func TestConnectionsDetailSections(t *testing.T) {
+	out := Connections(ConnectionsInput{
+		Address: "TAddr", Chain: "tron", Band: "low", Score: 5, Coverage: 0.15, LowConfidence: true,
+		Activity: &ConnectionsActivity{
+			InUSD: 4_812_946, OutUSD: 4_812_946,
+			InTransfers: 158, OutTransfers: 35, InCounterparties: 125, OutCounterparties: 17,
+			FirstSeen: "2026-08-02", LastSeen: "2026-09-19",
+			Assets:            []ConnectionsAsset{{"USDT", 9_625_892}, {"TRX", 853}},
+			UnpricedTransfers: 12, UnpricedTokens: 5,
+		},
+		Inbound: &ConnectionsDirection{
+			TracedWeight: 1, UnattributedPct: 70,
+			Categories: []ConnectionsCategory{{"unnamed_service", 30}},
+			Entries: []ConnectionsEntry{
+				{Address: "TQrY8tryqsYVCYS3MFbtffiPp2ccyn4STm", Entity: "HTX (proof-of-reserves wallet)",
+					Category: "unnamed_service", Pct: 10, MinHops: 1},
+				{Address: "TNXoiAJ3dct8Fjg4M9fkLFh9S2v9TXc32G", Entity: "Unidentified high-volume service",
+					Category: "unnamed_service", Pct: 5, MinHops: 2},
+			},
+			Reasons: []ConnectionsReason{{"dead_end", 50}, {"hop_limit", 20}},
+		},
+	})
+	for _, want := range []string{
+		"Received: $4.81M in 158 transfers from 125 addresses",
+		"Sent: $4.81M in 35 transfers to 17 addresses",
+		"Active: 2026-08-02 → 2026-09-19",
+		"Assets: USDT $9.63M · TRX $853",
+		"Unrecognised tokens: 12 transfers of 5 tokens",
+		"◦ not traced further yet (counterparty history not ingested) - 50.0%",
+		"◦ beyond the hop limit - 20.0%",
+		"1. HTX (proof-of-reserves wallet) (TQrY8t…4STm)",
+		"10.0% ≈ $481.3k · direct",
+		"2 hops away",
+		"⚪  Sanctions - not found",
+		"Checks cover the 15.0% of traced value",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	// A low-coverage result must not tick anything as clear.
+	if strings.Contains(out, "✅") {
+		t.Errorf("low confidence output shows a clear tick:\n%s", out)
 	}
 }

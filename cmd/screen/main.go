@@ -239,6 +239,24 @@ func connectionsInput(res *scoring.Result) report.ConnectionsInput {
 	if l := res.OwnLabel; l != nil {
 		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: l.Entity, Category: l.Category}
 	}
+	if a := res.Activity; a != nil {
+		act := &report.ConnectionsActivity{
+			InUSD: a.InUSD.InexactFloat64(), OutUSD: a.OutUSD.InexactFloat64(),
+			InTransfers: a.InTransfers, OutTransfers: a.OutTransfers,
+			InCounterparties: a.InCounterparties, OutCounterparties: a.OutCounterparties,
+			UnpricedTransfers: a.UnpricedTransfers, UnpricedTokens: a.UnpricedTokens,
+		}
+		if !a.FirstSeen.IsZero() {
+			act.FirstSeen = a.FirstSeen.UTC().Format("2006-01-02")
+			act.LastSeen = a.LastSeen.UTC().Format("2006-01-02")
+		}
+		for _, as := range a.Assets {
+			act.Assets = append(act.Assets, report.ConnectionsAsset{
+				Asset: as.Asset, USD: as.InUSD.Add(as.OutUSD).InexactFloat64(),
+			})
+		}
+		in.Activity = act
+	}
 	return in
 }
 
@@ -256,6 +274,15 @@ func connectionsDirection(d *scoring.DirectionResult) *report.ConnectionsDirecti
 		out.Categories = append(out.Categories, report.ConnectionsCategory{
 			Category: c.Category, Pct: c.Pct.InexactFloat64(),
 		})
+	}
+	for _, c := range d.Connections {
+		out.Entries = append(out.Entries, report.ConnectionsEntry{
+			Address: c.Address, Entity: c.Entity, Category: c.Category,
+			Pct: c.Pct.InexactFloat64(), MinHops: c.MinHops,
+		})
+	}
+	for _, r := range d.UnattributedReasons {
+		out.Reasons = append(out.Reasons, report.ConnectionsReason{Reason: r.Reason, Pct: r.Pct.InexactFloat64()})
 	}
 	return out
 }

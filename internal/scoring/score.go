@@ -11,6 +11,7 @@ package scoring
 import (
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/mozer/tether-risk/internal/config"
 	"github.com/mozer/tether-risk/internal/graph"
@@ -49,6 +50,14 @@ type DirectionResult struct {
 	Attributed  decimal.Decimal
 
 	TopPaths []graph.Path
+
+	// Connections aggregates attributed paths by the labelled address they
+	// ended at, largest share first: who, not just which category.
+	Connections []Connection
+
+	// UnattributedReasons splits the unattributed share by why tracing
+	// stopped, so "unknown" can be told apart from "not traced yet".
+	UnattributedReasons []ReasonShare
 
 	FanoutCapped    bool
 	HopLimitReached bool
@@ -100,6 +109,10 @@ type Result struct {
 	// important fact known about the address would be the one fact omitted.
 	// A direct hit is a finding in its own right, independent of any score.
 	OwnLabel *OwnLabel
+
+	// Activity is filled by the caller that holds the transfer store; nil
+	// when it was not computed.
+	Activity *Activity
 }
 
 // OwnLabel is a label on the queried address itself.
@@ -111,6 +124,55 @@ type OwnLabel struct {
 
 	// Conflicted reports that sources disagreed about what this address is.
 	Conflicted bool
+}
+
+// Connection is one identified counterparty, reached directly or through
+// intermediate hops.
+type Connection struct {
+	Address    string
+	Entity     string
+	Category   string
+	Source     string
+	Confidence float64
+
+	// Pct is the share of this direction's traced value, 0-100.
+	Pct decimal.Decimal
+
+	// MinHops is the shortest path length at which it was reached.
+	MinHops int
+	Paths   int
+}
+
+// ReasonShare is the part of the unattributed share with one stopping reason.
+type ReasonShare struct {
+	// Reason is graph.Terminal.Reason: "dead_end", "hop_limit", "fanout_cap",
+	// or "unlabelled_category" for a label with no category.
+	Reason string
+	Pct    decimal.Decimal
+	Paths  int
+}
+
+// Activity summarises an address's own stored history. It is independent of
+// traversal: what the address itself did, before any attribution.
+type Activity struct {
+	InUSD, OutUSD                       decimal.Decimal
+	InTransfers, OutTransfers           uint64
+	InCounterparties, OutCounterparties uint64
+	FirstSeen, LastSeen                 time.Time
+	Assets                              []AssetFlow
+
+	// UnpricedTransfers are transfers of tokens we do not value, typically
+	// spam or airdrop tokens, in UnpricedTokens distinct contracts. Counted,
+	// never valued: pricing them reopens docs/DECISIONS.md D18.
+	UnpricedTransfers uint64
+	UnpricedTokens    uint64
+}
+
+// AssetFlow is one asset's share of an address's activity.
+type AssetFlow struct {
+	Asset         string
+	InUSD, OutUSD decimal.Decimal
+	Transfers     uint64
 }
 
 // Scorer applies the configured weights.
@@ -206,7 +268,92 @@ func (s *Scorer) ScoreDirection(tr *graph.Result) (*DirectionResult, error) {
 	})
 
 	out.TopPaths = topAttributedPaths(tr.Paths, 10)
+	out.Connections = connections(tr.Paths, tr.TotalTraced, 10)
+	out.UnattributedReasons = unattributedReasons(tr.Paths, tr.TotalTraced)
 	return out, nil
+}
+
+// connections aggregates attributed, labelled paths by terminal address.
+// Dust is excluded: it is a pattern across many addresses, not a named
+// counterparty, and is already reported as its own category.
+func connections(paths []graph.Path, total decimal.Decimal, n int) []Connection {
+	hundred := decimal.NewFromInt(100)
+	by := map[string]*Connection{}
+	for _, p := range paths {
+		t := p.Terminal
+		if t.Reason != "labelled" || t.Category == "" {
+			continue
+		}
+		c, ok := by[t.Address]
+		if !ok {
+			c = &Connection{
+				Address: t.Address, Entity: t.Entity, Category: t.Category,
+				Source: t.Source, Confidence: t.Confidence,
+				Pct: decimal.Zero, MinHops: p.HopCount(),
+			}
+			by[t.Address] = c
+		}
+		c.Pct = c.Pct.Add(p.Contribution.Div(total).Mul(hundred))
+		c.Paths++
+		if p.HopCount() < c.MinHops {
+			c.MinHops = p.HopCount()
+		}
+	}
+
+	out := make([]Connection, 0, len(by))
+	for _, c := range by {
+		out = append(out, *c)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].Pct.Equal(out[j].Pct) {
+			return out[i].Pct.GreaterThan(out[j].Pct)
+		}
+		return out[i].Address < out[j].Address
+	})
+	if len(out) > n {
+		out = out[:n]
+	}
+	return out
+}
+
+// unattributedReasons splits the unattributed share by stopping reason, in a
+// fixed order so output is deterministic.
+func unattributedReasons(paths []graph.Path, total decimal.Decimal) []ReasonShare {
+	hundred := decimal.NewFromInt(100)
+	by := map[string]*ReasonShare{}
+	for _, p := range paths {
+		reason := p.Terminal.Reason
+		switch {
+		case p.Terminal.Attributed() && p.Terminal.Category != "":
+			continue
+		case p.Terminal.Attributed():
+			reason = "unlabelled_category"
+		}
+		r, ok := by[reason]
+		if !ok {
+			r = &ReasonShare{Reason: reason, Pct: decimal.Zero}
+			by[reason] = r
+		}
+		r.Pct = r.Pct.Add(p.Contribution.Div(total).Mul(hundred))
+		r.Paths++
+	}
+
+	var out []ReasonShare
+	for _, reason := range []string{"dead_end", "hop_limit", "fanout_cap", "unlabelled_category"} {
+		if r, ok := by[reason]; ok {
+			out = append(out, *r)
+			delete(by, reason)
+		}
+	}
+	rest := make([]string, 0, len(by))
+	for reason := range by {
+		rest = append(rest, reason)
+	}
+	sort.Strings(rest)
+	for _, reason := range rest {
+		out = append(out, *by[reason])
+	}
+	return out
 }
 
 // Combine produces the overall result from both directions.

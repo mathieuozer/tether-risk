@@ -216,6 +216,24 @@ type screenResponse struct {
 		Category string `json:"category"`
 	} `json:"own_label"`
 
+	Activity *struct {
+		InUSD             float64 `json:"in_usd"`
+		OutUSD            float64 `json:"out_usd"`
+		InTransfers       uint64  `json:"in_transfers"`
+		OutTransfers      uint64  `json:"out_transfers"`
+		InCounterparties  uint64  `json:"in_counterparties"`
+		OutCounterparties uint64  `json:"out_counterparties"`
+		FirstSeen         string  `json:"first_seen"`
+		LastSeen          string  `json:"last_seen"`
+		Assets            []struct {
+			Asset  string  `json:"asset"`
+			InUSD  float64 `json:"in_usd"`
+			OutUSD float64 `json:"out_usd"`
+		} `json:"assets"`
+		UnpricedTransfers uint64 `json:"unpriced_transfers"`
+		UnpricedTokens    uint64 `json:"unpriced_tokens"`
+	} `json:"activity"`
+
 	LabelSnapshotID int64  `json:"label_snapshot_id"`
 	ConfigVersion   string `json:"config_version"`
 	Disclaimer      string `json:"disclaimer"`
@@ -236,6 +254,17 @@ type direction struct {
 	TopPaths []struct {
 		Explanation string `json:"explanation"`
 	} `json:"top_paths"`
+	Connections []struct {
+		Address  string  `json:"address"`
+		Entity   string  `json:"entity"`
+		Category string  `json:"category"`
+		Pct      float64 `json:"pct"`
+		MinHops  int     `json:"min_hops"`
+	} `json:"connections"`
+	UnattributedReasons []struct {
+		Reason string  `json:"reason"`
+		Pct    float64 `json:"pct"`
+	} `json:"unattributed_reasons"`
 	Traversal struct {
 		FanoutCapped    bool `json:"fanout_capped"`
 		HopLimitReached bool `json:"hop_limit_reached"`
@@ -333,6 +362,19 @@ func summary(r *screenResponse) string {
 	if r.OwnLabel != nil {
 		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: r.OwnLabel.Entity, Category: r.OwnLabel.Category}
 	}
+	if a := r.Activity; a != nil {
+		act := &report.ConnectionsActivity{
+			InUSD: a.InUSD, OutUSD: a.OutUSD,
+			InTransfers: a.InTransfers, OutTransfers: a.OutTransfers,
+			InCounterparties: a.InCounterparties, OutCounterparties: a.OutCounterparties,
+			FirstSeen: a.FirstSeen, LastSeen: a.LastSeen,
+			UnpricedTransfers: a.UnpricedTransfers, UnpricedTokens: a.UnpricedTokens,
+		}
+		for _, as := range a.Assets {
+			act.Assets = append(act.Assets, report.ConnectionsAsset{Asset: as.Asset, USD: as.InUSD + as.OutUSD})
+		}
+		in.Activity = act
+	}
 	return report.Connections(in)
 }
 
@@ -348,6 +390,14 @@ func summaryDirection(d *direction) *report.ConnectionsDirection {
 	}
 	for _, c := range d.Categories {
 		out.Categories = append(out.Categories, report.ConnectionsCategory{Category: c.Category, Pct: c.Pct})
+	}
+	for _, c := range d.Connections {
+		out.Entries = append(out.Entries, report.ConnectionsEntry{
+			Address: c.Address, Entity: c.Entity, Category: c.Category, Pct: c.Pct, MinHops: c.MinHops,
+		})
+	}
+	for _, rs := range d.UnattributedReasons {
+		out.Reasons = append(out.Reasons, report.ConnectionsReason{Reason: rs.Reason, Pct: rs.Pct})
 	}
 	return out
 }

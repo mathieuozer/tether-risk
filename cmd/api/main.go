@@ -138,6 +138,9 @@ type screenResponse struct {
 	// exposure reached through it. Present only when the address is listed.
 	OwnLabel *ownLabelResponse `json:"own_label,omitempty"`
 
+	// Activity is the address's own stored history, before attribution.
+	Activity *activityResponse `json:"activity,omitempty"`
+
 	LabelSnapshotID int64  `json:"label_snapshot_id"`
 	ConfigVersion   string `json:"config_version"`
 
@@ -167,7 +170,50 @@ type directionResponse struct {
 
 	TopPaths []pathResponse `json:"top_paths"`
 
+	// Connections are identified counterparties, largest share first.
+	Connections []connectionResponse `json:"connections"`
+	// UnattributedReasons splits unattributed_pct by why tracing stopped.
+	UnattributedReasons []reasonResponse `json:"unattributed_reasons"`
+
 	Traversal traversalStats `json:"traversal"`
+}
+
+type activityResponse struct {
+	InUSD             float64         `json:"in_usd"`
+	OutUSD            float64         `json:"out_usd"`
+	InTransfers       uint64          `json:"in_transfers"`
+	OutTransfers      uint64          `json:"out_transfers"`
+	InCounterparties  uint64          `json:"in_counterparties"`
+	OutCounterparties uint64          `json:"out_counterparties"`
+	FirstSeen         string          `json:"first_seen,omitempty"`
+	LastSeen          string          `json:"last_seen,omitempty"`
+	Assets            []assetResponse `json:"assets"`
+	UnpricedTransfers uint64          `json:"unpriced_transfers"`
+	UnpricedTokens    uint64          `json:"unpriced_tokens"`
+}
+
+type assetResponse struct {
+	Asset     string  `json:"asset"`
+	InUSD     float64 `json:"in_usd"`
+	OutUSD    float64 `json:"out_usd"`
+	Transfers uint64  `json:"transfers"`
+}
+
+type connectionResponse struct {
+	Address    string  `json:"address"`
+	Entity     string  `json:"entity,omitempty"`
+	Category   string  `json:"category"`
+	Source     string  `json:"source,omitempty"`
+	Confidence float64 `json:"confidence"`
+	Pct        float64 `json:"pct"`
+	MinHops    int     `json:"min_hops"`
+	Paths      int     `json:"paths"`
+}
+
+type reasonResponse struct {
+	Reason string  `json:"reason"`
+	Pct    float64 `json:"pct"`
+	Paths  int     `json:"paths"`
 }
 
 type categoryResponse struct {
@@ -344,7 +390,31 @@ func toResponse(res *scoring.Result) screenResponse {
 		LabelSnapshotID:   res.LabelSnapshotID,
 		ConfigVersion:     res.ConfigVersion,
 		Disclaimer:        disclaimer,
+		Activity:          toActivity(res.Activity),
 	}
+}
+
+func toActivity(a *scoring.Activity) *activityResponse {
+	if a == nil {
+		return nil
+	}
+	out := &activityResponse{
+		InUSD: round(a.InUSD, 2), OutUSD: round(a.OutUSD, 2),
+		InTransfers: a.InTransfers, OutTransfers: a.OutTransfers,
+		InCounterparties: a.InCounterparties, OutCounterparties: a.OutCounterparties,
+		Assets:            make([]assetResponse, 0, len(a.Assets)),
+		UnpricedTransfers: a.UnpricedTransfers, UnpricedTokens: a.UnpricedTokens,
+	}
+	if !a.FirstSeen.IsZero() {
+		out.FirstSeen = a.FirstSeen.UTC().Format("2006-01-02")
+		out.LastSeen = a.LastSeen.UTC().Format("2006-01-02")
+	}
+	for _, as := range a.Assets {
+		out.Assets = append(out.Assets, assetResponse{
+			Asset: as.Asset, InUSD: round(as.InUSD, 2), OutUSD: round(as.OutUSD, 2), Transfers: as.Transfers,
+		})
+	}
+	return out
 }
 
 func toDirection(d *scoring.DirectionResult) *directionResponse {
@@ -352,12 +422,14 @@ func toDirection(d *scoring.DirectionResult) *directionResponse {
 		return nil
 	}
 	out := &directionResponse{
-		Score:           round(d.Score, 4),
-		Coverage:        round(d.Coverage, 6),
-		UnattributedPct: round(d.UnattributedPct, 4),
-		TotalTraced:     round(d.TotalTraced, 6),
-		Categories:      make([]categoryResponse, 0, len(d.Categories)),
-		TopPaths:        make([]pathResponse, 0, len(d.TopPaths)),
+		Score:               round(d.Score, 4),
+		Coverage:            round(d.Coverage, 6),
+		UnattributedPct:     round(d.UnattributedPct, 4),
+		TotalTraced:         round(d.TotalTraced, 6),
+		Categories:          make([]categoryResponse, 0, len(d.Categories)),
+		TopPaths:            make([]pathResponse, 0, len(d.TopPaths)),
+		Connections:         make([]connectionResponse, 0, len(d.Connections)),
+		UnattributedReasons: make([]reasonResponse, 0, len(d.UnattributedReasons)),
 		Traversal: traversalStats{
 			NodesVisited:    d.NodesVisited,
 			FanoutCapped:    d.FanoutCapped,
@@ -388,6 +460,17 @@ func toDirection(d *scoring.DirectionResult) *directionResponse {
 			Category:     p.Terminal.Category,
 			Source:       p.Terminal.Source,
 			Contribution: round(p.Contribution, 6),
+		})
+	}
+	for _, c := range d.Connections {
+		out.Connections = append(out.Connections, connectionResponse{
+			Address: c.Address, Entity: c.Entity, Category: c.Category, Source: c.Source,
+			Confidence: c.Confidence, Pct: round(c.Pct, 4), MinHops: c.MinHops, Paths: c.Paths,
+		})
+	}
+	for _, r := range d.UnattributedReasons {
+		out.UnattributedReasons = append(out.UnattributedReasons, reasonResponse{
+			Reason: r.Reason, Pct: round(r.Pct, 4), Paths: r.Paths,
 		})
 	}
 	return out

@@ -30,7 +30,40 @@ type ConnectionsInput struct {
 	Inbound  *ConnectionsDirection
 	Outbound *ConnectionsDirection
 
+	// Activity is the address's own history; nil when not available.
+	Activity *ConnectionsActivity
+
 	Disclaimer string
+}
+
+// ConnectionsActivity is what the address itself did, before attribution.
+type ConnectionsActivity struct {
+	InUSD, OutUSD                       float64
+	InTransfers, OutTransfers           uint64
+	InCounterparties, OutCounterparties uint64
+	FirstSeen, LastSeen                 string // YYYY-MM-DD, empty if unknown
+	Assets                              []ConnectionsAsset
+	UnpricedTransfers, UnpricedTokens   uint64
+}
+
+type ConnectionsAsset struct {
+	Asset string
+	USD   float64 // in plus out
+}
+
+// ConnectionsEntry is one identified counterparty.
+type ConnectionsEntry struct {
+	Address  string
+	Entity   string
+	Category string
+	Pct      float64 // 0-100 of its direction's traced value
+	MinHops  int
+}
+
+// ConnectionsReason is part of the unattributed share with one cause.
+type ConnectionsReason struct {
+	Reason string
+	Pct    float64 // 0-100 of its direction's traced value
 }
 
 type ConnectionsOwnLabel struct {
@@ -48,6 +81,9 @@ type ConnectionsDirection struct {
 	UnattributedPct float64 // 0-100
 	FanoutCapped    bool
 	HopLimitReached bool
+
+	Entries []ConnectionsEntry
+	Reasons []ConnectionsReason
 }
 
 type ConnectionsCategory struct {
@@ -86,6 +122,29 @@ func Connections(in ConnectionsInput) string {
 		b.WriteString("🚫 Direct sanctions match. Risk is High regardless of score.\n\n")
 	}
 
+	if a := in.Activity; a != nil && (a.InTransfers+a.OutTransfers+a.UnpricedTransfers) > 0 {
+		b.WriteString("📊 Activity\n\n")
+		fmt.Fprintf(&b, "  •   Received: %s in %s from %s\n",
+			usd(a.InUSD), plural(a.InTransfers, "transfer"), plural(a.InCounterparties, "address"))
+		fmt.Fprintf(&b, "  •   Sent: %s in %s to %s\n",
+			usd(a.OutUSD), plural(a.OutTransfers, "transfer"), plural(a.OutCounterparties, "address"))
+		if a.FirstSeen != "" {
+			fmt.Fprintf(&b, "  •   Active: %s → %s\n", a.FirstSeen, a.LastSeen)
+		}
+		if len(a.Assets) > 0 {
+			parts := make([]string, 0, len(a.Assets))
+			for _, as := range a.Assets {
+				parts = append(parts, as.Asset+" "+usd(as.USD))
+			}
+			fmt.Fprintf(&b, "  •   Assets: %s\n", strings.Join(parts, " · "))
+		}
+		if a.UnpricedTransfers > 0 {
+			fmt.Fprintf(&b, "  •   Unrecognised tokens: %s of %s, not valued (typical of spam and airdrops)\n",
+				plural(a.UnpricedTransfers, "transfer"), plural(a.UnpricedTokens, "token"))
+		}
+		b.WriteString("\n")
+	}
+
 	shares, unattributed, total := combine(in.Inbound, in.Outbound)
 
 	if total <= 0 {
@@ -106,6 +165,11 @@ func Connections(in ConnectionsInput) string {
 		}
 		if unattributed > 0 {
 			fmt.Fprintf(&b, "  •   Unattributed (unknown, not clean) - %.1f%%\n", unattributed)
+			for _, r := range combineReasons(in.Inbound, in.Outbound) {
+				if r.Pct >= minListedPct {
+					fmt.Fprintf(&b, "        ◦ %s - %.1f%%\n", reasonText(r.Reason), r.Pct)
+				}
+			}
 		}
 		if len(minor) > 0 {
 			b.WriteString("\nLess than 0.1%:\n\n")
@@ -114,6 +178,9 @@ func Connections(in ConnectionsInput) string {
 			}
 		}
 		b.WriteString("\n")
+
+		writeEntries(&b, in)
+		writeChecks(&b, in, shares)
 	}
 
 	fmt.Fprintf(&b, "📈 Risk level: %s (%.1f / 100)\n", titleCase(in.Band), in.Score)
@@ -218,4 +285,179 @@ func titleCase(s string) string {
 		return s
 	}
 	return strings.ToUpper(s[:1]) + strings.ToLower(s[1:])
+}
+
+// writeEntries lists identified counterparties per direction, with an
+// approximate dollar figure: the share times that direction's volume, which
+// is how proportional (haircut) attribution allocates value.
+func writeEntries(b *strings.Builder, in ConnectionsInput) {
+	type side struct {
+		title  string
+		d      *ConnectionsDirection
+		volume float64
+	}
+	var inVol, outVol float64
+	if in.Activity != nil {
+		inVol, outVol = in.Activity.InUSD, in.Activity.OutUSD
+	}
+	sides := []side{{"⬅️ Inbound (funds came from)", in.Inbound, inVol}, {"➡️ Outbound (funds went to)", in.Outbound, outVol}}
+
+	var any bool
+	for _, sd := range sides {
+		if sd.d != nil && len(sd.d.Entries) > 0 {
+			any = true
+		}
+	}
+	if !any {
+		return
+	}
+
+	b.WriteString("🏷 Identified connections\n")
+	for _, sd := range sides {
+		if sd.d == nil || len(sd.d.Entries) == 0 {
+			continue
+		}
+		fmt.Fprintf(b, "\n  %s\n", sd.title)
+		for i, e := range sd.d.Entries {
+			if i >= 5 {
+				fmt.Fprintf(b, "    … and %d more\n", len(sd.d.Entries)-5)
+				break
+			}
+			name := e.Entity
+			if name == "" {
+				name = displayCategory(e.Category)
+			}
+			amount := ""
+			if sd.volume > 0 {
+				amount = " ≈ " + usd(e.Pct/100*sd.volume)
+			}
+			share := fmt.Sprintf("%.1f%%", e.Pct)
+			if e.Pct < minListedPct {
+				share = "under 0.1%"
+			}
+			fmt.Fprintf(b, "    %d. %s (%s)\n       %s · %s%s · %s\n",
+				i+1, name, shortAddress(e.Address), displayCategory(e.Category), share, amount, hops(e.MinHops))
+		}
+	}
+	b.WriteString("\n")
+}
+
+// riskChecks are the categories a reader looks for first. Each is reported
+// found or not found, never silently omitted.
+var riskChecks = []string{
+	"sanctions", "terrorist_financing", "darknet", "stolen_funds",
+	"mixer", "scam", "high_risk_exchange", "gambling",
+}
+
+func writeChecks(b *strings.Builder, in ConnectionsInput, shares []ConnectionsCategory) {
+	found := map[string]float64{}
+	for _, s := range shares {
+		found[s.Category] = s.Pct
+	}
+	// "Not found" in a low-coverage result is not a clean bill, so it gets a
+	// neutral mark rather than a tick.
+	clear := "✅"
+	if in.LowConfidence {
+		clear = "⚪"
+	}
+
+	b.WriteString("🛡 Risk checks\n\n")
+	for _, c := range riskChecks {
+		if pct, ok := found[c]; ok && pct > 0 {
+			share := fmt.Sprintf("%.1f%%", pct)
+			if pct < minListedPct {
+				share = "under 0.1%"
+			}
+			fmt.Fprintf(b, "  🔴  %s - found, %s\n", displayCategory(c), share)
+		} else {
+			fmt.Fprintf(b, "  %s  %s - not found\n", clear, displayCategory(c))
+		}
+	}
+	fmt.Fprintf(b, "\n  Checks cover the %.1f%% of traced value that could be attributed.\n\n", in.Coverage*100)
+}
+
+func combineReasons(dirs ...*ConnectionsDirection) []ConnectionsReason {
+	var total float64
+	for _, d := range dirs {
+		if d != nil && d.TracedWeight > 0 {
+			total += d.TracedWeight
+		}
+	}
+	if total <= 0 {
+		return nil
+	}
+	by := map[string]float64{}
+	var order []string
+	for _, d := range dirs {
+		if d == nil || d.TracedWeight <= 0 {
+			continue
+		}
+		w := d.TracedWeight / total
+		for _, r := range d.Reasons {
+			if _, ok := by[r.Reason]; !ok {
+				order = append(order, r.Reason)
+			}
+			by[r.Reason] += r.Pct * w
+		}
+	}
+	out := make([]ConnectionsReason, 0, len(order))
+	for _, r := range order {
+		out = append(out, ConnectionsReason{Reason: r, Pct: by[r]})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].Pct > out[j].Pct })
+	return out
+}
+
+func reasonText(r string) string {
+	switch r {
+	case "dead_end":
+		return "not traced further yet (counterparty history not ingested)"
+	case "hop_limit":
+		return "beyond the hop limit"
+	case "fanout_cap":
+		return "too many counterparties to follow"
+	case "unlabelled_category":
+		return "labelled, but without a category"
+	}
+	return strings.ReplaceAll(r, "_", " ")
+}
+
+func hops(n int) string {
+	switch n {
+	case 0, 1:
+		return "direct"
+	default:
+		return fmt.Sprintf("%d hops away", n)
+	}
+}
+
+func shortAddress(a string) string {
+	if len(a) <= 12 {
+		return a
+	}
+	return a[:6] + "…" + a[len(a)-4:]
+}
+
+func plural(n uint64, word string) string {
+	if n == 1 {
+		return "1 " + word
+	}
+	if strings.HasSuffix(word, "ss") {
+		return fmt.Sprintf("%d %ses", n, word)
+	}
+	return fmt.Sprintf("%d %ss", n, word)
+}
+
+// usd formats a dollar amount compactly.
+func usd(v float64) string {
+	switch {
+	case v >= 1e9:
+		return fmt.Sprintf("$%.2fB", v/1e9)
+	case v >= 1e6:
+		return fmt.Sprintf("$%.2fM", v/1e6)
+	case v >= 1e3:
+		return fmt.Sprintf("$%.1fk", v/1e3)
+	default:
+		return fmt.Sprintf("$%.0f", v)
+	}
 }

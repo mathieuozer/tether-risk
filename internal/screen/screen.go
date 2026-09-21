@@ -182,6 +182,12 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 		}
 	}
 
+	act, err := activity(ctx, s.ch, chainID, address)
+	if err != nil {
+		return nil, err
+	}
+	res.Activity = act
+
 	// SPEC.md §2: every score must be reconstructible from stored intermediate
 	// data. Persist the paths, not just the number.
 	if err := s.persist(ctx, res, inboundTr, outboundTr, time.Since(started)); err != nil {
