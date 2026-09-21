@@ -623,3 +623,56 @@ and pricing them would reopen that hole.
 D13 warns against. Smart contracts in general (DEX routers, bridges, lending
 pools) are real counterparties and may be worth a category. That is to be
 measured first, against the largest counterparties.
+
+---
+
+## D22 — screening fetches before it scores, and ingestion prices as it writes
+
+**Date:** 2026-09-21 · **Status:** active
+
+The use this serves is one step: give an address, get the answer. Three gaps
+stood in the way. None of them raised an error.
+
+**The API never fetched.** `/v1/screen` scored whatever was already stored.
+An address nobody had ingested came back as "no traced value", which reads
+as "never moved funds". Every screen that looked right had been preceded by
+a manual `ingest fetch`. Screening now fetches the address first (depth 1),
+which queues its counterparties for the worker. The TTL cache makes this free
+for anything fetched in the last day.
+
+The fetch has a 45-second budget. At the public rate limit a large address
+takes minutes, longer than the API's two-minute write timeout or a chat
+client will wait. When the budget runs out, the pages already written are
+kept, the cursor is saved, the address is handed to the worker, and the
+result says the history is still being fetched. Measured on a never-seen
+address: 39 seconds, partial result, job queued.
+
+Each result reports its depth: how many of the queued counterparties are
+traced, whether the address's own history hit the per-address page limit,
+and whether it is still being fetched. A shallow answer never reads as
+final.
+
+**Fetched history had no price.** Workers wrote transfers as `unpriced`, and
+only `price backfill` valued them. Traversal skips unpriced edges, so an
+address fetched during the day scored as if it had no history until the
+nightly run. The first end-to-end screen of a new address showed "$0
+received in 3,222 transfers", with 100% coverage resting on a single older
+edge. Workers now price each transfer before writing it, and edges are
+correct on insert. The one-off backfill then valued 24,943 transfers left
+unpriced that day.
+
+**The worker lived in a terminal.** Queued counterparties are only traced
+while a worker runs. It now runs under launchd with KeepAlive
+(`make worker-install`), and restarts on its own after a crash or once
+Docker is back.
+
+**Sampler pacing: fixed, but it was not the bottleneck.** The service
+sampler paced itself at about 8 requests per second against a per-IP budget
+it shares with the worker and with screening. It now uses half the configured
+rate and counts its requests, retries and 429s, which were silent before.
+Measured interleaved on the same candidates on 2026-09-21, with the worker
+running and then stopped, both paces cost about 8 seconds per address. In
+every run 60–80% of requests were throttled. Without an API key, TronGrid was
+throttling this IP harder than D17 measured that morning. The pacing change
+spends 25% fewer requests for the same result. The remedy for the slowness
+is `TRONGRID_API_KEY` in `.env`, which the worker and the daily run now load.

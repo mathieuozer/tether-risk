@@ -10,6 +10,7 @@ import (
 
 	"github.com/mozer/tether-risk/internal/config"
 	"github.com/mozer/tether-risk/internal/graph"
+	"github.com/mozer/tether-risk/internal/ingest"
 	"github.com/mozer/tether-risk/internal/labels"
 	"github.com/mozer/tether-risk/internal/scoring"
 	"github.com/shopspring/decimal"
@@ -103,6 +104,40 @@ type Service struct {
 	store    *labels.Store
 	resolver *labels.Resolver
 	scorer   *scoring.Scorer
+
+	prefetch map[string]Prefetcher // by chain
+}
+
+// Prefetcher fetches an address's history before it is scored, and queues
+// its counterparties to the given depth. ingest.Worker implements it.
+type Prefetcher interface {
+	FetchAddress(ctx context.Context, address string, depthRemaining int) (ingest.Result, error)
+	Queue(ctx context.Context, address string, depthRemaining int) error
+}
+
+// fetchBudget bounds how long a screen spends fetching before it answers
+// with what is stored. A large address can take minutes to drain at the
+// public rate limit, longer than a chat client or the API's write timeout
+// will wait. The worker finishes the rest.
+const fetchBudget = 45 * time.Second
+
+// prefetchDepth is how far a screen asks for: the address and its direct
+// counterparties. Counterparties are fetched by the background worker, so a
+// screen returns once the address itself is stored.
+const prefetchDepth = 1
+
+// enqueueCap mirrors ingest.Options.MaxNeighboursEnqueued's default: the
+// number of counterparties a fetch queues, most active first.
+const enqueueCap = 100
+
+// WithPrefetch makes Screen fetch unknown or stale addresses on a chain
+// before scoring. A chain without one scores only what is already stored.
+func (s *Service) WithPrefetch(chainID string, p Prefetcher) *Service {
+	if s.prefetch == nil {
+		s.prefetch = map[string]Prefetcher{}
+	}
+	s.prefetch[chainID] = p
+	return s
 }
 
 func NewService(ch, pg *sql.DB, cfg *config.Config) *Service {
@@ -132,6 +167,31 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 	snapshotID, err := s.store.LatestSealedSnapshot(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	// Fetch first, so an address nobody has ingested is not scored against an
+	// empty store and reported as inactive. The worker's TTL cache makes this
+	// free for anything fetched recently. A failed fetch still scores what is
+	// stored, and says so.
+	depth := &scoring.DepthStatus{}
+	if p, ok := s.prefetch[chainID]; ok {
+		fctx, cancel := context.WithTimeout(ctx, fetchBudget)
+		r, err := p.FetchAddress(fctx, address, prefetchDepth)
+		cancel()
+		switch {
+		case err != nil && fctx.Err() != nil && ctx.Err() == nil:
+			// Out of time, not failed. Pages written so far are kept and the
+			// cursor is saved, so the worker resumes rather than restarts.
+			depth.StillFetching = true
+			if qerr := p.Queue(ctx, address, prefetchDepth); qerr != nil {
+				depth.FetchError = qerr.Error()
+			}
+		case err != nil:
+			depth.FetchError = err.Error()
+		default:
+			depth.Fetched = !r.Skipped
+			depth.HistoryTruncated = r.Truncated
+		}
 	}
 
 	edges := clickhouseEdges{ch: s.ch}
@@ -187,6 +247,11 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 		return nil, err
 	}
 	res.Activity = act
+
+	if err := s.depthStatus(ctx, chainID, address, depth); err != nil {
+		return nil, err
+	}
+	res.Depth = depth
 
 	// SPEC.md §2: every score must be reconstructible from stored intermediate
 	// data. Persist the paths, not just the number.
@@ -305,4 +370,66 @@ func maxInt(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// depthStatus counts how many of the address's queued counterparties have
+// their own history stored. Counterparties are ranked by transfer count, the
+// order the ingest worker queues them in, so "traced" means exactly the set
+// that was queued.
+func (s *Service) depthStatus(ctx context.Context, chainID, address string, d *scoring.DepthStatus) error {
+	rows, err := s.ch.QueryContext(ctx, `
+		SELECT cp, sum(n) AS transfers FROM (
+			SELECT to_address AS cp, transfer_count AS n FROM edges_current
+			WHERE chain = ? AND from_address = ?
+			UNION ALL
+			SELECT from_address AS cp, transfer_count AS n FROM edges_by_to_current
+			WHERE chain = ? AND to_address = ?)
+		WHERE cp != ?
+		GROUP BY cp ORDER BY transfers DESC, cp`,
+		chainID, address, chainID, address, address)
+	if err != nil {
+		return fmt.Errorf("depth status: %w", err)
+	}
+	defer rows.Close()
+
+	var queued []string
+	for rows.Next() {
+		var cp string
+		var n uint64
+		if err := rows.Scan(&cp, &n); err != nil {
+			return fmt.Errorf("depth status: %w", err)
+		}
+		d.TotalCounterparties++
+		if len(queued) < enqueueCap {
+			queued = append(queued, cp)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	d.Counterparties = len(queued)
+
+	// The address's own truncation, for a result served from the cache as
+	// well as one fetched just now.
+	var truncated sql.NullBool
+	err = s.pg.QueryRowContext(ctx,
+		`SELECT truncated FROM address_freshness WHERE chain = $1 AND address = $2`,
+		chainID, address).Scan(&truncated)
+	if err != nil && err != sql.ErrNoRows {
+		return fmt.Errorf("depth status: %w", err)
+	}
+	if truncated.Valid && truncated.Bool {
+		d.HistoryTruncated = true
+	}
+
+	if len(queued) == 0 {
+		return nil
+	}
+
+	if err := s.pg.QueryRowContext(ctx,
+		`SELECT count(*) FROM address_freshness WHERE chain = $1 AND address = ANY($2)`,
+		chainID, queued).Scan(&d.Traced); err != nil {
+		return fmt.Errorf("depth status: %w", err)
+	}
+	return nil
 }

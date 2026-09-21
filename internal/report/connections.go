@@ -33,6 +33,9 @@ type ConnectionsInput struct {
 	// Activity is the address's own history; nil when not available.
 	Activity *ConnectionsActivity
 
+	// Depth is how far stored history reached; nil when not computed.
+	Depth *ConnectionsDepth
+
 	Disclaimer string
 }
 
@@ -49,6 +52,16 @@ type ConnectionsActivity struct {
 type ConnectionsAsset struct {
 	Asset string
 	USD   float64 // in plus out
+}
+
+// ConnectionsDepth says whether tracing had finished when this was scored.
+type ConnectionsDepth struct {
+	FetchError          string
+	StillFetching       bool
+	HistoryTruncated    bool
+	Counterparties      int // queued for tracing, most active first
+	Traced              int
+	TotalCounterparties int
 }
 
 // ConnectionsEntry is one identified counterparty.
@@ -144,6 +157,8 @@ func Connections(in ConnectionsInput) string {
 		}
 		b.WriteString("\n")
 	}
+
+	writeDepth(&b, in.Depth)
 
 	shares, unattributed, total := combine(in.Inbound, in.Outbound)
 
@@ -460,4 +475,38 @@ func usd(v float64) string {
 	default:
 		return fmt.Sprintf("$%.0f", v)
 	}
+}
+
+// writeDepth says whether this is a finished answer. A result scored while
+// counterparties are still being fetched is shallower than the one that will
+// follow, and must not read as final.
+func writeDepth(b *strings.Builder, d *ConnectionsDepth) {
+	if d == nil {
+		return
+	}
+	if d.FetchError != "" {
+		fmt.Fprintf(b, "⚠️ Could not refresh this address from the chain, so stored data was used: %s\n\n", d.FetchError)
+	}
+	if d.StillFetching {
+		b.WriteString("🔄 This address's history is still being fetched. " +
+			"The figures below are partial; screen again in a few minutes.\n\n")
+	}
+	if d.HistoryTruncated {
+		b.WriteString("ℹ️ This address has more history than the per-address fetch limit " +
+			"(10,000 transfers); activity figures cover the most recent part.\n\n")
+	}
+	if d.Counterparties == 0 {
+		return
+	}
+	if d.Traced < d.Counterparties {
+		fmt.Fprintf(b, "🔄 Tracing in progress: %d of %d counterparties traced. "+
+			"Screen again later for a deeper result.\n", d.Traced, d.Counterparties)
+	} else {
+		fmt.Fprintf(b, "🔎 Counterparties traced: %d of %d.\n", d.Traced, d.Counterparties)
+	}
+	if d.TotalCounterparties > d.Counterparties {
+		fmt.Fprintf(b, "   The %d most active of %d counterparties are traced.\n",
+			d.Counterparties, d.TotalCounterparties)
+	}
+	b.WriteString("\n")
 }

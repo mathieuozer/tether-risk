@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/mozer/tether-risk/internal/config"
@@ -47,7 +48,8 @@ type Pricer struct {
 	daily  map[string]bool
 
 	// cache of (asset, day) -> price, so a backfill over many transfers does
-	// not re-query per row.
+	// not re-query per row. Guarded because ingest workers share one Pricer.
+	mu    sync.Mutex
 	cache map[string]decimal.Decimal
 }
 
@@ -105,7 +107,10 @@ func (p *Pricer) Price(ctx context.Context, asset string, raw *big.Int, at time.
 func (p *Pricer) dailyClose(ctx context.Context, asset string, at time.Time) (decimal.Decimal, bool, error) {
 	day := at.UTC().Format("2006-01-02")
 	key := asset + "/" + day
-	if v, ok := p.cache[key]; ok {
+	p.mu.Lock()
+	v, ok := p.cache[key]
+	p.mu.Unlock()
+	if ok {
 		return v, true, nil
 	}
 
@@ -118,7 +123,9 @@ func (p *Pricer) dailyClose(ctx context.Context, asset string, at time.Time) (de
 	if err != nil {
 		return decimal.Zero, false, fmt.Errorf("read price %s/%s: %w", asset, day, err)
 	}
+	p.mu.Lock()
 	p.cache[key] = usd
+	p.mu.Unlock()
 	return usd, true, nil
 }
 

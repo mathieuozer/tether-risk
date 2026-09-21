@@ -141,3 +141,40 @@ func TestConnectionsDetailSections(t *testing.T) {
 		t.Errorf("low confidence output shows a clear tick:\n%s", out)
 	}
 }
+
+func TestConnectionsReportsTracingProgress(t *testing.T) {
+	out := Connections(ConnectionsInput{
+		Address: "TAddr", Chain: "tron", Band: "low",
+		Depth: &ConnectionsDepth{Counterparties: 100, Traced: 22, TotalCounterparties: 140},
+	})
+	for _, want := range []string{
+		"Tracing in progress: 22 of 100 counterparties traced",
+		"The 100 most active of 140 counterparties are traced",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+
+	done := Connections(ConnectionsInput{
+		Address: "TAddr", Chain: "tron", Band: "low",
+		Depth: &ConnectionsDepth{Counterparties: 31, Traced: 31, TotalCounterparties: 31, FetchError: "rate limited"},
+	})
+	for _, want := range []string{"Counterparties traced: 31 of 31", "stored data was used: rate limited"} {
+		if !strings.Contains(done, want) {
+			t.Errorf("missing %q in:\n%s", want, done)
+		}
+	}
+}
+
+func TestConnectionsReportsPartialHistory(t *testing.T) {
+	out := Connections(ConnectionsInput{
+		Address: "TAddr", Chain: "tron", Band: "low",
+		Depth: &ConnectionsDepth{StillFetching: true, HistoryTruncated: true},
+	})
+	for _, want := range []string{"still being fetched", "more history than the per-address fetch limit"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}

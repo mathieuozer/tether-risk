@@ -16,6 +16,13 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT" || exit 1
 
+# TRONGRID_API_KEY and similar live in the gitignored .env.
+if [ -f .env ]; then
+	set -a
+	. ./.env
+	set +a
+fi
+
 LOG_DIR="$ROOT/.data/logs"
 LOCK_DIR="$ROOT/.data/daily.lock"
 mkdir -p "$LOG_DIR"

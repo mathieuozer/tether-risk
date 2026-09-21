@@ -106,6 +106,39 @@ daily-status: ## Show the schedule and the latest run's summary
 		else echo "no runs yet"; fi
 
 # ---------------------------------------------------------------------------
+# Ingest worker (scripts/worker.sh), kept alive by launchd
+# ---------------------------------------------------------------------------
+
+WORKER_LABEL := com.tether-risk.worker
+WORKER_PLIST := $(HOME)/Library/LaunchAgents/$(WORKER_LABEL).plist
+
+.PHONY: worker-install
+worker-install: ## Run the ingest worker permanently, restarting it if it stops
+	@mkdir -p $(HOME)/Library/LaunchAgents .data/logs
+	@printf '%s\n' \
+		'<?xml version="1.0" encoding="UTF-8"?>' \
+		'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+		'<plist version="1.0"><dict>' \
+		'  <key>Label</key><string>$(WORKER_LABEL)</string>' \
+		'  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$(CURDIR)/scripts/worker.sh</string></array>' \
+		'  <key>WorkingDirectory</key><string>$(CURDIR)</string>' \
+		'  <key>RunAtLoad</key><true/>' \
+		'  <key>KeepAlive</key><true/>' \
+		'  <key>ThrottleInterval</key><integer>60</integer>' \
+		'  <key>StandardOutPath</key><string>$(CURDIR)/.data/logs/worker.log</string>' \
+		'  <key>StandardErrorPath</key><string>$(CURDIR)/.data/logs/worker.log</string>' \
+		'</dict></plist>' > $(WORKER_PLIST)
+	@launchctl bootout gui/$$(id -u)/$(WORKER_LABEL) 2>/dev/null || true
+	@launchctl bootstrap gui/$$(id -u) $(WORKER_PLIST)
+	@echo "ingest worker running under launchd; log in .data/logs/worker.log"
+
+.PHONY: worker-uninstall
+worker-uninstall: ## Stop and remove the permanent ingest worker
+	@launchctl bootout gui/$$(id -u)/$(WORKER_LABEL) 2>/dev/null || true
+	@rm -f $(WORKER_PLIST)
+	@echo "ingest worker removed"
+
+# ---------------------------------------------------------------------------
 # Build gates
 # ---------------------------------------------------------------------------
 

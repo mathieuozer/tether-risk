@@ -113,6 +113,39 @@ type Result struct {
 	// Activity is filled by the caller that holds the transfer store; nil
 	// when it was not computed.
 	Activity *Activity
+
+	// Depth reports how much of the neighbourhood was stored when this was
+	// scored. Nil when not computed.
+	Depth *DepthStatus
+}
+
+// DepthStatus says how far stored history reached for this result, so a
+// shallow answer is never presented as a finished one.
+type DepthStatus struct {
+	// Fetched reports that this screen fetched or refreshed the address.
+	Fetched bool
+	// FetchError is set when fetching failed and stored data was used.
+	FetchError string
+	// StillFetching reports that the address's own history did not finish
+	// fetching within the screen's time budget; the background worker is
+	// completing it.
+	StillFetching bool
+	// HistoryTruncated reports that the address has more history than the
+	// per-address page limit fetches, so its own activity is partial.
+	HistoryTruncated bool
+	// Counterparties is how many counterparties are queued for tracing (the
+	// most active, up to the enqueue cap); Traced is how many of them have
+	// their own history stored.
+	Counterparties int
+	Traced         int
+	// TotalCounterparties is every distinct counterparty, which can exceed
+	// the enqueue cap.
+	TotalCounterparties int
+}
+
+// Complete reports whether every queued counterparty has been traced.
+func (d *DepthStatus) Complete() bool {
+	return d == nil || (!d.StillFetching && d.Traced >= d.Counterparties)
 }
 
 // OwnLabel is a label on the queried address itself.

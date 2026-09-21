@@ -299,7 +299,7 @@ func TestLiveTronSampler(t *testing.T) {
 		t.Skip("set TRON_LIVE_SAMPLE=1 to run the live sampler check")
 	}
 
-	sampler := NewTronSampler("https://api.trongrid.io", os.Getenv("TRONGRID_API_KEY"))
+	sampler := NewTronSampler("https://api.trongrid.io", os.Getenv("TRONGRID_API_KEY"), 3)
 	cfg := testCfg(t)
 
 	cases := []struct {

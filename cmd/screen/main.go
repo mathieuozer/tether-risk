@@ -9,6 +9,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -16,6 +17,7 @@ import (
 	"time"
 
 	"github.com/mozer/tether-risk/internal/config"
+	"github.com/mozer/tether-risk/internal/ingest"
 	"github.com/mozer/tether-risk/internal/report"
 	"github.com/mozer/tether-risk/internal/scoring"
 	"github.com/mozer/tether-risk/internal/screen"
@@ -31,7 +33,9 @@ func main() {
 		chainID   = flag.String("chain", "tron", "chain")
 		configDir = flag.String("config", "config", "configuration directory")
 		pdfOut    = flag.String("pdf", "", "also write a PDF report to this path")
-		format    = flag.String("format", "detailed",
+		fetch     = flag.Bool("fetch", true,
+			"fetch the address and queue its counterparties before scoring; false scores stored data only")
+		format = flag.String("format", "detailed",
 			"output format: detailed (per-direction breakdown) or summary (combined connections list)")
 	)
 	flag.Parse()
@@ -50,13 +54,13 @@ func main() {
 		os.Exit(2)
 	}
 
-	if err := run(ctx, *configDir, *chainID, address, *pdfOut, *format); err != nil {
+	if err := run(ctx, *configDir, *chainID, address, *pdfOut, *format, *fetch); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, configDir, chainID, address, pdfOut, format string) error {
+func run(ctx context.Context, configDir, chainID, address, pdfOut, format string, fetch bool) error {
 	cfg, err := config.Load(configDir)
 	if err != nil {
 		return err
@@ -74,7 +78,16 @@ func run(ctx context.Context, configDir, chainID, address, pdfOut, format string
 	}
 	defer pg.Close()
 
-	res, err := screen.NewService(ch, pg, cfg).Screen(ctx, chainID, address)
+	svc := screen.NewService(ch, pg, cfg)
+	if fetch {
+		quiet := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+		p, err := ingest.NewPrefetcher(chainID, cfg, ch, pg, quiet)
+		if err != nil {
+			return err
+		}
+		svc.WithPrefetch(chainID, p)
+	}
+	res, err := svc.Screen(ctx, chainID, address)
 	if err != nil {
 		return err
 	}
@@ -137,6 +150,25 @@ func print(res *scoring.Result) {
 		fmt.Println("  Less than 40% of traced value could be attributed to a known entity.")
 		fmt.Println("  The score below describes only the part we could identify. Treat the")
 		fmt.Println("  unattributed remainder as unknown, not as clean.")
+	}
+
+	if d := res.Depth; d != nil {
+		if d.FetchError != "" {
+			fmt.Printf("\n  could not refresh from the chain; stored data used: %s\n", d.FetchError)
+		}
+		if d.StillFetching {
+			fmt.Println("History:    still being fetched; figures are partial, screen again shortly")
+		}
+		if d.HistoryTruncated {
+			fmt.Println("History:    truncated at the per-address fetch limit; activity covers the most recent part")
+		}
+		if d.Counterparties > 0 {
+			state := "complete"
+			if d.Traced < d.Counterparties {
+				state = "in progress, screen again later for a deeper result"
+			}
+			fmt.Printf("Traced:     %d of %d counterparties (%s)\n", d.Traced, d.Counterparties, state)
+		}
 	}
 
 	printDirection("INBOUND  (where funds came from)", res.Inbound)
@@ -238,6 +270,13 @@ func connectionsInput(res *scoring.Result) report.ConnectionsInput {
 	}
 	if l := res.OwnLabel; l != nil {
 		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: l.Entity, Category: l.Category}
+	}
+	if d := res.Depth; d != nil {
+		in.Depth = &report.ConnectionsDepth{
+			FetchError: d.FetchError, StillFetching: d.StillFetching, HistoryTruncated: d.HistoryTruncated,
+			Counterparties: d.Counterparties,
+			Traced:         d.Traced, TotalCounterparties: d.TotalCounterparties,
+		}
 	}
 	if a := res.Activity; a != nil {
 		act := &report.ConnectionsActivity{

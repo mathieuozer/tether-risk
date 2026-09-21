@@ -12,11 +12,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math/big"
 	"sort"
 	"time"
 
 	"github.com/mozer/tether-risk/internal/chain"
 	"github.com/mozer/tether-risk/internal/store"
+	"github.com/shopspring/decimal"
 )
 
 // Options configures a Worker.
@@ -41,6 +43,17 @@ type Options struct {
 
 	PollInterval time.Duration
 	Logger       *slog.Logger
+
+	// Pricer values transfers as they are written. Without one they are
+	// stored unpriced until the next `price backfill`, and traversal cannot
+	// see them: an address fetched during the day would score as if it had
+	// no history until the nightly run (docs/DECISIONS.md D22).
+	Pricer Pricer
+}
+
+// Pricer values a raw amount. pricing.Pricer implements it.
+type Pricer interface {
+	Price(ctx context.Context, asset string, raw *big.Int, at time.Time) (*decimal.Decimal, string, error)
 }
 
 func (o *Options) setDefaults() {
@@ -175,6 +188,13 @@ type Result struct {
 	Duration   time.Duration
 }
 
+// Queue hands an address to the background workers instead of fetching it
+// now. Screening uses it when a fetch runs out of time: the pages already
+// written are kept, and the saved cursor lets the worker continue from there.
+func (w *Worker) Queue(ctx context.Context, address string, depthRemaining int) error {
+	return w.jobs.Enqueue(ctx, w.adapter.Chain(), address, depthRemaining, nil)
+}
+
 func (w *Worker) fetch(ctx context.Context, address string, depthRemaining int, runID *int64) (Result, error) {
 	started := time.Now()
 	chainID := w.adapter.Chain()
@@ -257,6 +277,17 @@ func (w *Worker) fetch(ctx context.Context, address string, depthRemaining int, 
 		}
 		p := f.page
 		res.Pages++
+
+		if w.opts.Pricer != nil {
+			for i := range p.Transfers {
+				t := &p.Transfers[i]
+				v, basis, err := w.opts.Pricer.Price(ctx, t.Asset, t.RawValue, t.BlockTime)
+				if err != nil {
+					return res, fmt.Errorf("price %s: %w", t.Key(), err)
+				}
+				t.USDValue, t.PriceBasis = v, basis
+			}
+		}
 
 		wr, err := w.writer.WritePage(ctx, address, p.PageKey, p.Transfers)
 		if err != nil {

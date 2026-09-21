@@ -234,6 +234,15 @@ type screenResponse struct {
 		UnpricedTokens    uint64 `json:"unpriced_tokens"`
 	} `json:"activity"`
 
+	Depth *struct {
+		FetchError          string `json:"fetch_error"`
+		StillFetching       bool   `json:"still_fetching"`
+		HistoryTruncated    bool   `json:"history_truncated"`
+		Counterparties      int    `json:"counterparties"`
+		Traced              int    `json:"traced"`
+		TotalCounterparties int    `json:"total_counterparties"`
+	} `json:"depth"`
+
 	LabelSnapshotID int64  `json:"label_snapshot_id"`
 	ConfigVersion   string `json:"config_version"`
 	Disclaimer      string `json:"disclaimer"`
@@ -361,6 +370,13 @@ func summary(r *screenResponse) string {
 	}
 	if r.OwnLabel != nil {
 		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: r.OwnLabel.Entity, Category: r.OwnLabel.Category}
+	}
+	if d := r.Depth; d != nil {
+		in.Depth = &report.ConnectionsDepth{
+			FetchError: d.FetchError, StillFetching: d.StillFetching, HistoryTruncated: d.HistoryTruncated,
+			Counterparties: d.Counterparties,
+			Traced:         d.Traced, TotalCounterparties: d.TotalCounterparties,
+		}
 	}
 	if a := r.Activity; a != nil {
 		act := &report.ConnectionsActivity{

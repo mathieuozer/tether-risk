@@ -27,17 +27,39 @@ type TronSampler struct {
 	// demand-driven screening depends on.
 	minInterval time.Duration
 	last        time.Time
+
+	stats SamplerStats
 }
 
-func NewTronSampler(baseURL, apiKey string) *TronSampler {
+// SamplerStats counts what sampling cost, so a slow run can be told apart
+// from a throttled one. Retries were silent before, which is how a sampler
+// pacing itself at eight requests a second against a three-a-second budget
+// went unnoticed (docs/DECISIONS.md D22).
+type SamplerStats struct {
+	Requests    int
+	Retries     int
+	RateLimited int
+	Waited      time.Duration // time spent pacing and backing off
+}
+
+// Stats reports the sampler's counters so far.
+func (s *TronSampler) Stats() SamplerStats { return s.stats }
+
+// NewTronSampler paces itself at half of requestsPerSec, the chain's
+// configured budget. The budget is per IP and shared with the ingest worker
+// and with on-demand screening; sampling is a batch job and yields to both.
+func NewTronSampler(baseURL, apiKey string, requestsPerSec float64) *TronSampler {
 	if baseURL == "" {
 		baseURL = "https://api.trongrid.io"
+	}
+	if requestsPerSec <= 0 {
+		requestsPerSec = 3 // docs/DECISIONS.md D17
 	}
 	return &TronSampler{
 		baseURL:     baseURL,
 		apiKey:      apiKey,
 		http:        &http.Client{Timeout: 30 * time.Second},
-		minInterval: 120 * time.Millisecond,
+		minInterval: time.Duration(float64(time.Second) / (requestsPerSec / 2)),
 	}
 }
 
@@ -125,6 +147,7 @@ func (s *TronSampler) Sample(ctx context.Context, address string, pages, pageSiz
 func (s *TronSampler) pace(ctx context.Context) error {
 	wait := s.minInterval - time.Since(s.last)
 	if wait > 0 {
+		s.stats.Waited += wait
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
@@ -152,6 +175,8 @@ func (s *TronSampler) get(ctx context.Context, u string) ([]byte, error) {
 			// same moment do not retry in lockstep.
 			base := time.Duration(1<<uint(attempt-1)) * time.Second
 			delay := base/2 + time.Duration(rand.Int63n(int64(base)))
+			s.stats.Retries++
+			s.stats.Waited += delay
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
@@ -168,6 +193,7 @@ func (s *TronSampler) get(ctx context.Context, u string) ([]byte, error) {
 			req.Header.Set("TRON-PRO-API-KEY", s.apiKey)
 		}
 
+		s.stats.Requests++
 		resp, err := s.http.Do(req)
 		if err != nil {
 			lastErr = fmt.Errorf("sample request: %w", err)
@@ -184,7 +210,11 @@ func (s *TronSampler) get(ctx context.Context, u string) ([]byte, error) {
 		switch {
 		case resp.StatusCode == http.StatusOK:
 			return body, nil
-		case resp.StatusCode == http.StatusTooManyRequests, resp.StatusCode >= 500:
+		case resp.StatusCode == http.StatusTooManyRequests:
+			s.stats.RateLimited++
+			lastErr = fmt.Errorf("sample request returned %d", resp.StatusCode)
+			continue
+		case resp.StatusCode >= 500:
 			lastErr = fmt.Errorf("sample request returned %d", resp.StatusCode)
 			continue
 		default:

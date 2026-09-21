@@ -426,13 +426,18 @@ func deriveServices(ctx context.Context, cfg *config.Config, st *labels.Store,
 	}
 	log.Info("sampling candidates", "count", len(candidates), "chain", chainID)
 
-	sampler := labels.NewTronSampler(chainCfg.URL, os.Getenv("TRONGRID_API_KEY"))
+	sampler := labels.NewTronSampler(chainCfg.URL, os.Getenv("TRONGRID_API_KEY"), float64(chainCfg.RateLimitPerSec))
 	judged, derived, err := labels.DetectServices(ctx, sampler, cfg, chainID, candidates)
 	if err != nil {
 		return err
 	}
 
 	fmt.Printf("candidates sampled: %d\n", len(judged))
+	cost := sampler.Stats()
+	fmt.Printf("requests: %d, retries: %d, rate limited: %d, waiting: %s\n",
+		cost.Requests, cost.Retries, cost.RateLimited, cost.Waited.Round(time.Second))
+	log.Info("sampling cost", "requests", cost.Requests, "retries", cost.Retries,
+		"rate_limited", cost.RateLimited, "waited", cost.Waited.Round(time.Second))
 	fmt.Printf("detected services:  %d\n", labels.AcceptedCount(judged))
 
 	for _, c := range judged {

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/mozer/tether-risk/internal/config"
+	"github.com/mozer/tether-risk/internal/ingest"
 	"github.com/mozer/tether-risk/internal/scoring"
 	"github.com/mozer/tether-risk/internal/screen"
 	"github.com/mozer/tether-risk/internal/store"
@@ -37,6 +38,8 @@ func main() {
 	var (
 		addr      = flag.String("addr", ":8080", "listen address")
 		configDir = flag.String("config", "config", "configuration directory")
+		fetch     = flag.Bool("fetch", true,
+			"fetch unknown or stale addresses and queue their counterparties before scoring")
 	)
 	flag.Parse()
 
@@ -45,13 +48,13 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, *addr, *configDir, log); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	if err := run(ctx, *addr, *configDir, *fetch, log); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Error("server failed", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, addr, configDir string, log *slog.Logger) error {
+func run(ctx context.Context, addr, configDir string, fetch bool, log *slog.Logger) error {
 	cfg, err := config.Load(configDir)
 	if err != nil {
 		return err
@@ -69,8 +72,26 @@ func run(ctx context.Context, addr, configDir string, log *slog.Logger) error {
 	}
 	defer pg.Close()
 
+	svc := screen.NewService(ch, pg, cfg)
+	if fetch {
+		// Every chain with a live data path gets a prefetcher. One whose
+		// adapter cannot be built is logged and scores stored data only,
+		// rather than taking the whole API down.
+		for _, c := range cfg.Sources.Chains {
+			if !c.Available() {
+				continue
+			}
+			p, err := ingest.NewPrefetcher(c.ID, cfg, ch, pg, log)
+			if err != nil {
+				log.Warn("no prefetch for chain; it will score stored data only", "chain", c.ID, "error", err)
+				continue
+			}
+			svc.WithPrefetch(c.ID, p)
+		}
+	}
+
 	srv := &server{
-		svc: screen.NewService(ch, pg, cfg),
+		svc: svc,
 		cfg: cfg,
 		pg:  pg,
 		log: log,
@@ -141,6 +162,9 @@ type screenResponse struct {
 	// Activity is the address's own stored history, before attribution.
 	Activity *activityResponse `json:"activity,omitempty"`
 
+	// Depth says whether tracing had finished when this was scored.
+	Depth *depthResponse `json:"depth,omitempty"`
+
 	LabelSnapshotID int64  `json:"label_snapshot_id"`
 	ConfigVersion   string `json:"config_version"`
 
@@ -190,6 +214,17 @@ type activityResponse struct {
 	Assets            []assetResponse `json:"assets"`
 	UnpricedTransfers uint64          `json:"unpriced_transfers"`
 	UnpricedTokens    uint64          `json:"unpriced_tokens"`
+}
+
+type depthResponse struct {
+	Fetched             bool   `json:"fetched"`
+	FetchError          string `json:"fetch_error,omitempty"`
+	StillFetching       bool   `json:"still_fetching"`
+	HistoryTruncated    bool   `json:"history_truncated"`
+	Counterparties      int    `json:"counterparties"`
+	Traced              int    `json:"traced"`
+	TotalCounterparties int    `json:"total_counterparties"`
+	Complete            bool   `json:"complete"`
 }
 
 type assetResponse struct {
@@ -391,6 +426,19 @@ func toResponse(res *scoring.Result) screenResponse {
 		ConfigVersion:     res.ConfigVersion,
 		Disclaimer:        disclaimer,
 		Activity:          toActivity(res.Activity),
+		Depth:             toDepth(res.Depth),
+	}
+}
+
+func toDepth(d *scoring.DepthStatus) *depthResponse {
+	if d == nil {
+		return nil
+	}
+	return &depthResponse{
+		Fetched: d.Fetched, FetchError: d.FetchError,
+		StillFetching: d.StillFetching, HistoryTruncated: d.HistoryTruncated,
+		Counterparties: d.Counterparties, Traced: d.Traced,
+		TotalCounterparties: d.TotalCounterparties, Complete: d.Complete(),
 	}
 }
 
