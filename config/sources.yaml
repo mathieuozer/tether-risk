@@ -214,7 +214,15 @@ chains:
     adapter: trongrid
     url: "https://api.trongrid.io"
     auth: "optional TRONGRID_API_KEY for higher rate limits"
-    rate_limit_per_sec: 12
+    # Measured 2026-09-21 with nothing else competing: 3/s completed 10 of 10
+    # requests with no throttling, while 5/s was rejected 6 times out of 10.
+    #
+    # The configured rate was never buying throughput. Each request costs about
+    # a second of latency, so a single stream achieves ~1/s whatever this says.
+    # Setting it higher only produced 429s, and each 429 triggered backoff of up
+    # to 30 seconds — so the aggressive setting made ingestion slower, not
+    # faster, and abandoned three addresses outright.
+    rate_limit_per_sec: 3
     checked: 2026-09-20
     notes: "Free tier is sufficient for demand-driven per-address ingestion."
 

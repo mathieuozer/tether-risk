@@ -30,7 +30,7 @@ import (
 
 func main() {
 	var (
-		workers   = flag.Int("workers", 4, "concurrent workers")
+		workers   = flag.Int("workers", 1, "concurrent workers; see docs/DECISIONS.md D17 before raising this")
 		depth     = flag.Int("depth", 1, "neighbour hop depth to expand on fetch")
 		ttl       = flag.Duration("ttl", 24*time.Hour, "how long stored history stays fresh")
 		configDir = flag.String("config", "config", "configuration directory")

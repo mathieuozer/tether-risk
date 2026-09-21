@@ -56,7 +56,19 @@ func NewClient(opts Options) *Client {
 		opts.RequestsPerSecond = 12
 	}
 	if opts.Burst <= 0 {
-		opts.Burst = 4
+		// Burst 1, not 4.
+		//
+		// Measured against TronGrid on 2026-09-21: a serial stream at a 3/s
+		// target completed 10 of 10 requests untroubled, while concurrent
+		// workers sharing a 3/s limiter with burst 4 were still rejected. The
+		// service penalises concurrency, not just sustained rate.
+		//
+		// Bursting also buys nothing here. Each request costs about a second
+		// of latency, so a single stream achieves roughly 1/s whatever the
+		// limiter permits — the throughput ceiling is the network, and every
+		// extra concurrent request only moves us closer to a 429 and the
+		// backoff that follows it.
+		opts.Burst = 1
 	}
 	if opts.Timeout <= 0 {
 		opts.Timeout = 30 * time.Second

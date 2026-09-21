@@ -72,7 +72,13 @@ func (j *Jobs) Claim(ctx context.Context, workerID string, lease time.Duration) 
 			leased_by    = $1,
 			leased_until = now() + $2::interval,
 			attempts     = attempts + 1,
-			started_at   = COALESCE(started_at, now())
+			-- now(), not COALESCE(started_at, now()): started_at marks when the
+			-- current attempt began, so finished_at - started_at measures work
+			-- done. Pinning it to the first-ever claim made that difference
+			-- measure queue wait plus every retry, which reported an average of
+			-- 862s against jobs that visibly took 3 to 33 seconds. Queue entry
+			-- is already recorded by created_at.
+			started_at   = now()
 		WHERE id = (
 			SELECT id FROM fetch_jobs
 			WHERE state = 'pending'

@@ -186,9 +186,24 @@ replace it.
 
 Every label records the measurement and a URL that reproduces it.
 
-First live result, 2026-09-21: one service detected from 14 candidates, which
-took TRON coverage above zero for the first time — a screened address reported
-12.6% inbound attribution through that service.
+Measured results, 2026-09-21, over 101,869 transfers and 18,700 addresses:
+
+| | Value |
+|---|---|
+| Candidates sampled | 160 |
+| Services detected | 24 |
+| Typical detected profile | 600 sampled transfers, 510-600 distinct counterparties, still paginating |
+
+Effect on coverage for two reference addresses, both previously at zero:
+
+| Address | Coverage before | Coverage after |
+|---|---|---|
+| TAythDdKTZeNq6VnQ7o9cEvWRQGgRpPiKX | 0.0% | 4.7% |
+| TNwf8VBNCkg7Y1pgyzbHdWdekkamoqcrmL | 0.0% | 18.1% |
+
+Both remain low-confidence, and correctly so — the majority of traced value is
+still unattributed. The point is that the unattributed share is now an honest
+81.9% rather than a silent 100%.
 
 ### Measured precision
 

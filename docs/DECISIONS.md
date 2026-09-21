@@ -412,3 +412,45 @@ the last pricing backfill.
 a pricing gap from an inactive address, naming the transfer count and the
 command that fixes it. This is the same class of failure as the dead-end bug
 in D2's neighbourhood: an empty result that looks like a clean answer.
+
+---
+
+## D17 — TRON ingestion runs one serial worker, not a pool
+
+**Date:** 2026-09-21 · **Status:** active · **Departs from:** the obvious default
+
+Ingestion originally ran four workers sharing a rate limiter configured at
+12 requests per second with a burst of 4. It abandoned addresses.
+
+Measured on 2026-09-21, with nothing else competing for the API:
+
+| Target rate | Requests OK | Rate limited | Achieved |
+|---|---|---|---|
+| 3/s serial | 10 of 10 | 0 | 0.9/s |
+| 5/s serial | 4 of 10 | 6 | 1.1/s |
+| 8/s serial | 9 of 10 | 1 | 1.1/s |
+
+The achieved rate is about 1 request per second regardless of the target,
+because each request costs roughly a second of round-trip latency. **The
+configured rate was never buying throughput.** Raising it only produced 429s,
+and each 429 triggered backoff of up to 30 seconds.
+
+Comparing the two configurations over the same queue:
+
+| | 4 workers, burst 4 | 1 worker, burst 1 |
+|---|---|---|
+| Addresses completed per minute | ~3 | **6** |
+| Rate-limit errors | continuous | **0** |
+| Addresses abandoned | 3 | **0** |
+
+**Decision:** one worker, burst 1, 3 requests per second. Serial ingestion is
+twice as fast as the pool and abandons nothing.
+
+The counter-intuitive part is worth stating plainly, because the instinct to
+add workers is strong: concurrency here was not merely useless, it was the
+cause of the slowness. The pool spent most of its time in backoff it had
+triggered itself, and the three addresses it abandoned were dropped for
+reasons that had nothing to do with those addresses.
+
+Revisit only with a `TRONGRID_API_KEY`, which raises the ceiling. Until then
+the bottleneck is network latency, and no amount of parallelism moves it.
