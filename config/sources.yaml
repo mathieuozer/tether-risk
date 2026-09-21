@@ -100,7 +100,7 @@ sources:
   # -------------------------------------------------------------------------
   - id: dune
     name: "Dune Spellbook labels"
-    status: allowed
+    status: unavailable
     confidence: 0.8
     schedule: weekly
     url: "https://github.com/duneanalytics/spellbook"
@@ -108,10 +108,13 @@ sources:
     licence: "Apache-2.0"
     redistribution: permitted
     checked: 2026-09-20
-    notes: >
-      Ingest the labels schema from the cloned repository rather than querying
-      the Dune API, which has its own separate terms. Apache-2.0 requires
-      attribution, which docs/METHODOLOGY.md carries.
+    unavailable_reason: >
+      The spellbook's label models are dbt SQL that selects from Dune's own
+      warehouse (source('cex','addresses')), not static address data. The
+      files contain no addresses, and there is no TRON label model at all.
+      Cloning the repository yields queries we cannot run against data we do
+      not have. Running them needs a Dune subscription, which SPEC.md §1 rules
+      out. See docs/DECISIONS.md D14.
 
   # -------------------------------------------------------------------------
   # Abuse reports. Unverified user submissions. SPEC.md §6.4: a single report

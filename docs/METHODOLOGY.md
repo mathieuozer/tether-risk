@@ -51,7 +51,7 @@ cached by a TTL and by fetch depth.
 | UN Consolidated | 1.0 | Reproduction permitted with attribution | Declared, not implemented |
 | EU Consolidated | 1.0 | Reuse permitted (2011/833/EU) | Declared, not implemented |
 | Curated in-repo | 0.95 | This repository | **Live**, nearly empty |
-| Dune Spellbook | 0.8 | Apache-2.0 | Declared, not implemented |
+| Dune Spellbook | 0.8 | Apache-2.0 | **Unavailable — contains no address data** |
 | CryptoScamDB | 0.5 | MIT | **Live** |
 | ScamSniffer | 0.5 | MIT | **Live** |
 | Etherscan / BscScan / Tronscan | 0.9 | — | **Blocked, deliberately** |
@@ -73,6 +73,13 @@ neither source meaningfully improves TRON coverage today — their value is the
 This is recorded because it would be easy to see "abuse feeds: live" and infer
 coverage that does not exist. A source being ingested is not the same as a
 source being useful for the chain you are querying.
+
+**On the Dune Spellbook.** SPEC.md §6.3 planned to clone the repository and
+ingest its labels schema, which was the intended route to exchange labels.
+Checked on 2026-09-21, it cannot work: the label models are dbt SQL selecting
+from Dune's own warehouse rather than static data, the files contain no
+addresses, and there is no TRON label model at all. Running the queries would
+need a Dune subscription, which §1 rules out. See docs/DECISIONS.md D14.
 
 **On the block explorers.** The specification asks for their public address
 nametags, and also says to record each site's terms and stop rather than work

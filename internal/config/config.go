@@ -142,8 +142,15 @@ type LabelSource struct {
 	Redistribution string       `yaml:"redistribution"`
 	Checked        string       `yaml:"checked"`
 	BlockedReason  string       `yaml:"blocked_reason"`
-	Substitutes    []string     `yaml:"substitutes"`
-	Notes          string       `yaml:"notes"`
+
+	// UnavailableReason explains a source that is permitted but cannot
+	// actually be used — no credentials, or the data is not what it appeared
+	// to be. Distinct from BlockedReason, which means the terms forbid it.
+	// The two failure modes call for different follow-up, so they are not
+	// collapsed into one field.
+	UnavailableReason string   `yaml:"unavailable_reason"`
+	Substitutes       []string `yaml:"substitutes"`
+	Notes             string   `yaml:"notes"`
 }
 
 // Ingestible reports whether an ingester is permitted to run for this source.
@@ -337,6 +344,10 @@ func (c *Config) Validate() error {
 		}
 		if s.Status == StatusBlocked && s.BlockedReason == "" {
 			bad("sources.%s: blocked sources must record why, so the decision is visible", s.ID)
+		}
+		if s.Status == StatusUnavailable && s.UnavailableReason == "" {
+			bad("sources.%s: unavailable sources must record why; otherwise a dead end "+
+				"is indistinguishable from work outstanding", s.ID)
 		}
 		if s.Ingestible() && (s.Confidence <= 0 || s.Confidence > 1) {
 			bad("sources.%s.confidence: must be in (0,1], got %v", s.ID, s.Confidence)

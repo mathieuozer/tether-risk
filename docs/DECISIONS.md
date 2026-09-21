@@ -298,3 +298,50 @@ comparison mapping was corrected.
 
 Revisit if a label source is adopted that can actually distinguish these
 categories at usable confidence.
+
+---
+
+## D14 — the Dune Spellbook cannot supply ingestible labels
+
+**Date:** 2026-09-21 · **Status:** active · **Departs from:** SPEC.md §6.3
+
+SPEC.md §6.3 says to clone the open spellbook repository and ingest the labels
+schema at confidence 0.8. That was the planned route to exchange labels, which
+are the single biggest coverage gap.
+
+It does not work, and the reason is structural rather than a matter of effort.
+
+Checked against the repository on 2026-09-21:
+
+- The label models are **dbt SQL**, not data. `labels_cex_ethereum.sql` reads
+  `FROM {{ source('cex','addresses') }}` — a table inside Dune's own warehouse.
+  The file contains no addresses at all, and neither do its siblings.
+- There is **no TRON CEX label model**. The per-chain files cover arbitrum,
+  avalanche_c, bitcoin, bnb, ethereum, fantom, optimism and polygon.
+- Of 14,947 paths in the repository, 65 mention TRON and every one is a fees or
+  transfers metric, not a label.
+
+So cloning the repository yields queries we cannot run, against data we do not
+have, for chains that in TRON's case are not covered anyway. The Apache-2.0
+licence permits redistribution of the SQL; there is simply nothing behind it.
+
+**Decision:** no Dune ingester will be written. `sources.yaml` records the
+source as unavailable with this reason rather than leaving it listed as
+"permitted but not yet implemented", which implied work outstanding rather than
+a dead end.
+
+Running the queries would require a Dune API subscription, which SPEC.md §1
+rules out ("no commercial data feeds. Zero licence spend").
+
+**What this leaves for exchange labels**, which remain the coverage bottleneck:
+
+1. Exchanges' own published proof-of-reserves address lists. Self-published,
+   freely redistributable, and authoritative about the exchange's own wallets.
+   The most promising automatable route.
+2. Human verification against a block explorer. Reading a page is not
+   scraping it, so this does not conflict with D-F2, but it does not scale.
+3. The derived-deposit heuristic — but that anchors on known hot wallets, so it
+   amplifies an existing seed rather than creating one.
+
+None of these is a drop-in replacement, and the coverage figure will keep
+reporting the gap honestly until one is done.

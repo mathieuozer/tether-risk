@@ -192,13 +192,13 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 	// Named explicitly rather than passed over in silence: a source that is
 	// configured as permitted but contributes nothing is a coverage gap, and
 	// SPEC.md §7 is emphatic that gaps are shown rather than hidden.
-	for _, id := range []string{"un", "eu", "dune"} {
+	for _, id := range []string{"un", "eu"} {
 		if src, ok := cfg.Source(id); ok && src.Ingestible() {
 			log.Warn("source permitted but not yet implemented; it contributes no labels "+
 				"and its absence reduces coverage", "source", id)
 		}
 	}
-	for _, id := range []string{"etherscan", "bscscan", "tronscan", "chainabuse"} {
+	for _, id := range []string{"etherscan", "bscscan", "tronscan", "chainabuse", "dune"} {
 		if src, ok := cfg.Source(id); ok && !src.Ingestible() {
 			log.Info("source deliberately not ingested",
 				"source", id, "status", src.Status)
