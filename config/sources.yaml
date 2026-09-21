@@ -1,0 +1,218 @@
+# sources.yaml — label sources, their licences, and their terms-of-use status.
+#
+# SPEC.md §6.2 requires that each site's terms of use are checked and recorded
+# here BEFORE ingesting, and that anything prohibiting redistribution is
+# flagged and NOT worked around. A source with `status: blocked` has no
+# ingester and must not gain one without the ToS position changing.
+#
+# `checked` is the date a human last read the terms. Re-check before relying
+# on any source older than 90 days.
+
+version: 1
+
+sources:
+  # -------------------------------------------------------------------------
+  # Sanctions. Public-domain government publications. confidence 1.0.
+  # -------------------------------------------------------------------------
+  - id: ofac
+    name: "OFAC Specially Designated Nationals list"
+    status: allowed
+    confidence: 1.0
+    schedule: daily
+    url: "https://sanctionslistservice.ofac.treas.gov/api/PublicationPreview/exports/SDN_ENHANCED.XML"
+    format: xml
+    licence: "US Government work, public domain (17 U.S.C. §105)"
+    redistribution: permitted
+    checked: 2026-09-20
+    notes: >
+      Crypto addresses appear as Digital Currency Address features (XBT, ETH,
+      USDT, TRX and others). Parse the feature type to recover the chain
+      rather than guessing from address shape.
+
+  - id: un
+    name: "UN Security Council Consolidated List"
+    status: allowed
+    confidence: 1.0
+    schedule: daily
+    url: "https://scsanctions.un.org/resources/xml/en/consolidated.xml"
+    format: xml
+    licence: "UN material, reproduction permitted with attribution"
+    redistribution: permitted
+    checked: 2026-09-20
+    notes: >
+      Carries far fewer crypto addresses than OFAC. Ingested for completeness
+      and because a listing here that is absent from OFAC is exactly the gap
+      worth catching.
+
+  - id: eu
+    name: "EU Consolidated Financial Sanctions List"
+    status: allowed
+    confidence: 1.0
+    schedule: daily
+    url: "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content"
+    format: xml
+    licence: "EU public data, reuse permitted (Decision 2011/833/EU)"
+    redistribution: permitted
+    checked: 2026-09-20
+
+  # -------------------------------------------------------------------------
+  # Block explorers. SPEC.md §6.2 asks for these at confidence 0.9 and then
+  # instructs us to stop rather than work around a prohibition. The
+  # instruction resolves to "do not ingest". See docs/PLAN.md flag F2.
+  # -------------------------------------------------------------------------
+  - id: etherscan
+    name: "Etherscan public address nametags"
+    status: blocked
+    confidence: 0.9
+    checked: 2026-09-20
+    blocked_reason: >
+      Address nametags/labels are not exposed through the Etherscan API at
+      all; they exist only on rendered HTML pages. Obtaining them therefore
+      requires scraping, and the Etherscan Terms of Service prohibit
+      automated extraction and redistribution of site content. SPEC.md §6.2
+      directs us to stop rather than work around this, so no ingester exists
+      for this source and none should be added while this clause stands.
+    substitutes: [dune, curated, "derived:deposit"]
+
+  - id: bscscan
+    name: "BscScan public address nametags"
+    status: blocked
+    confidence: 0.9
+    checked: 2026-09-20
+    blocked_reason: >
+      Same operator and materially identical terms to etherscan. Not ingested.
+    substitutes: [dune, curated, "derived:deposit"]
+
+  - id: tronscan
+    name: "Tronscan public address tags"
+    status: blocked
+    confidence: 0.9
+    checked: 2026-09-20
+    blocked_reason: >
+      No documented public labels endpoint and no published licence granting
+      redistribution of tag data. Treated as prohibited until a human obtains
+      written clarification; recorded here so the decision is visible rather
+      than silently skipped.
+    substitutes: [dune, curated, "derived:deposit"]
+
+  # -------------------------------------------------------------------------
+  # Open-licensed community labels.
+  # -------------------------------------------------------------------------
+  - id: dune
+    name: "Dune Spellbook labels"
+    status: allowed
+    confidence: 0.8
+    schedule: weekly
+    url: "https://github.com/duneanalytics/spellbook"
+    format: git
+    licence: "Apache-2.0"
+    redistribution: permitted
+    checked: 2026-09-20
+    notes: >
+      Ingest the labels schema from the cloned repository rather than querying
+      the Dune API, which has its own separate terms. Apache-2.0 requires
+      attribution, which docs/METHODOLOGY.md carries.
+
+  # -------------------------------------------------------------------------
+  # Abuse reports. Unverified user submissions. SPEC.md §6.4: a single report
+  # must never alone push an address into a high-risk band; that rule is
+  # enforced in weights.yaml under labels.abuse_reports.
+  # -------------------------------------------------------------------------
+  - id: chainabuse
+    name: "Chainabuse community reports"
+    status: needs_review
+    confidence: 0.5
+    checked: 2026-09-20
+    blocked_reason: >
+      Bulk access requires an API key issued under terms that have not yet
+      been read by a human. Left disabled until they are. Do not enable by
+      scraping the public site.
+
+  - id: cryptoscamdb
+    name: "CryptoScamDB"
+    status: allowed
+    confidence: 0.5
+    schedule: weekly
+    url: "https://github.com/CryptoScamDB/blacklist"
+    format: git
+    licence: "MIT"
+    redistribution: permitted
+    checked: 2026-09-20
+    notes: >
+      Repository is archived upstream and no longer actively maintained;
+      useful for historical scam addresses, stale for recent ones. This
+      staleness is recorded in docs/METHODOLOGY.md as a known limitation.
+
+  - id: scamsniffer
+    name: "ScamSniffer phishing address feed"
+    status: allowed
+    confidence: 0.5
+    schedule: daily
+    url: "https://github.com/scamsniffer/scam-database"
+    format: git
+    licence: "MIT"
+    redistribution: permitted
+    checked: 2026-09-20
+
+  # -------------------------------------------------------------------------
+  # Curated in-repo list. SPEC.md §6.5.
+  # -------------------------------------------------------------------------
+  - id: curated
+    name: "Curated mixer and known-protocol contracts"
+    status: allowed
+    confidence: 0.95
+    schedule: on_change
+    path: "config/curated_labels.yaml"
+    licence: "This repository"
+    redistribution: permitted
+    checked: 2026-09-20
+    notes: >
+      Hand-maintained. Every entry must carry an evidence URL. Reviewed
+      whenever a new mixer or protocol becomes relevant.
+
+  # -------------------------------------------------------------------------
+  # Derived. Not an external source; produced by our own heuristics.
+  # -------------------------------------------------------------------------
+  - id: "derived:deposit"
+    name: "Derived exchange deposit wallets"
+    status: allowed
+    confidence: 0.6
+    schedule: after_ingest
+    licence: "Derived from chain data"
+    redistribution: permitted
+    checked: 2026-09-20
+    notes: >
+      Thresholds in weights.yaml under derived_deposit. Measured precision is
+      recorded in docs/METHODOLOGY.md and must be re-measured whenever the
+      thresholds change.
+
+# ---------------------------------------------------------------------------
+# Chain data sources, as distinct from label sources.
+# ---------------------------------------------------------------------------
+chains:
+  - id: tron
+    status: allowed
+    adapter: trongrid
+    url: "https://api.trongrid.io"
+    auth: "optional TRONGRID_API_KEY for higher rate limits"
+    rate_limit_per_sec: 12
+    checked: 2026-09-20
+    notes: "Free tier is sufficient for demand-driven per-address ingestion."
+
+  - id: ethereum
+    status: unavailable
+    adapter: "evm-jsonrpc + bigquery"
+    auth: "requires ETH_RPC_URL and/or GCP billing for bigquery-public-data"
+    checked: 2026-09-20
+    unavailable_reason: >
+      No JSON-RPC endpoint key and no GCP billing account available. The
+      adapter is implemented and fixture-tested but has no live data path.
+      The API returns chain_unavailable rather than an empty result. See
+      docs/PLAN.md flag F1.
+
+  - id: bsc
+    status: unavailable
+    adapter: "evm-jsonrpc"
+    auth: "requires BSC_RPC_URL"
+    checked: 2026-09-20
+    unavailable_reason: "As ethereum. See docs/PLAN.md flag F1."

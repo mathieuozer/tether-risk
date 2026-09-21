@@ -1,0 +1,19 @@
+# Build output
+/bin/
+/dist/
+*.test
+*.out
+
+# Local environment
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Local data volumes
+/.data/

@@ -1,0 +1,59 @@
+# curated_labels.yaml — hand-maintained labels checked into the repository.
+#
+# SPEC.md §6.5 asks for a curated list of mixer and known-protocol contracts.
+#
+# ---------------------------------------------------------------------------
+# Rules for this file
+# ---------------------------------------------------------------------------
+# Every entry MUST carry an `evidence` URL that a reviewer can open to confirm
+# the claim independently. `make check-curated` fails the build otherwise.
+#
+# This is the one label source that cannot be automated, and therefore the one
+# where a wrong entry is most dangerous: a curated label carries confidence
+# 0.95, terminates traversal (SPEC.md §7), and will be believed. An address
+# recalled from memory rather than verified is exactly the kind of plausible,
+# unverifiable claim that this whole system exists to avoid producing.
+#
+# So this file starts almost empty, and that is deliberate. It is populated by
+# a human checking each address against a block explorer or the project's own
+# published documentation, not by guessing which addresses look familiar.
+# Coverage lost to an incomplete list shows up honestly in the coverage figure
+# (SPEC.md §7); coverage gained from an invented entry shows up as a confident
+# wrong answer.
+#
+# `category` must be one of the twelve in weights.yaml.
+# ---------------------------------------------------------------------------
+
+version: 1
+
+labels:
+  - chain: tron
+    address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+    entity: "Tether USD (USDT-TRC20) token contract"
+    category: unnamed_service
+    evidence: "https://tronscan.org/#/token20/TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+    verified: 2026-09-20
+    note: >
+      Confirmed directly against the TronGrid API during ingestion: this
+      address is returned as `token_info.address` for every USDT TRC-20
+      transfer observed. It is infrastructure rather than a counterparty —
+      value does not come to rest here — and is categorised as
+      unnamed_service because the vocabulary has no better fit
+      (docs/DECISIONS.md D13). Its main purpose is to stop the token contract
+      being traversed as though it were an ordinary wallet.
+
+# ---------------------------------------------------------------------------
+# To be populated by a human. Each needs an evidence URL before it is added.
+#
+# Priority order, by how much coverage each would buy on TRON:
+#   1. Major exchange hot wallets (Binance, OKX, HTX, Bybit, Gate).
+#      These terminate the most paths and are the anchor for the
+#      derived-deposit heuristic — without at least a few known hot wallets
+#      that heuristic produces nothing at all.
+#   2. Known mixers and privacy services operating on TRON.
+#   3. Bridge contracts, which otherwise look like very high-volume unknowns.
+#
+# Sources that can be used without violating anyone's terms (see
+# sources.yaml): the Dune spellbook labels repository, exchanges' own
+# published proof-of-reserves addresses, and protocol documentation.
+# ---------------------------------------------------------------------------

@@ -1,0 +1,545 @@
+---
+- name: xgivex.blogspot.com
+  url: http://xgivex.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    ETH:
+    - "0x55B775Ea2CA493c082F3e17A8433e4D220FBB8d8"
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+    LTC:
+    - LaXXasBpGtqnzi7AMywnujYeD3BFD1NFv2
+  reporter: CryptoScamDB
+- name: xtrony.blogspot.com
+  url: http://xtrony.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: givetrx.blogspot.com.au
+  url: http://givetrx.blogspot.com.au
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: dcontestd.blogspot.com
+  url: http://dcontestd.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: bcryptob.blogspot.com
+  url: http://bcryptob.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: acontesta.blogspot.com
+  url: http://acontesta.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: cryptoblackfriday.blogspot.com
+  url: http://cryptoblackfriday.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: tronblackfriday.blogspot.com
+  url: http://tronblackfriday.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: poloniextron.blogspot.com
+  url: http://poloniextron.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: tronkucoin.blogspot.com
+  url: http://tronkucoin.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: mediium.org
+  url: http://mediium.org
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TX9oqhThyQdGXrDMacRXAvsWPoxQspQLFw
+  reporter: CryptoScamDB
+- name: dec-kucoin.blogspot.com
+  url: http://dec-kucoin.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: trx-kucoin.blogspot.com
+  url: http://trx-kucoin.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: kucoindectrx.blogspot.com
+  url: http://kucoindectrx.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+  reporter: CryptoScamDB
+- name: newyearcrypto.blogspot.com
+  url: http://newyearcrypto.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    ADA:
+    - Ae2tdPwUPEZGpHCMV2L7iMY4vUGX6Pzx5U2YgQD1wK7ZUzKVmgg5RRmp2dF
+    TRX:
+    - TPcDNYz4AxCaLCY2Xx4i95jGYwCjUrxg5r
+    ETH:
+    - "0x55B775Ea2CA493c082F3e17A8433e4D220FBB8d8"
+    BTC:
+    - 1JSeDGPmq74JP2RQXqJFdHH3L2jcie3w4X
+  reporter: CryptoScamDB
+- name: bttpromo.github.io
+  url: http://bttpromo.github.io
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Fake Tron/Bittorrent promotion
+  addresses:
+    TRX:
+    - TXRMhqQjhG5tauwP2XPdspWdKsJm5qh81e
+  reporter: CryptoScamDB
+- name: bittorrentpromo.github.io
+  url: http://bittorrentpromo.github.io
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Fake Tron/Bittorrent promotion
+  addresses:
+    TRX:
+    - TXRMhqQjhG5tauwP2XPdspWdKsJm5qh81e
+  reporter: CryptoScamDB
+- name: bttpromotion.github.io
+  url: http://bttpromotion.github.io
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Fake Tron/Bittorrent promotion
+  addresses:
+    TRX:
+    - TXRMhqQjhG5tauwP2XPdspWdKsJm5qh81e
+  reporter: CryptoScamDB
+- name: bittorrent.foundation
+  url: http://bittorrent.foundation
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TDLcipJPJMT6iCFava8B9A1gGiKJvBRWzn
+  reporter: CryptoScamDB
+- name: ttrxtrx.blogspot.com
+  url: http://ttrxtrx.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TRyZs5aTpVrS6ZgWb1NxCnGjktxHYtrD1F
+  reporter: CryptoScamDB
+- name: bittorrent.pro
+  url: http://bittorrent.pro
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TXFDqwsuUKmqD9nVg5RvVAJip4jjUcDW9c
+  reporter: CryptoScamDB
+- name: bintrx.blogspot.com
+  url: http://bintrx.blogspot.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    TRX:
+    - TRyZs5aTpVrS6ZgWb1NxCnGjktxHYtrD1F
+  reporter: CryptoScamDB
+- name: xn--medum-85a.com
+  url: http://xn--medum-85a.com
+  category: Phishing
+  subcategory: Medium
+  description: Fake Medium promoting TRX trust trading
+  addresses:
+    TRX:
+    - TVyFiVhjShJ2iwgyxiKF9A6AZXzBhErRRw
+  reporter: CryptoScamDB
+- name: backxcoin.com
+  url: http://backxcoin.com
+  category: Phishing
+  subcategory: Malware
+  description: Hosting a malicious browser extension down (CCB - same as https://medium.com/mycrypto/ef9c10f0128f
+    - see https://twitter.com/sniko_/status/1116123334830374918
+  addresses:
+    BTC:
+    - 1ADezAfGgKnezVRsujq3yQAADHbvF6e8xc
+    ETH:
+    - "0x12A1CCF979D65333E8e27edE047B476736B584a6"
+    - "0xF38b7Dc84C383AbBd18F2fBF348e0D4Eba9dD61F"
+    BCH:
+    - qzax9ttd75ey5z93m7l6u3urwfuum5nxqufuhxfzcg
+    LTC:
+    - LU4a7LeMmfDStUE8hCDfTRmyUzyruXPTmH
+    UNKNOWN:
+    - rvVUo33K92NVdUVxhVVhBbo1rArwEDGTW
+    TRX:
+    - TWbipjDZHF5Kpm1NB1scznk8uaEP8Qizxd
+  reporter: CryptoScamDB
+- name: cashadd.org
+  url: http://cashadd.org
+  category: Phishing
+  subcategory: Malware
+  description: 'Directing users to a Malware chrome extension (ejhpejjgaimmflepbldndhadecmhfdec)
+    to steal secrets - see https://twitter.com/sniko_/status/1127703349749534720 -
+    need to confirm these addresses: 1J3DY9A9pwhDigqMpgnr3o3Xe3rAKk8UKX (btc) 0x12A1CCF979D65333E8e27edE047B476736B584a6
+    (eth) 0x4F53C9882Ba87d2D7c525dF2aEF2540EFB6e32e5 (eth) 1HzWtuoxruijfAPSuA3dByjUAuZiGH43TF
+    (bch)'
+  addresses:
+    BTC:
+    - 1D4cncb6G874758HfEN7MFTwP9uVPw5CVx
+    ETH:
+    - "0xb1fae12D295246a73EA6e89699a6576AFE669D81"
+    - "0x281D05Cc399a66E05B836489A4cb9B0F2defD609"
+    BCH:
+    - qqxq4kkxzn0stkzxvc8zs7quur285amlgy6mhp4qvp
+    LTC:
+    - LZF8mWMwJy3ijZSgi4AmTDBNkGKKxgPTqq
+    XRP:
+    - rUHdPLLH3dKkHZN97HshDcZQbiP5xn4p6H
+    BNB:
+    - bnb160943aa8wjfwzq52snqe3dpzq3mgcxlfjm2d7y
+    TRX:
+    - TWsVTq76GEBw1dNHUqzJTrtuj8FxjL9CX6
+  reporter: CryptoScamDB
+- name: dexcompetition.site
+  url: http://dexcompetition.site
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    ETH:
+    - "0x356149C2EEb5aaa1030022D22134aBeD97bD496E"
+    - "0x283998063C86805DDae437ec15dbBDC54657012e"
+    - "0x283998063C86805DDae437ec15dbBDC54657012e"
+    BTC:
+    - 1FLo9tVXB7N5KoeP5cNmTkJ93D2BduUpiX
+    - 12qNdLqiWcer5kWxXiMNvTstLB37WvLyyk
+    BCH:
+    - qr6dpf69djfghu9t6h0kzklzy2jkaqrn6q497z4yag
+    UNKNOWN:
+    - XrE5MMmXD1ShEKh9jBbhEiTGCLg2BLsd5r
+    - GBEI5U4S27SP6YMOTYPQBRCPLMVUNP64M5ELQQ5VB4S43FLWPULJTU2Y
+    LTC:
+    - Ld5KMR5tw2RMgrE8zyupV9ntW7byvRLVEL
+    XMR:
+    - 48RrK4L4z8hYq8iQS9qvTc1bJN99aSamhTuMrN9nCFVWRcroKb3EAawV14KtHmeqeuW4j5JLxUQfz4bG2veSYph445nnf8s
+    TRX:
+    - TDekdYi77iXeGm71ziBw65c2ZqiD6eZXVE
+    NEO:
+    - AdoCwN5zgm8rdPRcgqiiKqxRtCSi6L31Mk
+    XRP:
+    - rLS5hCFdvd7GePm3TXiGjgtuyKJNw2UwHm
+    ZEC:
+    - t1KAedN3mupcum5ffF7DF5KNz27vRB9pYnr
+    BNB:
+    - bnb10whzywcrge79hmuyutg43rwhyfq0sp4cewnxh9
+  reporter: CryptoScamDB
+- name: junecoinsx2.blogspot.com
+  url: 'http://junecoinsx2.blogspot.com '
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    ETH:
+    - "0x80f43E67169c917c68391F823FcFf41b9B786D69"
+    BNB:
+    - bnb12vfz64rxhtmjp85nwuq09fx6976g7smvzwdm9x
+    TRX:
+    - TRyZs5aTpVrS6ZgWb1NxCnGjktxHYtrD1F
+    NEO:
+    - ATVMaR3SXKRBtwCNgPjV5k2YzEgzMDYeaf
+    XRP:
+    - rhTCdpaZQSKbHNYY85xPLMEWQbyxYr4SFY
+  reporter: CryptoScamDB
+- name: tron-foundation-redeem.netlify.com
+  url: http://tron-foundation-redeem.netlify.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site
+  addresses:
+    BTC:
+    - "1QCGKLAivaAWgJg1cBqZM6vV3iH2k7WUtd"
+    ETH:
+    - "0x36b64Bb5b3850c1A412F422f36Ab30C11b6B94b3"
+    TRX:
+    - "TEvcFV6mrRPLTWBCeCtEB4QKwjUPj4trWk"
+  reporter: CryptoScamDB
+- name: tronetwork.live 
+  url: http://tronetwork.live 
+  category: Scamming
+  subcategory: Trust-Trading
+  description: "Trust trading scam site"
+  addresses:
+    TRX:
+    - "TVRbs84WWA33WaxdTcpvLmCYKTqc6zP5Sv"
+  reporter: CryptoScamDB
+- name: bitcoingenerator.com.ru
+  url: http://bitcoingenerator.com.ru
+  category: Scamming
+  subcategory: Trust-Trading
+  description: "Trust trading scam site"
+  addresses:
+    BTC:
+    - "1Q3TsYqcANifCWajzrKYvta4hLj7tm2dWV"
+    ETH:
+    - "0x051A4a9b07c393f735a84aA9b97b1eA65BbbEe18"
+    - "0xCDa94fEb23FbF1C4ca73b45de92E1a4CC2BD40aB"
+    LTC:
+    - "LWoXEDHuE2xb3NEKes3bXHxrh6sRetYt6p"
+    USDT:
+    - "19z2xhdqMAbi7cF3naNtHmPfidNTAwmY5o"
+    XLM:
+    - "GBMQINMPPDXXL2RLYTTX5MO4SPJJBAYJTVNOD76XEWTF7QIQSBKXPVZ4"
+    TRX:
+    - "TL3dg6jBox8kt2nVEs1A4wpNXFND3ZN4aN"
+  reporter: CryptoScamDB
+- name: tron-network.live
+  url: http://tron-network.live
+  category: Scamming
+  subcategory: Trust-Trading
+  description: "Trust trading scam site"
+  addresses:
+    TRX:
+    - "TGDeTUGJsEgrVD39NFadkaUCLP2qNz4ZT5"  
+  reporter: CryptoScamDB
+- name: tronnet.network
+  url: http://tronnet.network
+  category: Scamming
+  subcategory: Trust-Trading
+  description: "Trust trading scam site"
+  addresses:
+    TRX:
+    - "TEzsAXUA2fc8BxeZzcqKFUDgzQG4eP9q52"
+  reporter: CryptoScamDB
+- name: justinsun.ceo
+  url: http://justinsun.ceo
+  category: Scamming
+  subcategory: Trust-Trading
+  description: "Trust trading scam site"
+  addresses:
+    TRX:
+    - "T9zs7iRBoPzUFEjiDVwyghsoEnnzqbtrq2"
+  reporter: CryptoScamDB
+- name: uniswap.homes
+  url: https://uniswap.homes
+  category: Phishing
+  subcategory: Uniswap
+  description: 'Fake Uniswap site phishing for funds (backend: //api.swapeuni.com)'
+  addresses:
+    ETH:
+      - '0xA28Db26447053aaa3259500115dAB1DFb32FBDbB'
+    TRX:
+      - TZJcBeCxv9KZPo4rHmGSc2oy3pKtjCFNXA
+    BTC:
+      - 3P686qDfwihmsc1j8ksdtuw9nZGSqerRrr
+  reporter: CryptoScamDB
+- name: k.usdt-etherscan.com
+  url: https://k.usdt-etherscan.com
+  category: Phishing
+  subcategory: Investment
+  description: Fake investment platform phishing for funds - usdt approve abuse scam
+  addresses:
+    ETH:
+      - '0x29082d65530D8faCca62061447080a0aD06bf372'
+    TRX:
+      - TJMrXk3d88w6UzqhrqEDUwB8akKZHwN17Y
+  reporter: CryptoScamDB
+- name: usdt-etherscan.com
+  url: https://usdt-etherscan.com
+  category: Phishing
+  subcategory: Investment
+  description: Fake investment platform phishing for funds - usdt approve abuse scam
+  addresses:
+    ETH:
+      - '0x29082d65530d8facca62061447080a0ad06bf372'
+    TRX:
+      - TJMrXk3d88w6UzqhrqEDUwB8akKZHwN17Y
+  reporter: CryptoScamDB
+- name: mining-etherscan.com
+  url: https://mining-etherscan.com
+  category: Phishing
+  subcategory: Investment
+  description: Fake investment platform phishing for funds - usdt approve abuse scam
+  addresses:
+    ETH:
+      - '0x29082d65530D8faCca62061447080a0aD06bf372'
+    TRX:
+      - TJMrXk3d88w6UzqhrqEDUwB8akKZHwN17Y
+  reporter: CryptoScamDB
+- name: k.bitflyerr07.com
+  url: https://k.bitflyerr07.com
+  category: Phishing
+  subcategory: Investment
+  description: Fake investment platform phishing for funds - usdt approve abuse scam
+  addresses:
+    ETH:
+      - '0x29082d65530D8faCca62061447080a0aD06bf372'
+    TRX:
+      - TJMrXk3d88w6UzqhrqEDUwB8akKZHwN17Y
+  reporter: CryptoScamDB
+- name: uniswapcloud.com
+  url: https://uniswapcloud.com
+  category: Phishing
+  subcategory: Investment
+  description: Fake investment platform phishing for funds - usdt approve abuse scam
+  addresses:
+    TRX:
+      - TDkUJs5oFbxdFFiCrLuK3ZH2tFRWVNASXs
+  reporter: CryptoScamDB
+- name: coinbasedefi.info
+  url: https://coinbasedefi.info
+  category: Phishing
+  subcategory: Investment
+  description: Fake investment platform phishing for funds - usdt approve abuse scam
+  addresses:
+    TRX:
+      - TCwkX7ztyJzbuv7WjuuKsB9VCdv2mhYtj8
+  reporter: CryptoScamDB
+- name: myelherwallel.com
+  url: http://myelherwallel.com
+  category: Phishing
+  subcategory: MyEtherWallet
+  addresses:
+    ETH:
+    - "0xD0cC2B24980CBCCA47EF755Da88B220a82291407"
+  reporter: CryptoScamDB
+- name: etherswap.org
+  url: http://etherswap.org
+  category: Phishing
+  subcategory: Ethereum
+  addresses:
+    ETH:
+    - "0x4cdc1cba0aeb5539f2e0ba158281e67e0e54a9b1"
+  reporter: CryptoScamDB
+- name: myethwallet.net
+  url: http://myethwallet.net
+  category: Phishing
+  subcategory: MyEtherWallet
+  addresses:
+    ETH:
+    - "0x00e01A648Ff41346CDeB873182383333D2184dd1"
+    - "0x858457daa7e087ad74cdeeceab8419079bc2ca03"
+  reporter: CryptoScamDB
+- name: district-0x.io
+  url: http://district-0x.io
+  category: Phishing
+  subcategory: District0x
+  description: fake ICO site w/ fake address.
+  addresses:
+    ETH:
+    - "0x240e125c20a4cC84Bd6E7F8D1FD07Aff4c06D43d"
+  reporter: CryptoScamDB
+- name: district0x.net
+  url: http://district0x.net
+  category: Phishing
+  subcategory: District0x
+  description: fake ICO site w/ fake address. Mirrored from district0x.io/ by HTTrack
+    Website Copier/3.x [XR&CO'2014], Fri, 14 Jul 2017 08:59:16 GMT
+  addresses:
+    ETH:
+    - "0x2268751eAFC860781074D25f4bD10DED480310B9"
+  reporter: CryptoScamDB
+- name: contribute-status.im
+  url: http://contribute-status.im
+  category: Phishing
+  subcategory: Status
+  addresses:
+    ETH:
+    - "0xadF5b0c2103598fb66a61714152F1d1717D49FE0"
+  reporter: CryptoScamDB
+- name: cryptongram.org
+  url: http://cryptongram.org
+  category: Phishing
+  subcategory: Telegram
+  description: Fake Telegram crowdsale site (bitcoin)
+  addresses:
+    BTC:
+    - 1AfroW44dzHkjgbLEMLB3EvGDFegfkRewM
+  reporter: CryptoScamDB
+- name: ton-telegram.com
+  url: http://ton-telegram.com
+  category: Phishing
+  subcategory: Telegram
+  description: Fake Telegram crowdsale site
+  addresses:
+    BTC:
+    - "1JHfQT3iWZf1Us8gNPwMkwDeG8tLVsEkZS"  
+    ETH:
+    - "0xE870b6be09f4566B70b51D6413e048b744A5F449"
+    - "0x7EdA44E9C9D4B7711850Ab28B4be6887f4Ce3ddc"
+    XRP:
+    - "rpVYng4R452CbMxPuoL4oDjKi5To6ZxGmD"
+  reporter: CryptoScamDB
+- name: binance-claims.com
+  url: http://binance-claims.com
+  category: Scamming
+  subcategory: Trust-Trading
+  description: Trust trading scam site.
+  addresses:
+    ETH:
+    - "0xdc48d0F659267418e05915cC0A299cdA3f30bDDB"
+    BTC:
+    - 1J75vF5koGVgKXNewrZkcMBS1eJkyLcdcC
+  reporter: CryptoScamDB

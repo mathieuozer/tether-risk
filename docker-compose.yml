@@ -1,0 +1,67 @@
+# Local development stack.
+#
+# SPEC.md §2: ClickHouse for chain data, PostgreSQL for the label database and
+# run metadata. No graph database — the aggregated-edge table plus recursive
+# SQL is the design.
+#
+# Versions are pinned. An unpinned image would break determinism the first
+# time an upstream tag moved.
+
+name: tether-risk
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8.14.39-alpine
+    container_name: tr-clickhouse
+    environment:
+      CLICKHOUSE_DB: tether_risk
+      CLICKHOUSE_USER: tether
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-localdev}
+      # Required by the image to allow a non-default user to manage schema.
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    ports:
+      - "${CLICKHOUSE_HTTP_PORT:-8123}:8123"   # HTTP
+      - "${CLICKHOUSE_NATIVE_PORT:-9000}:9000" # native protocol
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    ulimits:
+      nofile: {soft: 262144, hard: 262144}
+    healthcheck:
+      # 127.0.0.1, not localhost: ClickHouse binds 0.0.0.0:8123 (IPv4 only),
+      # while `localhost` inside the container resolves to ::1 first, so the
+      # probe is refused and the container reports unhealthy while serving
+      # perfectly well.
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8123/ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  postgres:
+    image: postgres:16.4-alpine
+    container_name: tr-postgres
+    environment:
+      POSTGRES_DB: tether_risk
+      POSTGRES_USER: tether
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-localdev}
+      # Deterministic collation: sort order reaches query results, and query
+      # results reach scores.
+      POSTGRES_INITDB_ARGS: "--locale=C --encoding=UTF8"
+    ports:
+      # 5433 by default, not 5432: this machine already runs other PostgreSQL
+      # containers on the standard port. Binding it here would leave this
+      # container stuck in `Created` and send our client at someone else's
+      # database, which is a far more confusing failure than a port clash.
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tether -d tether_risk"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+volumes:
+  clickhouse-data:
+  postgres-data:

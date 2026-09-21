@@ -1,0 +1,94 @@
+# comparison_mapping.yaml — maps external vendors' category vocabularies onto
+# ours, for the SPEC.md §9.5 divergence table only.
+#
+# This file deliberately does NOT contribute to config_version. It affects no
+# score. Mixing it into the version stamp would make scores look like they had
+# changed whenever a comparison mapping was corrected.
+#
+# SPEC.md §9.5: do not tune weights to match external services. This mapping
+# exists to make divergence comparable, not to make it disappear. Where a
+# mapping is lossy, that loss is stated rather than smoothed over — a category
+# we cannot express is a real limitation of our vocabulary and belongs in the
+# divergence table as such.
+
+version: 1
+
+vendors:
+  - id: competitor_a
+    name: "Competitor screening tool"
+    notes: >
+      Reports roughly 23 categories against our 12, and publishes no coverage
+      figure — shares sum to approximately 100% with no unattributed bucket.
+
+    mapping:
+      # --- direct equivalents ---
+      "Exchange":              {to: exchange,           fidelity: exact}
+      "High-Risk Exchange":    {to: high_risk_exchange, fidelity: exact}
+      "Gambling":              {to: gambling,           fidelity: exact}
+      "DEX":                   {to: dex,                fidelity: exact}
+      "Sanctions":             {to: sanctions,          fidelity: exact}
+      "Terrorist Financing":   {to: terrorist_financing, fidelity: exact}
+      "Stolen Funds":          {to: stolen_funds,       fidelity: exact}
+      "Scam":                  {to: scam,               fidelity: exact}
+      "Unnamed service":       {to: unnamed_service,    fidelity: exact}
+      "Dust":                  {to: dust,               fidelity: exact}
+
+      # --- close, but not identical ---
+      "Privacy protocol":
+        to: mixer
+        fidelity: close
+        note: >
+          Their "Privacy protocol" covers mixers and privacy-preserving
+          protocols generally. Our `mixer` is the nearest category. A privacy
+          protocol that is not a mixing service is weighted more heavily by us
+          than it arguably deserves.
+
+      "Enforcement action":
+        to: sanctions
+        fidelity: close
+        note: >
+          A seizure or law-enforcement-controlled address is not a sanctions
+          designation, but it is the closest category we carry and shares the
+          "this address is subject to state action" meaning. Mapping it to
+          sanctions overstates severity; mapping it to unnamed_service
+          understates it. The overstatement is the safer error for a triage
+          tool, and is recorded here rather than hidden.
+
+      # --- lossy: collapsed into unnamed_service ---
+      "Custodial wallet":        {to: unnamed_service, fidelity: lossy}
+      "Payment Service Provider": {to: unnamed_service, fidelity: lossy}
+      "P2P exchange":            {to: unnamed_service, fidelity: lossy}
+      "Bridge":                  {to: unnamed_service, fidelity: lossy}
+      "Lending":                 {to: unnamed_service, fidelity: lossy}
+      "ATM":                     {to: unnamed_service, fidelity: lossy}
+      "Mining Pool":             {to: unnamed_service, fidelity: lossy}
+
+      # --- lossy: structural, not a counterparty type we score ---
+      "Token contract":
+        to: unnamed_service
+        fidelity: lossy
+        note: >
+          A token contract address is infrastructure rather than a
+          counterparty. We have no category for it and it is arguably not
+          exposure at all. Counting it as unnamed_service slightly inflates
+          our unattributed-service share relative to theirs.
+      "Smart contract":  {to: unnamed_service, fidelity: lossy}
+
+      # --- unmappable ---
+      "High-Risk Jurisdiction":
+        to: null
+        fidelity: unmappable
+        note: >
+          A jurisdictional attribute, not a counterparty category. We do not
+          model it and will not invent a weight for it. Reported as
+          unmappable in the divergence table.
+      "Other":
+        to: null
+        fidelity: unmappable
+        note: "A residual bucket with no defined meaning; nothing to map onto."
+
+    # Categories we carry that this vendor did not report for the sampled
+    # address. Absence from one output is not evidence the vendor lacks the
+    # category, so this is recorded as unknown rather than as a gap.
+    unreported_by_vendor:
+      - darknet

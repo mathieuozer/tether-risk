@@ -1,0 +1,300 @@
+# DECISIONS.md
+
+SPEC.md §11: when a design choice is genuinely ambiguous, ask; when it is not,
+decide and note the decision here.
+
+Each entry records what was decided, what it departs from, and why. A decision
+that turns out wrong should be superseded by a new entry rather than edited
+away — the reasoning that led to it is part of the audit trail.
+
+---
+
+## D1 — `transfers` uses `ReplacingMergeTree`, not `MergeTree`
+
+**Date:** 2026-09-20 · **Status:** active · **Departs from:** SPEC.md §4
+
+SPEC.md §4 asks for `MergeTree` ordered by `(chain, from_address, block_time)`
+and, separately, for deduplication on `(chain, tx_hash, log_index)`. A plain
+`MergeTree` has no deduplication mechanism, so the two requirements cannot both
+be met as written.
+
+**Decision:** `ReplacingMergeTree` ordered by
+`(chain, from_address, block_time, tx_hash, log_index)`. The spec's ordering
+survives as a prefix, so scans by `(chain, from_address)` are unaffected, and
+the natural key is appended to give the uniqueness the spec asks for.
+
+Note that `ReplacingMergeTree` deduplicates only during background merges, so
+reads need `FINAL` (or an explicit aggregate) to be exact. That is acceptable
+because traversal never reads `transfers` — it reads `edges`.
+
+---
+
+## D2 — deduplication happens before insert, not in the table engine
+
+**Date:** 2026-09-20 · **Status:** active · **Departs from:** SPEC.md §4 (by addition)
+
+This is the most consequential decision in the data model.
+
+SPEC.md §4 specifies `edges` as an `AggregatingMergeTree` materialized view
+over `transfers`, and requires that all traversal read `edges`. It separately
+requires that ingestion be idempotent and safely re-runnable (§5).
+
+**The trap:** a ClickHouse materialized view fires on the rows of each
+`INSERT`, not on the rows that survive deduplication. Re-inserting a transfer
+that is already stored adds its value to `edges` a second time — permanently —
+even though `ReplacingMergeTree` will later collapse the duplicate in
+`transfers` itself. There is no error and no constraint violation. Edge values
+simply drift upward every time a fetch is retried, and every score computed
+from them is quietly wrong. Because traversal reads only `edges`, nothing
+downstream can detect it.
+
+**Decision:** three defences, all of them required.
+
+1. **Deduplicate before insert.** `TransferWriter.WritePage` filters each batch
+   against the natural keys already in ClickHouse, and against duplicates
+   within the batch itself. Single-writer-per-address job leases make the
+   read-then-write safe.
+2. **Ingest ledger.** `ingest_batches` in PostgreSQL records what each page
+   wrote. A replayed page is a no-op rather than a second insert. The batch is
+   recorded only *after* the insert succeeds, so a crash mid-insert leaves the
+   page unrecorded and re-fetchable rather than marked done with rows missing.
+3. **Deterministic rebuild.** `RebuildEdges` recomputes both edge tables from
+   `transfers FINAL`. This is ground truth.
+
+`TestEdgesInflateOnRawReinsert` deliberately reproduces the corruption and
+asserts the rebuild repairs it, so the reasoning above stays executable rather
+than becoming a stale comment.
+
+---
+
+## D3 — `Adapter` gains an address-oriented method
+
+**Date:** 2026-09-20 · **Status:** active · **Departs from:** SPEC.md §5
+
+SPEC.md §5 defines the adapter as `Head` plus `FetchRange(from, to)`, which is
+block-range oriented. The same section specifies that ingestion is
+demand-driven per address, not full-chain. A block-range interface cannot
+express "fetch this address's history", and TronGrid's address endpoints are
+not block-range queryable at all.
+
+**Decision:** add `FetchAddress(ctx, address, cursor) (AddressPage, error)`.
+`FetchRange` is retained for optional full-chain backfill, so both access
+patterns live behind one interface as the spec intends.
+
+---
+
+## D4 — `labels` is slowly-changing-dimension type 2
+
+**Date:** 2026-09-20 · **Status:** active · **Departs from:** SPEC.md §4
+
+SPEC.md §4 asks for `UNIQUE (chain, address, source)` and for a `snapshot_id`
+on every label row; §2 requires that a score be reproducible against a named
+snapshot. These conflict: one row per source cannot simultaneously be one row
+per snapshot. Materialising a full copy of the table per daily snapshot would
+mean roughly 365M rows a year for a 1M label set.
+
+**Decision:** each row carries `valid_from_snapshot` and `valid_to_snapshot`.
+Resolution at snapshot *S* selects rows where
+`valid_from_snapshot <= S AND (valid_to_snapshot IS NULL OR S < valid_to_snapshot)`.
+
+The spec's uniqueness is preserved as a partial unique index over currently-open
+rows, which is what it was actually protecting. History is append-only and
+compact.
+
+---
+
+## D5 — value arithmetic uses `shopspring/decimal`, not `float64`
+
+**Date:** 2026-09-20 · **Status:** active
+
+SPEC.md §2 requires identical input to produce an identical score, and every
+score to be reconstructible from stored data. The haircut formula multiplies a
+chain of fractional shares together and accumulates across many paths, so with
+binary floating point the order of accumulation becomes observable in the
+result, and a reviewer recomputing a score by hand from the stored path set
+would not get the same number back.
+
+**Decision:** decimal arithmetic for all value and share mathematics. Floats
+appear only at the presentation boundary. The cost is speed, which SPEC.md §11
+explicitly subordinates to inspectability.
+
+---
+
+## D6 — total ordering everywhere traversal makes a choice
+
+**Date:** 2026-09-20 · **Status:** active
+
+Determinism (SPEC.md §2) is not achieved by the scoring formula alone. Any
+place the engine picks "some" neighbours rather than all of them — the fan-out
+cap especially — turns iteration order into score differences.
+
+**Decision:** neighbours are ordered by value descending, ties broken by
+address ascending. Go map iteration order must never reach output. No
+wall-clock value participates in scoring. `Config.Categories()` returns a
+sorted slice for this reason.
+
+---
+
+## D7 — reverse-direction access uses separate tables, not projections
+
+**Date:** 2026-09-20 · **Status:** active · **Departs from:** SPEC.md §4 (by refinement)
+
+SPEC.md §4 asks for a second ordering by `(chain, to_address, block_time)` so
+both traversal directions are fast. A ClickHouse projection is the obvious
+implementation and was tried first.
+
+ClickHouse rejects it outright: *"Projection is fully supported in
+ReplacingMergeTree with deduplicate_merge_projection_mode = throw."*
+Projections are not deduplicated when parts merge, so a projection over a
+deduplicating or aggregating engine keeps counting rows the base table has
+already collapsed — the same failure as D2, in a second place.
+
+**Decision:** `transfers_by_to` and `edges_by_to` are separate tables, each fed
+by its own materialized view from `transfers` and protected by the same
+pre-insert deduplication. This is also what SPEC.md §4 literally asks for
+("add a materialized view"). The cost is storage; the benefit is that there is
+exactly one deduplication story in the system rather than two.
+
+---
+
+## D8 — reads go through `*_current` views, never the raw aggregate tables
+
+**Date:** 2026-09-20 · **Status:** active
+
+`AggregatingMergeTree` merges parts in the background, so an unaggregated read
+can return several partial rows for a single edge. Traversal that summed only
+one of them would understate an edge's value and therefore understate risk —
+failing in the direction that matters most.
+
+**Decision:** `edges_current` and `edges_by_to_current` apply the aggregation
+explicitly. All traversal reads these.
+
+---
+
+## D9 — local PostgreSQL binds port 5433
+
+**Date:** 2026-09-20 · **Status:** active
+
+The development machine already runs other PostgreSQL containers on 5432.
+Binding it left our container stuck in `Created` while the client connected to
+a *different* project's database and failed authentication — a far more
+confusing failure than a port clash.
+
+**Decision:** `POSTGRES_PORT` defaults to 5433 in both `docker-compose.yml` and
+the client. Fully overridable by environment.
+
+---
+
+## D10 — the banned-terminology gate excludes SPEC.md and itself
+
+**Date:** 2026-09-20 · **Status:** active
+
+SPEC.md §2 bans a particular word for trial deployments. `make
+check-terminology` enforces it across the repository, but the rule creates an
+obvious problem: SPEC.md must quote the word to state the rule, and the gate
+must contain it to search for it.
+
+**Decision:** the gate assembles the search term from fragments so it does not
+match itself, and excludes `SPEC.md` as the authority that defines the rule.
+Everything else in the repository is checked.
+
+---
+
+## Open — coverage semantics for truncated traversals
+
+**Date raised:** 2026-09-20 · **Status:** open, to be settled at the Phase 3 gate
+
+When traversal stops because it hit the hop limit or the fan-out cap, the value
+beyond that point is neither attributed to a category nor provably
+unattributable. Counting it as unattributed lowers coverage; excluding it from
+the denominator raises coverage by hiding the truncation.
+
+**Current position:** count it as unattributed, on the principle that SPEC.md
+§7 would rather understate confidence than overstate it, and that hiding
+unknown exposure is explicitly called out as the thing not to do. This
+materially affects reported coverage and is worth confirming against real
+numbers before it is locked in.
+
+---
+
+## D11 — TRC-20 transfers get a synthetic log index
+
+**Date:** 2026-09-20 · **Status:** active · **Departs from:** SPEC.md §4 (forced by the data)
+
+SPEC.md §4 deduplicates transfers on `(chain, tx_hash, log_index)`. TronGrid's
+TRC-20 endpoint — the source of USDT flow, which §3 names the priority asset —
+returns no event or log index at all. The fields available are
+`transaction_id`, `from`, `to`, `value`, `token_info` and `block_timestamp`.
+This was confirmed against the live API, not inferred from documentation.
+
+Using the item's position within the response page is not viable: pagination
+can split one transaction's transfers across two pages, so the same transfer
+would be assigned different indices on different fetches and inserted twice —
+inflating `edges` exactly as D2 describes.
+
+**Decision:** derive the index by hashing the transfer's identifying fields
+(`from`, `to`, token contract, `value`) with FNV-1a. The result is stable for
+the same transfer seen from any page in any order, which is the property
+deduplication needs.
+
+**Known limitation:** two transfers within a single transaction that share
+sender, recipient, token *and* value hash identically and collapse into one.
+This undercounts, which is the safer direction — it understates flow rather
+than inventing it — but it is a real loss and is recorded in
+docs/METHODOLOGY.md rather than left implicit.
+
+The native TRX endpoint needs none of this: the index within
+`raw_data.contract` is a genuine log index and is used directly.
+
+---
+
+## D12 — TRC-20 transfers carry no block number
+
+**Date:** 2026-09-20 · **Status:** active · **Departs from:** SPEC.md §4
+
+The same endpoint returns no `blockNumber`. The native endpoint does.
+
+**Decision:** store `block_number = 0` for TRC-20 transfers, meaning unknown.
+Nothing load-bearing depends on it: `transfers` is ordered by `block_time`,
+which the endpoint does provide, and traversal reads `edges`, which carries no
+block number at all. Zero is used rather than null because the column is not
+nullable and the distinction has no consumer.
+
+If a future requirement needs exact block numbers for TRC-20 flow, it will
+need a block-timestamp index or a different data source, and that is a larger
+change than back-filling a column.
+
+---
+
+## D13 — the controlled vocabulary stays at SPEC.md §7's twelve categories
+
+**Date:** 2026-09-20 · **Status:** active
+
+A competitor's output for a sampled Tron address reports roughly 23
+categories against our 12, including Token contract, Enforcement action,
+Custodial wallet, Bridge, Payment Service Provider, Lending, Smart contract,
+P2P exchange, High-Risk Jurisdiction, ATM and Mining Pool.
+
+**Decision:** keep the twelve categories SPEC.md §7 specifies, and map external
+vocabularies onto them in `config/comparison_mapping.yaml` for the §9.5
+divergence table only.
+
+Reasoning:
+
+- Every weight in the published table needs a justification in
+  METHODOLOGY.md. Adding eleven categories means eleven more numbers to defend,
+  for distinctions our open-data label sources mostly cannot draw. A category
+  we cannot reliably populate is worse than one we do not have: it produces a
+  row that is always near zero and implies a precision we do not possess.
+- SPEC.md §9.5 says explicitly not to tune toward external services. Adopting a
+  competitor's taxonomy is a soft form of exactly that.
+- The mapping file records where it is lossy, so the divergence table can
+  report "we cannot express this" honestly instead of silently folding it into
+  a neighbouring category.
+
+The mapping deliberately does not contribute to `config_version`: it affects no
+score, and including it would make scores appear to change whenever a
+comparison mapping was corrected.
+
+Revisit if a label source is adopted that can actually distinguish these
+categories at usable confidence.

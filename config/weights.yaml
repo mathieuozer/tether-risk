@@ -1,0 +1,169 @@
+# weights.yaml — the single source of truth for scoring behaviour.
+#
+# SPEC.md §2: category weights, hop limits, decay factors and thresholds live
+# here and never inline in Go. Changing a value here must change output with
+# no code change (Phase 3 acceptance criterion).
+#
+# The SHA-256 of this file plus sources.yaml forms the config_version stamped
+# on every result.
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# Controlled category vocabulary and risk weights.
+#
+# Weight is the contribution to the 0-100 score of one percentage point of
+# traced value landing in that category. Justification for each value is in
+# docs/METHODOLOGY.md; do not change one without updating that table.
+# ---------------------------------------------------------------------------
+categories:
+  sanctions:            {weight: 100, description: "OFAC/UN/EU listed address"}
+  terrorist_financing:  {weight: 100, description: "Designated terrorist financing"}
+  darknet:              {weight: 90,  description: "Darknet market"}
+  stolen_funds:         {weight: 85,  description: "Proceeds of a documented theft or exploit"}
+  mixer:                {weight: 70,  description: "Mixing or tumbling service"}
+  scam:                 {weight: 70,  description: "Fraud, phishing, ponzi"}
+  high_risk_exchange:   {weight: 40,  description: "Exchange with absent or nominal KYC"}
+  gambling:             {weight: 25,  description: "Gambling service"}
+  unnamed_service:      {weight: 15,  description: "Service-shaped behaviour, operator unidentified"}
+  dust:                 {weight: 5,   description: "Unsolicited inbound below the dust threshold"}
+  dex:                  {weight: 5,   description: "Decentralised exchange or AMM"}
+  exchange:             {weight: 2,   description: "Exchange with functioning KYC"}
+
+# ---------------------------------------------------------------------------
+# Score bands. Lower bound inclusive, upper bound exclusive; the top band's
+# upper bound is inclusive. Bands must tile 0-100 with no gap or overlap;
+# the config loader enforces this.
+# ---------------------------------------------------------------------------
+bands:
+  - {name: low,    min: 0,  max: 30}
+  - {name: medium, min: 30, max: 60}
+  - {name: high,   min: 60, max: 100}
+
+# SPEC.md §7: any direct sanctions hit reports as High regardless of the
+# computed score.
+sanctions_override_band: high
+
+# ---------------------------------------------------------------------------
+# Traversal
+# ---------------------------------------------------------------------------
+traversal:
+  # Maximum hops from the queried address.
+  max_hops: 5
+
+  # Per-hop value decay in the haircut formula:
+  #   contribution(path) = share(hop1) * ... * share(hopN) * decay^N
+  decay: 0.5
+
+  # Cap on neighbours expanded per node, highest value first. Hitting this cap
+  # is recorded on the result so truncation is visible rather than silent.
+  max_neighbours_per_node: 5000
+
+  # Stop expanding at any labelled address. SPEC.md §7: without this rule
+  # everything reaches a major exchange within six hops and every score
+  # becomes noise. Effectively non-optional; exposed only for testing.
+  terminate_at_labelled: true
+
+  # Contributions below this fraction of total traced value are dropped rather
+  # than expanded further. Bounds path explosion on dense graphs.
+  min_contribution: 0.0001
+
+# ---------------------------------------------------------------------------
+# Dust. SPEC.md §7: anyone can send an unsolicited transfer to any address, so
+# inbound dust must never meaningfully move the score. Below this USD value an
+# inbound transfer from an unknown source is classified `dust` and excluded
+# from traversal expansion entirely.
+# ---------------------------------------------------------------------------
+dust:
+  usd_threshold: 1.0
+  # Dust classification applies to inbound only. An outbound transfer of any
+  # size is a deliberate act by the address owner and is never dust.
+  inbound_only: true
+
+# ---------------------------------------------------------------------------
+# Coverage. SPEC.md §7: coverage = attributed_value / total_traced_value,
+# reported in every response. Below the threshold the result is marked
+# low-confidence and the report must say so prominently.
+# ---------------------------------------------------------------------------
+coverage:
+  low_confidence_threshold: 0.40
+
+# ---------------------------------------------------------------------------
+# Label resolution. SPEC.md §6: highest confidence wins; ties broken by source
+# priority; sanctions always win regardless of confidence; conflicting
+# categories are recorded, never silently merged.
+# ---------------------------------------------------------------------------
+labels:
+  source_priority:
+    - ofac
+    - un
+    - eu
+    - curated
+    - dune
+    - derived:deposit
+    - chainabuse
+    - cryptoscamdb
+    - scamsniffer
+
+  # Categories that win regardless of confidence.
+  always_wins:
+    - sanctions
+    - terrorist_financing
+
+  # SPEC.md §6.4: never let a single unverified abuse report alone push an
+  # address into a high-risk band. An address whose only evidence is abuse
+  # reports needs at least this many independent ones to score above
+  # `capped_band`.
+  abuse_reports:
+    sources: [chainabuse, cryptoscamdb, scamsniffer]
+    min_independent_reports: 2
+    capped_band: medium
+
+# ---------------------------------------------------------------------------
+# Derived deposit-wallet heuristic. SPEC.md §6: an address that repeatedly
+# forwards funds to a known exchange hot wallet, with little other activity,
+# is a deposit wallet of that exchange. Thresholds are config, not constants,
+# and the measured precision is recorded in docs/METHODOLOGY.md.
+# ---------------------------------------------------------------------------
+derived_deposit:
+  enabled: true
+  # Minimum transfers to the same known hot wallet.
+  min_transfers: 3
+  # Minimum share of the address's total outbound value going to that wallet.
+  min_outbound_share: 0.80
+  # Maximum share of outbound value that may go anywhere else.
+  max_other_share: 0.20
+  # Confidence stamped on emitted labels.
+  confidence: 0.6
+
+# ---------------------------------------------------------------------------
+# Pricing. docs/PLAN.md F3: no commercial price feed is available, so USD
+# values come from two sources of very different quality, and the difference
+# is recorded rather than smoothed over.
+#
+# Stablecoins are pinned. Their peg is the assumption; a depeg would make
+# historical values wrong, which is a known and accepted limitation for a
+# triage tool.
+#
+# Everything else is valued from a daily close series, so an individual
+# transfer carries real error. `price_basis` on each transfer records which
+# applied, so a score resting on imprecisely-valued native flows can be told
+# apart from one resting on stablecoins.
+# ---------------------------------------------------------------------------
+pricing:
+  # asset -> fixed USD value
+  pinned:
+    USDT: 1.0
+    USDC: 1.0
+    TUSD: 1.0
+    USDD: 1.0
+
+  # Assets valued from the daily close series in the `prices` table.
+  daily_close:
+    - TRX
+    - ETH
+    - BNB
+
+  # An asset in neither list contributes no USD value and is counted as
+  # unpriced. It is never assumed to be worth zero — `unpriced_count` on each
+  # edge carries that forward so coverage can reflect it.
