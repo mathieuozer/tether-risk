@@ -12,12 +12,16 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
+	"github.com/mozer/tether-risk/internal/chain"
+	"github.com/mozer/tether-risk/internal/chain/evm"
 	"github.com/mozer/tether-risk/internal/chain/tron"
 	"github.com/mozer/tether-risk/internal/config"
 	"github.com/mozer/tether-risk/internal/ingest"
@@ -30,6 +34,7 @@ func main() {
 		depth     = flag.Int("depth", 1, "neighbour hop depth to expand on fetch")
 		ttl       = flag.Duration("ttl", 24*time.Hour, "how long stored history stays fresh")
 		configDir = flag.String("config", "config", "configuration directory")
+		chainID   = flag.String("chain", "tron", "chain to ingest")
 		verbose   = flag.Bool("v", false, "debug logging")
 	)
 	flag.Parse()
@@ -49,7 +54,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	if err := run(ctx, cmd, *configDir, *workers, *depth, *ttl, log); err != nil {
+	if err := run(ctx, cmd, *configDir, *chainID, *workers, *depth, *ttl, log); err != nil {
 		log.Error("failed", "command", cmd, "error", err)
 		os.Exit(1)
 	}
@@ -69,7 +74,7 @@ flags:
 	flag.PrintDefaults()
 }
 
-func run(ctx context.Context, cmd, configDir string, workers, depth int, ttl time.Duration, log *slog.Logger) error {
+func run(ctx context.Context, cmd, configDir, chainID string, workers, depth int, ttl time.Duration, log *slog.Logger) error {
 	cfg, err := config.Load(configDir)
 	if err != nil {
 		return err
@@ -77,12 +82,12 @@ func run(ctx context.Context, cmd, configDir string, workers, depth int, ttl tim
 
 	// SPEC.md §6.2 and docs/PLAN.md F1: a chain without a live data path must
 	// say so rather than return an empty result that reads as "no activity".
-	tronCfg, ok := cfg.Chain("tron")
+	chainCfg, ok := cfg.Chain(chainID)
 	if !ok {
-		return fmt.Errorf("chain tron is not declared in sources.yaml")
+		return fmt.Errorf("chain %s is not declared in sources.yaml", chainID)
 	}
-	if !tronCfg.Available() {
-		return fmt.Errorf("chain tron is unavailable: %s", tronCfg.UnavailableReason)
+	if !chainCfg.Available() {
+		return fmt.Errorf("chain %s is unavailable: %s", chainID, chainCfg.UnavailableReason)
 	}
 
 	ch, err := store.OpenClickHouse(ctx)
@@ -100,13 +105,10 @@ func run(ctx context.Context, cmd, configDir string, workers, depth int, ttl tim
 	jobs := store.NewJobs(pg)
 	writer := store.NewTransferWriter(ch, pg)
 
-	client := tron.NewClient(tron.Options{
-		BaseURL:           tronCfg.URL,
-		APIKey:            os.Getenv("TRONGRID_API_KEY"), // optional; no secrets in the repo
-		RequestsPerSecond: float64(tronCfg.RateLimitPerSec),
-		Logger:            log,
-	})
-	adapter := tron.NewAdapter(client)
+	adapter, err := buildAdapter(chainID, chainCfg, log)
+	if err != nil {
+		return err
+	}
 
 	opts := ingest.Options{TTL: ttl, Logger: log}
 
@@ -138,7 +140,67 @@ func run(ctx context.Context, cmd, configDir string, workers, depth int, ttl tim
 	}
 }
 
-func runWorkers(ctx context.Context, n int, adapter *tron.Adapter, jobs *store.Jobs,
+// buildAdapter selects the adapter for a chain.
+//
+// EVM chains prefer Alchemy's per-address transfers API when a key is
+// configured, because raw JSON-RPC has no per-address history call and the
+// archive scan that would substitute for one is not served by any public
+// endpoint (see internal/chain/evm/client.go). Without a key the chain is
+// declared unavailable in sources.yaml and never reaches here.
+func buildAdapter(chainID string, cfg config.ChainSource, log *slog.Logger) (chain.Adapter, error) {
+	switch chainID {
+	case "tron":
+		return tron.NewAdapter(tron.NewClient(tron.Options{
+			BaseURL:           cfg.URL,
+			APIKey:            os.Getenv("TRONGRID_API_KEY"), // optional; no secrets in the repo
+			RequestsPerSecond: float64(cfg.RateLimitPerSec),
+			Logger:            log,
+		})), nil
+
+	case "ethereum", "bsc":
+		envVar := "ETH_RPC_URL"
+		if chainID == "bsc" {
+			envVar = "BSC_RPC_URL"
+		}
+		url := os.Getenv(envVar)
+		if url == "" {
+			url = cfg.URL
+		}
+		if url == "" {
+			return nil, fmt.Errorf("no endpoint for %s; set %s", chainID, envVar)
+		}
+
+		client := evm.NewClient(evm.Options{
+			URL:               url,
+			RequestsPerSecond: float64(cfg.RateLimitPerSec),
+			Logger:            log,
+		})
+
+		if strings.Contains(url, "alchemy.com") {
+			log.Info("using the alchemy per-address transfers API", "chain", chainID)
+			return evm.NewAlchemyAdapter(client, evm.AlchemyOptions{ChainID: chainID}), nil
+		}
+
+		// A non-Alchemy endpoint still gives a working block-range adapter,
+		// but demand-driven per-address ingestion will fail with a typed
+		// archive error rather than returning a misleadingly empty history.
+		log.Warn("endpoint is not Alchemy; per-address ingestion will report "+
+			"that archive access is required", "chain", chainID, "url_host", hostOf(url))
+		return evm.NewAdapter(client, evm.AdapterOptions{ChainID: chainID}), nil
+
+	default:
+		return nil, fmt.Errorf("no adapter for chain %q", chainID)
+	}
+}
+
+func hostOf(rawURL string) string {
+	if u, err := url.Parse(rawURL); err == nil {
+		return u.Host
+	}
+	return "unknown"
+}
+
+func runWorkers(ctx context.Context, n int, adapter chain.Adapter, jobs *store.Jobs,
 	writer *store.TransferWriter, opts ingest.Options, log *slog.Logger) error {
 
 	// Reclaim leases stranded by a previous crash before taking new work.
@@ -182,7 +244,7 @@ func runWorkers(ctx context.Context, n int, adapter *tron.Adapter, jobs *store.J
 	return nil
 }
 
-func fetchOne(ctx context.Context, address string, depth int, adapter *tron.Adapter,
+func fetchOne(ctx context.Context, address string, depth int, adapter chain.Adapter,
 	jobs *store.Jobs, writer *store.TransferWriter, opts ingest.Options, log *slog.Logger) error {
 
 	w := ingest.NewWorker("cli", adapter, jobs, writer, opts)
