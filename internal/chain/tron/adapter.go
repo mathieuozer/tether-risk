@@ -228,13 +228,11 @@ func (a *Adapter) toTransfer(it trc20Item) (chain.Transfer, bool, error) {
 		return chain.Transfer{}, false, fmt.Errorf("trc20 %s: value %q is not an integer", it.TransactionID, it.Value)
 	}
 
-	asset := it.TokenInfo.Symbol
-	if asset == "" {
-		// An unnamed token still moves value. Falling back to the contract
-		// address keeps the edge attributable rather than lumping every
-		// unnamed token together under one empty symbol.
-		asset = it.TokenInfo.Address
+	contract, err := Normalise(it.TokenInfo.Address)
+	if err != nil || contract == "" {
+		return chain.Transfer{}, false, fmt.Errorf("trc20 %s: invalid token contract %q", it.TransactionID, it.TokenInfo.Address)
 	}
+	asset := assetForContract(contract)
 
 	return chain.Transfer{
 		Chain:    "tron",
@@ -251,6 +249,37 @@ func (a *Adapter) toTransfer(it trc20Item) (chain.Transfer, bool, error) {
 		RawValue:    value,
 		PriceBasis:  "unpriced", // Phase 3 prices this
 	}, true, nil
+}
+
+// canonicalTokens maps the TRC-20 contracts we recognise to asset names.
+//
+// The asset must never come from token_info.symbol. Anyone who deploys a
+// contract chooses its symbol, and "USDT" is the most counterfeited symbol on
+// TRON. The pricer pins USDT to $1 and applies USDT's decimals by name, so a
+// counterfeit named "USDT" gets real Tether's price, and at 18 declared
+// decimals read as 6 its amounts are inflated by 10^12. That inflates the
+// denominator of every exposure ratio and turns real mixer or sanctions exposure
+// into a rounding error (docs/DECISIONS.md D18).
+//
+// Each entry was checked against Tronscan on 2026-09-21. Retired contracts
+// stay listed because historical transfers still reference them.
+var canonicalTokens = map[string]string{
+	"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t": "USDT", // Tether USD
+	"TEkxiTehnzSmSe2XqrBj4w32RUN966rdz8": "USDC", // USD Coin, retired on TRON
+	"TUpMhErZL2fhh4sVNULAbNKLokS4GjC1F4": "TUSD", // TrueUSD
+	"TXDk8mbtRbXeYuMNS83CfKPaYYT8XWv9Hz": "USDD", // Decentralized USD
+	"TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn": "USDD", // Decentralized USD, first contract
+}
+
+// assetForContract names the asset a TRC-20 contract carries. Any
+// contract not in canonicalTokens is identified by its own address, which
+// the pricer does not recognise, so it stays unpriced. That is the same rule
+// the EVM adapter follows.
+func assetForContract(contract string) string {
+	if asset, ok := canonicalTokens[contract]; ok {
+		return asset
+	}
+	return contract
 }
 
 // syntheticLogIndex derives a stable index for a TRC-20 transfer.

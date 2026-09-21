@@ -454,3 +454,55 @@ reasons that had nothing to do with those addresses.
 
 Revisit only with a `TRONGRID_API_KEY`, which raises the ceiling. Until then
 the bottleneck is network latency, and no amount of parallelism moves it.
+
+---
+
+## D18 — a TRC-20 asset is identified by its contract, never its symbol
+
+**Date:** 2026-09-21 · **Status:** active · **Supersedes:** symbol-based naming in the TRON adapter
+
+The TRON adapter named each TRC-20 asset by `token_info.symbol`. The deployer
+of a contract picks that symbol, and anyone can deploy a contract. The pricer
+then applied decimals and the $1 peg by name.
+
+Found in practice: `THk5qH79SoAaUnUh8JVdRarSESTZpqPjSQ` calls itself "USDT"
+("Tether USD") and declares 18 decimals. Real Tether is
+`TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t`, with 6. Reading 18-decimal amounts at 6
+inflates them by 10^12, so one transfer of 10,350 counterfeit tokens was stored
+at $10.35 quadrillion. Across the 64,674 stored "USDT" rows, six transfers
+account for $49.9 quadrillion of the $49.9 quadrillion total. The rest sum to
+$673 million.
+
+This is worse than noise, because it runs in the direction that matters. A
+worthless token sent to an address inflates the denominator of every
+proportional exposure figure. Real mixer or sanctions exposure then becomes a
+rounding error. That is an evasion technique, not only a data quality problem.
+
+A fake `TRX` has the same flaw: it would have been priced at the native daily
+close.
+
+**Decision:** TRC-20 assets are named from a fixed table of contract addresses
+(`canonicalTokens` in `internal/chain/tron/adapter.go`), each checked against
+Tronscan. Any other contract is named by its own address, which the pricer
+does not recognise, so it stays unpriced. The EVM adapter already worked this
+way. A transfer with no parseable contract is rejected.
+
+Filtering by value would not be enough. A counterfeit that declares 6 decimals
+produces plausible amounts, and only the contract separates it from real
+Tether.
+
+**Stored data:** `transfers` has no contract column, so existing rows cannot be
+reclassified in place. Re-ingesting does not fix them either: the writer skips
+transfers already stored, and pages already in `ingest_batches`. Repairing
+the data means deleting the TRON TRC-20 rows and their ledger entries,
+re-ingesting, repricing and rebuilding the edges.
+
+Repaired on 2026-09-21 in exactly that way. All 64,776 previously stored token
+rows came back under their correct assets, plus 9,046 transfers the earlier
+runs never reached. Five counterfeit "USDT" contracts accounted for 10 rows:
+`THk5qH79SoAaUnUh8JVdRarSESTZpqPjSQ` (5 rows) and
+`TTmQYPPZ3N3AfSFx4NKm4or2zwDn8dvKRE` (1 row) carried all $49.9 quadrillion.
+`TCGST91DVQ4XGM5kEbupUWAE8CBJDJq9Fs`, `TTPnLa9d3hnUdjYNRsAqyw76TTDuodq5xw` and
+`TLMRyoRTCetaz8HK1gLqq4N1feGHoqLriQ` carried $10 to $4,117, amounts that no
+value filter would have caught. After repricing, stored TRON USDT totals $753
+million across 73,710 transfers. The largest single transfer is $8.5 million.

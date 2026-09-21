@@ -331,3 +331,75 @@ func TestParseRetryAfter(t *testing.T) {
 		t.Errorf(`parseRetryAfter("not-a-date") = %v, want 0`, got)
 	}
 }
+
+// The asset comes from the contract, never from the self-declared symbol.
+// THk5qH79SoAaUnUh8JVdRarSESTZpqPjSQ is a real counterfeit found in stored
+// data: symbol "USDT", 18 decimals. Read as Tether's 6 decimals, it was valued
+// at $10.35 quadrillion (docs/DECISIONS.md D18).
+func TestTRC20AssetComesFromContractNotSymbol(t *testing.T) {
+	const counterfeit = "THk5qH79SoAaUnUh8JVdRarSESTZpqPjSQ"
+
+	cases := []struct {
+		name     string
+		contract string
+		symbol   string
+		want     string
+	}{
+		{"genuine tether", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", "USDT", "USDT"},
+		{"genuine tether, symbol ignored", "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", "whatever", "USDT"},
+		{"counterfeit claiming USDT", counterfeit, "USDT", counterfeit},
+		{"counterfeit claiming the native asset", counterfeit, "TRX", counterfeit},
+		{"unnamed token", counterfeit, "", counterfeit},
+	}
+	a := NewAdapter(nil)
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			it := trc20Item{
+				TransactionID: "ce39232e160a507848c4a4a475d5394462f305d8cd74a71cb640e40feb46cc61",
+				BlockTime:     1681823094000,
+				From:          "TZ8Ksz21Hk1tQuztCKCUJBRXStCav9uyjM",
+				To:            "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7",
+				Type:          "Transfer",
+				Value:         "10350355963000000000000",
+			}
+			it.TokenInfo.Address = c.contract
+			it.TokenInfo.Symbol = c.symbol
+			it.TokenInfo.Decimals = 18
+
+			tr, ok, err := a.toTransfer(it)
+			if err != nil || !ok {
+				t.Fatalf("toTransfer: ok=%v err=%v", ok, err)
+			}
+			if tr.Asset != c.want {
+				t.Errorf("asset = %q, want %q", tr.Asset, c.want)
+			}
+		})
+	}
+}
+
+// A transfer whose contract cannot be identified is rejected rather than
+// stored under a guessed asset.
+func TestTRC20WithoutValidContractIsRejected(t *testing.T) {
+	it := trc20Item{
+		TransactionID: "abc",
+		From:          "TZ8Ksz21Hk1tQuztCKCUJBRXStCav9uyjM",
+		To:            "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7",
+		Type:          "Transfer",
+		Value:         "1",
+	}
+	it.TokenInfo.Symbol = "USDT"
+	if _, _, err := NewAdapter(nil).toTransfer(it); err == nil {
+		t.Fatal("expected an error for a transfer with no token contract")
+	}
+}
+
+// Registry keys must already be in normalised form, or a genuine contract
+// would miss the lookup and be silently demoted to unpriced.
+func TestCanonicalTokensAreNormalised(t *testing.T) {
+	for contract := range canonicalTokens {
+		got, err := Normalise(contract)
+		if err != nil || got != contract {
+			t.Errorf("%s normalises to %q (err %v)", contract, got, err)
+		}
+	}
+}
