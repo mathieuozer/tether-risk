@@ -159,6 +159,12 @@ type directionResponse struct {
 	Categories      []categoryResponse `json:"categories"`
 	UnattributedPct float64            `json:"unattributed_pct"`
 
+	// TotalTraced is the direction's summed path weight, the denominator of
+	// its percentages. It is a share of value decayed per hop, not a USD
+	// amount. Clients use it to combine directions the same way overall
+	// coverage does.
+	TotalTraced float64 `json:"total_traced"`
+
 	TopPaths []pathResponse `json:"top_paths"`
 
 	Traversal traversalStats `json:"traversal"`
@@ -349,6 +355,7 @@ func toDirection(d *scoring.DirectionResult) *directionResponse {
 		Score:           round(d.Score, 4),
 		Coverage:        round(d.Coverage, 6),
 		UnattributedPct: round(d.UnattributedPct, 4),
+		TotalTraced:     round(d.TotalTraced, 6),
 		Categories:      make([]categoryResponse, 0, len(d.Categories)),
 		TopPaths:        make([]pathResponse, 0, len(d.TopPaths)),
 		Traversal: traversalStats{

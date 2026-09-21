@@ -31,6 +31,8 @@ func main() {
 		chainID   = flag.String("chain", "tron", "chain")
 		configDir = flag.String("config", "config", "configuration directory")
 		pdfOut    = flag.String("pdf", "", "also write a PDF report to this path")
+		format    = flag.String("format", "detailed",
+			"output format: detailed (per-direction breakdown) or summary (combined connections list)")
 	)
 	flag.Parse()
 
@@ -43,13 +45,18 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := run(ctx, *configDir, *chainID, address, *pdfOut); err != nil {
+	if *format != "detailed" && *format != "summary" {
+		fmt.Fprintf(os.Stderr, "unknown -format %q; use detailed or summary\n", *format)
+		os.Exit(2)
+	}
+
+	if err := run(ctx, *configDir, *chainID, address, *pdfOut, *format); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, configDir, chainID, address, pdfOut string) error {
+func run(ctx context.Context, configDir, chainID, address, pdfOut, format string) error {
 	cfg, err := config.Load(configDir)
 	if err != nil {
 		return err
@@ -72,7 +79,13 @@ func run(ctx context.Context, configDir, chainID, address, pdfOut string) error 
 		return err
 	}
 
-	print(res)
+	if format == "summary" {
+		fmt.Println()
+		fmt.Print(report.Connections(connectionsInput(res)))
+		fmt.Println()
+	} else {
+		print(res)
+	}
 
 	if pdfOut != "" {
 		f, err := os.Create(pdfOut)
@@ -206,4 +219,43 @@ func wrap(s string, width int) string {
 		line += len(word)
 	}
 	return out.String()
+}
+
+// connectionsInput adapts a scoring result for the compact summary.
+func connectionsInput(res *scoring.Result) report.ConnectionsInput {
+	in := report.ConnectionsInput{
+		Address:           res.Address,
+		Chain:             res.Chain,
+		Score:             res.Score.InexactFloat64(),
+		Band:              res.Band,
+		Coverage:          res.Coverage.InexactFloat64(),
+		LowConfidence:     res.LowConfidence,
+		SanctionsOverride: res.SanctionsOverride,
+		BandCappedByAbuse: res.BandCappedByAbuseRule,
+		Inbound:           connectionsDirection(res.Inbound),
+		Outbound:          connectionsDirection(res.Outbound),
+		Disclaimer:        disclaimer,
+	}
+	if l := res.OwnLabel; l != nil {
+		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: l.Entity, Category: l.Category}
+	}
+	return in
+}
+
+func connectionsDirection(d *scoring.DirectionResult) *report.ConnectionsDirection {
+	if d == nil {
+		return nil
+	}
+	out := &report.ConnectionsDirection{
+		TracedWeight:    d.TotalTraced.InexactFloat64(),
+		UnattributedPct: d.UnattributedPct.InexactFloat64(),
+		FanoutCapped:    d.FanoutCapped,
+		HopLimitReached: d.HopLimitReached,
+	}
+	for _, c := range d.Categories {
+		out.Categories = append(out.Categories, report.ConnectionsCategory{
+			Category: c.Category, Pct: c.Pct.InexactFloat64(),
+		})
+	}
+	return out
 }

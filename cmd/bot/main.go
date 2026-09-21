@@ -25,6 +25,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/mozer/tether-risk/internal/report"
 )
 
 func main() {
@@ -150,27 +152,39 @@ func (b *bot) handle(ctx context.Context, msg *struct {
 	case text == "/start", text == "/help":
 		b.send(ctx, msg.Chat.ID, helpText)
 		return
+	case strings.HasPrefix(text, "/details"):
+		fields := strings.Fields(text)
+		if len(fields) < 2 {
+			b.send(ctx, msg.Chat.ID, "Usage: /details <address>")
+			return
+		}
+		b.reply(ctx, msg.Chat.ID, fields[1], format)
+		return
 	case strings.HasPrefix(text, "/"):
 		b.send(ctx, msg.Chat.ID, "Unknown command. Send an address, or /help.")
 		return
 	}
 
-	address := strings.Fields(text)[0]
+	b.reply(ctx, msg.Chat.ID, strings.Fields(text)[0], summary)
+}
 
-	b.send(ctx, msg.Chat.ID, "Screening "+address+"...")
+// reply screens an address and sends the result in the given format.
+func (b *bot) reply(ctx context.Context, chatID int64, address string, render func(*screenResponse) string) {
+	b.send(ctx, chatID, "Screening "+address+"...")
 
 	res, err := b.screen(ctx, address)
 	if err != nil {
 		b.log.Warn("screen failed", "address", address, "error", err)
-		b.send(ctx, msg.Chat.ID, "Could not screen that address.\n\n"+err.Error())
+		b.send(ctx, chatID, "Could not screen that address.\n\n"+err.Error())
 		return
 	}
-	b.send(ctx, msg.Chat.ID, format(res))
+	b.send(ctx, chatID, render(res))
 }
 
 const helpText = `Address risk screening.
 
-Send a blockchain address and I will return an exposure breakdown.
+Send a blockchain address and I will return a summary of its connections.
+Send /details <address> for the full per-direction breakdown with paths.
 
 This is automated triage and pre-screening built on open data. It is not a
 regulated AML determination and must not be used as one.
@@ -197,6 +211,11 @@ type screenResponse struct {
 	Inbound  *direction `json:"inbound"`
 	Outbound *direction `json:"outbound"`
 
+	OwnLabel *struct {
+		Entity   string `json:"entity"`
+		Category string `json:"category"`
+	} `json:"own_label"`
+
 	LabelSnapshotID int64  `json:"label_snapshot_id"`
 	ConfigVersion   string `json:"config_version"`
 	Disclaimer      string `json:"disclaimer"`
@@ -209,6 +228,7 @@ type direction struct {
 	Score           float64 `json:"score"`
 	Coverage        float64 `json:"coverage"`
 	UnattributedPct float64 `json:"unattributed_pct"`
+	TotalTraced     float64 `json:"total_traced"`
 	Categories      []struct {
 		Category string  `json:"category"`
 		Pct      float64 `json:"pct"`
@@ -269,6 +289,9 @@ func format(r *screenResponse) string {
 	// line above.
 	fmt.Fprintf(&b, "Coverage: %.1f%%\n", r.Coverage*100)
 
+	if l := r.OwnLabel; l != nil {
+		fmt.Fprintf(&b, "\n*** THIS ADDRESS IS DIRECTLY LISTED ***\n%s (%s)\n", l.Entity, l.Category)
+	}
 	if r.SanctionsOverride {
 		b.WriteString("\n*** DIRECT SANCTIONS MATCH ***\n" +
 			"This address is on a sanctions list. The band is High regardless of score.\n")
@@ -290,6 +313,43 @@ func format(r *screenResponse) string {
 		fmt.Fprintf(&b, "\n%s", r.Disclaimer)
 	}
 	return b.String()
+}
+
+// summary renders the compact connections list.
+func summary(r *screenResponse) string {
+	in := report.ConnectionsInput{
+		Address:           r.Address,
+		Chain:             r.Chain,
+		Score:             r.Score,
+		Band:              r.Band,
+		Coverage:          r.Coverage,
+		LowConfidence:     r.LowConfidence,
+		SanctionsOverride: r.SanctionsOverride,
+		BandCappedByAbuse: r.BandCappedByAbuse,
+		Inbound:           summaryDirection(r.Inbound),
+		Outbound:          summaryDirection(r.Outbound),
+		Disclaimer:        r.Disclaimer,
+	}
+	if r.OwnLabel != nil {
+		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: r.OwnLabel.Entity, Category: r.OwnLabel.Category}
+	}
+	return report.Connections(in)
+}
+
+func summaryDirection(d *direction) *report.ConnectionsDirection {
+	if d == nil {
+		return nil
+	}
+	out := &report.ConnectionsDirection{
+		TracedWeight:    d.TotalTraced,
+		UnattributedPct: d.UnattributedPct,
+		FanoutCapped:    d.Traversal.FanoutCapped,
+		HopLimitReached: d.Traversal.HopLimitReached,
+	}
+	for _, c := range d.Categories {
+		out.Categories = append(out.Categories, report.ConnectionsCategory{Category: c.Category, Pct: c.Pct})
+	}
+	return out
 }
 
 func writeDirection(b *strings.Builder, title string, d *direction) {
