@@ -16,6 +16,7 @@ import (
 	"github.com/mozer/tether-risk/internal/ingest"
 	"github.com/mozer/tether-risk/internal/scoring"
 	"github.com/mozer/tether-risk/internal/screen"
+	"github.com/mozer/tether-risk/internal/store"
 )
 
 // Verdict benchmark (docs/DECISIONS.md D29).
@@ -95,7 +96,8 @@ func checkVerdictBenchmark(ctx context.Context, svc *screen.Service, cfg *config
 		if err != nil {
 			return res, err
 		}
-		svc.WithPrefetch(chainID, p)
+		bg := &backgroundPrefetch{Worker: p, jobs: store.NewJobs(pg), chainID: chainID, queued: map[string]bool{}}
+		svc.WithPrefetch(chainID, bg)
 		for r := 1; r <= followRounds; r++ {
 			for _, s := range sets {
 				for _, a := range s.addrs {
@@ -104,7 +106,7 @@ func checkVerdictBenchmark(ctx context.Context, svc *screen.Service, cfg *config
 					}
 				}
 			}
-			waitForQueue(ctx, pg, 20*time.Minute)
+			bg.wait(ctx, pg, 20*time.Minute)
 			fmt.Printf("follow-up round %d of %d done\n", r, followRounds)
 		}
 	}
@@ -147,13 +149,34 @@ func checkVerdictBenchmark(ctx context.Context, svc *screen.Service, cfg *config
 	return res, nil
 }
 
-// waitForQueue waits until no customer-priority fetch is pending or running,
-// or until the limit.
-func waitForQueue(ctx context.Context, pg *sql.DB, limit time.Duration) {
+// backgroundPrefetch queues the benchmark's follow-up fetches at background
+// priority. A benchmark is not a customer: queued at customer priority, one
+// run put 7,160 jobs ahead of every real follow-up.
+type backgroundPrefetch struct {
+	*ingest.Worker
+	jobs    *store.Jobs
+	chainID string
+	queued  map[string]bool
+}
+
+func (b *backgroundPrefetch) Queue(ctx context.Context, address string, _ int) error {
+	b.queued[address] = true
+	return b.jobs.EnqueueBackground(ctx, b.chainID, address)
+}
+
+// wait waits until none of the addresses this benchmark queued is pending
+// or running, or until the limit. It watches only its own jobs, so other
+// background work does not hold it up beyond the limit.
+func (b *backgroundPrefetch) wait(ctx context.Context, pg *sql.DB, limit time.Duration) {
+	addrs := make([]string, 0, len(b.queued))
+	for a := range b.queued {
+		addrs = append(addrs, a)
+	}
 	deadline := time.Now().Add(limit)
-	for time.Now().Before(deadline) {
+	for len(addrs) > 0 && time.Now().Before(deadline) {
 		var n int
-		if err := pg.QueryRowContext(ctx, `SELECT count(*) FROM fetch_jobs WHERE state IN ('pending','running') AND priority < 1000`).Scan(&n); err != nil || n == 0 {
+		if err := pg.QueryRowContext(ctx, `SELECT count(*) FROM fetch_jobs WHERE chain = $1 AND address = ANY($2) AND state IN ('pending','running')`,
+			b.chainID, addrs).Scan(&n); err != nil || n == 0 {
 			return
 		}
 		select {
