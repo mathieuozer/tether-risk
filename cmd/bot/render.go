@@ -34,9 +34,10 @@ type screenResponse struct {
 	Outbound *direction `json:"outbound"`
 
 	Verdict *struct {
-		Level      string `json:"level"`
-		Confidence string `json:"confidence"`
-		Reasons    []struct {
+		Level         string `json:"level"`
+		Confidence    string `json:"confidence"`
+		ConfidencePct int    `json:"confidence_pct"`
+		Reasons       []struct {
 			Code     string  `json:"code"`
 			Category string  `json:"category"`
 			Pct      float64 `json:"pct"`
@@ -234,7 +235,7 @@ func summary(r *screenResponse, lang string, followUp bool) string {
 			VolumeUSD: f.VolumeUSD, Days: f.Days, AgeDays: f.AgeDays, Count: f.Count, AmountUSD: f.AmountUSD, Minutes: f.Minutes})
 	}
 	if v := r.Verdict; v != nil {
-		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence}
+		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct}
 		for _, x := range v.Reasons {
 			cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: x.Code, Category: x.Category, Flag: x.Flag, Pct: x.Pct})
 		}

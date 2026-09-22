@@ -66,14 +66,19 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
 		pdf.SetTextColor(255, 255, 255)
 		pdf.SetFont("Helvetica", "B", 13)
 		l := newLoc("en")
-		title := map[string]string{"clear": "LOOKS CLEAN", "caution": "CAUTION", "high_risk": "HIGH RISK"}[v.Level]
-		pdf.CellFormat(width, 11, fmt.Sprintf("  %s  -  confidence: %s", title, l.f("conf_"+v.Confidence)), "", 0, "L", true, 0, "")
+		title := "NOT RISKY"
+		if v.Level == scoring.VerdictHighRisk {
+			title = "RISKY"
+		}
+		pdf.CellFormat(width, 11, fmt.Sprintf("  %s  -  confidence %d%%", title, v.ConfidencePct), "", 0, "L", true, 0, "")
 		pdf.Ln(13)
 		pdf.SetTextColor(0, 0, 0)
 		pdf.SetFont("Helvetica", "", 9.5)
+		cv := &ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct}
 		for _, r := range v.Reasons {
-			pdf.MultiCell(width, 5, "- "+verdictReasonText(l, r), "", "L", false)
+			cv.Reasons = append(cv.Reasons, ConnectionsVerdictReason{Code: r.Code, Category: r.Category, Flag: r.Flag, Pct: r.Pct})
 		}
+		pdf.MultiCell(width, 5, strings.TrimSpace(whyText(cv, l)), "", "L", false)
 		pdf.Ln(3)
 	}
 
@@ -318,25 +323,6 @@ func verdictColour(level string) (int, int, int) {
 	default:
 		return 180, 110, 0
 	}
-}
-
-// verdictReasonText renders one verdict reason as a sentence, reusing the
-// report's catalogue without its bullet and line break.
-func verdictReasonText(l loc, r scoring.VerdictReason) string {
-	var s string
-	switch r.Code {
-	case "own_listed":
-		s = l.f("vr_own_listed", l.category(r.Category))
-	case "exposure", "exposure_minor":
-		s = l.f("vr_"+r.Code, l.pct(r.Pct), l.category(r.Category))
-	case "low_coverage", "unidentified", "clean":
-		s = l.f("vr_"+r.Code, l.pct(r.Pct))
-	case "behaviour":
-		s = l.f("vr_behaviour", l.f("flagname_"+r.Flag))
-	default:
-		s = l.f("vr_" + r.Code)
-	}
-	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(s), "•"))
 }
 
 func bandColour(band string) (int, int, int) {

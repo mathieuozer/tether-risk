@@ -1299,14 +1299,14 @@
   function verdictCard(r) {
     var v = r.verdict;
     if (!v || !v.level) return '';
-    var reasons = (v.reasons || []).map(function (x) {
+    var reasons = (v.reasons || []).slice(0, 2).map(function (x) {
       var p = { pct: fmtPct(x.pct || 0), cat: x.category ? catName(x.category) : '', flag: x.flag ? tt('flag_' + x.flag + '_title') : '' };
       return '<li>' + esc(tt('vr_' + x.code, p)) + '</li>';
     }).join('');
     return '<section class="card verdict verdict-' + esc(v.level) + '" aria-labelledby="verdict-title">' +
       '<div class="verdict-head"><span class="verdict-dot" aria-hidden="true"></span>' +
       '<h2 id="verdict-title">' + tt('v_' + v.level) + '</h2>' +
-      '<span class="verdict-conf">' + tt('conf_label', { c: tt('conf_' + v.confidence) }) + '</span></div>' +
+      '<span class="verdict-conf">' + tt('conf_label', { pct: String(v.confidence_pct || 0) }) + '</span></div>' +
       '<ul class="verdict-reasons">' + reasons + '</ul></section>';
   }
 

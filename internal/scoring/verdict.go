@@ -13,9 +13,12 @@ import (
 type Verdict struct {
 	// Level is clear, caution or high_risk.
 	Level string
-	// Confidence is high, medium or low.
+	// Confidence is high, medium or low: ConfidencePct in words.
 	Confidence string
-	Reasons    []VerdictReason
+	// ConfidencePct is how much of the answer rests on value that could be
+	// seen, 1-99. Readers get the verdict as risky or not risky and this.
+	ConfidencePct int
+	Reasons       []VerdictReason
 }
 
 // VerdictReason is one fact behind a verdict, rendered by each channel in
@@ -105,6 +108,15 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 		}
 	}
 
+	// What the address did comes before what could not be seen: readers get
+	// two reasons, and a round split says more than a low coverage.
+	notes := 0
+	for _, f := range r.Flags {
+		if f.Code == "pass_through" || f.Code == "high_volume_new" || f.Code == "round_split" || f.Code == "parked_funds" {
+			caution = append(caution, VerdictReason{Code: "behaviour", Flag: f.Code})
+			notes++
+		}
+	}
 	if r.Band == "medium" {
 		caution = append(caution, VerdictReason{Code: "band_medium"})
 	}
@@ -113,41 +125,66 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 	}
 	// Value that ends at a service nobody has named is traced, not vouched
 	// for: the service's other customers stay out of view.
-	unseen := false
 	if u := shares["unnamed_service"]; rules.MaxUnnamedPct > 0 && u >= rules.MaxUnnamedPct {
 		caution = append(caution, VerdictReason{Code: "unidentified", Pct: u})
-		unseen = true
 	}
 	if !done {
 		caution = append(caution, VerdictReason{Code: "tracing_incomplete"})
 	}
-	for _, f := range r.Flags {
-		if f.Code == "pass_through" || f.Code == "high_volume_new" || f.Code == "round_split" || f.Code == "parked_funds" {
-			caution = append(caution, VerdictReason{Code: "behaviour", Flag: f.Code})
-		}
-	}
 
-	v := Verdict{Confidence: confidence(coverage, done, rules)}
-	// Coverage says the value was traced, not that the answer is known: when
-	// most of it ends at services nobody has named, the answer is uncertain.
-	if unseen {
-		v.Confidence = "low"
-	}
+	var v Verdict
 	switch {
 	case len(red) > 0:
 		v.Level, v.Reasons = VerdictHighRisk, append(red, caution...)
-		// A direct listing is certain whatever the coverage: the address
-		// itself is on the list.
+		// Risk found stays found whatever else is unknown, so the floor is
+		// even odds; a direct listing is as certain as the list.
+		v.ConfidencePct = clampPct(coverage*100, 50)
 		if red[0].Code == "own_listed" {
-			v.Confidence = "high"
+			v.ConfidencePct = 99
 		}
 	case len(caution) > 0:
 		v.Level, v.Reasons = VerdictCaution, caution
+		v.ConfidencePct = seenPct(shares, notes, rules)
 	default:
 		v.Level = VerdictClear
 		v.Reasons = []VerdictReason{{Code: "clean", Pct: coverage * 100}}
+		v.ConfidencePct = seenPct(shares, notes, rules)
 	}
+	// Value still waiting at unfetched addresses may change the answer.
+	if high := int(rules.ConfidenceHigh * 100); !done && v.Level != VerdictHighRisk && v.ConfidencePct >= high {
+		v.ConfidencePct = high - 1
+	}
+	v.Confidence = confidenceWord(v.ConfidencePct, rules)
 	return v
+}
+
+// seenPct is the confidence in a not-risky answer: the share of traced value
+// at non-risk entities, each counted by its credit, less the behaviour
+// penalty.
+func seenPct(shares map[string]float64, notes int, rules config.Verdict) int {
+	var seen float64
+	for c, s := range shares {
+		if riskCategories[c] {
+			continue
+		}
+		credit, has := rules.ConfidenceCredit[c]
+		if !has {
+			credit = 1
+		}
+		seen += s * credit
+	}
+	return clampPct(seen-float64(notes)*rules.BehaviourPenalty, 1)
+}
+
+func clampPct(p float64, floor int) int {
+	n := int(p + 0.5)
+	if n < floor {
+		n = floor
+	}
+	if n > 99 {
+		n = 99
+	}
+	return n
 }
 
 // pendingShare is the share of traced value, in percent, stopped at dead
@@ -177,11 +214,11 @@ func pendingShare(r *Result) float64 {
 	return pct
 }
 
-func confidence(coverage float64, done bool, rules config.Verdict) string {
+func confidenceWord(pct int, rules config.Verdict) string {
 	switch {
-	case coverage >= rules.ConfidenceHigh && done:
+	case float64(pct) >= rules.ConfidenceHigh*100:
 		return "high"
-	case coverage >= rules.ConfidenceMedium:
+	case float64(pct) >= rules.ConfidenceMedium*100:
 		return "medium"
 	default:
 		return "low"

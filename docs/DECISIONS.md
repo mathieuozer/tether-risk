@@ -1121,6 +1121,18 @@ now called the exposure score and points to the verdict. Confidence had meant
 "how completely traced", which read as "how sure" on a caution about the
 unknown.
 
+**How the answer is shown.** The owner asked for two states and a number:
+*risky* or *not risky*, a confidence percentage, and a line or two on why.
+Caution stays in the API as a level, but readers see it as not risky with a
+lower confidence. Confidence is the share of traced value that could be
+vouched for: named non-risk entities count fully, unidentified services half
+(`verdict.confidence_credit`), dust and unknown value nothing, and each
+behaviour note takes 15 points off. A risky answer's confidence is its
+coverage, never under 50; a direct listing is 99. Behaviour reasons are
+listed before coverage reasons, because only two are shown. Measured:
+TTrcHL…BPQp and TNwf8V…crmL not risky at 50%; TPJZrw…uBhM at 1% (round split,
+new with large volume); TJBsbT…Y5P at 4%.
+
 **Measuring the final answer.** Unfetched addresses now count as unknown, so
 first answers show lower coverage (deposit-set mean 80% → 63.5%) until the
 follow-up fetches them. `validate verdict -rounds N` screens with

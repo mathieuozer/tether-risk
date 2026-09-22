@@ -213,9 +213,11 @@ type directionResponse struct {
 }
 
 type verdictResponse struct {
-	Level      string                  `json:"level"`
-	Confidence string                  `json:"confidence"`
-	Reasons    []verdictReasonResponse `json:"reasons"`
+	Level      string `json:"level"`
+	Confidence string `json:"confidence"`
+	// ConfidencePct is the confidence as a percentage, 1-99.
+	ConfidencePct int                     `json:"confidence_pct"`
+	Reasons       []verdictReasonResponse `json:"reasons"`
 }
 
 type verdictReasonResponse struct {
@@ -229,7 +231,7 @@ func toVerdict(v *scoring.Verdict) *verdictResponse {
 	if v == nil {
 		return nil
 	}
-	out := &verdictResponse{Level: v.Level, Confidence: v.Confidence, Reasons: []verdictReasonResponse{}}
+	out := &verdictResponse{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Reasons: []verdictReasonResponse{}}
 	for _, r := range v.Reasons {
 		out.Reasons = append(out.Reasons, verdictReasonResponse{Code: r.Code, Category: r.Category,
 			Pct: float64(int(r.Pct*100+0.5)) / 100, Flag: r.Flag})

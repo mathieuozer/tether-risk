@@ -11,6 +11,7 @@ func verdictRules() config.Verdict {
 	return config.Verdict{
 		RedExposure:      map[string]float64{"sanctions": 1, "frozen_funds": 5, "scam": 10},
 		ClearMinCoverage: 0.8, ConfidenceHigh: 0.9, ConfidenceMedium: 0.6, MaxPendingPct: 5, MaxUnnamedPct: 50,
+		ConfidenceCredit: map[string]float64{"unnamed_service": 0.5, "dust": 0}, BehaviourPenalty: 15,
 	}
 }
 
@@ -85,5 +86,30 @@ func TestVerdictIgnoresNegligiblePending(t *testing.T) {
 	r.Inbound.UnattributedReasons = []ReasonShare{{Reason: "dead_end", Pct: decimal.NewFromFloat(1.2)}}
 	if v := Decide(r, verdictRules()); v.Level != VerdictClear {
 		t.Errorf("1.2%% pending: %+v", v)
+	}
+}
+
+// Confidence is a percentage of value that could be vouched for.
+func TestVerdictConfidencePct(t *testing.T) {
+	rules := verdictRules()
+	behaviour := vresult("low", 0.99, map[string]float64{"exchange": 99}, true)
+	behaviour.Flags = []Flag{{Code: "round_split"}, {Code: "parked_funds"}}
+	for _, tc := range []struct {
+		name string
+		r    *Result
+		want int
+	}{
+		{"named exchanges", vresult("low", 0.99, map[string]float64{"exchange": 99}, true), 99},
+		// TTrcHL…BPQp: everything at one unidentified hub is half seen.
+		{"unidentified hub", vresult("low", 1, map[string]float64{"unnamed_service": 100}, true), 50},
+		{"dust proves nothing", vresult("low", 0.9, map[string]float64{"dust": 60, "exchange": 30}, true), 30},
+		{"behaviour notes", behaviour, 69},
+		{"risk found at low coverage", vresult("high", 0.3, map[string]float64{"sanctions": 20, "exchange": 10}, true), 50},
+		{"risk found at high coverage", vresult("high", 0.92, map[string]float64{"frozen_funds": 54, "exchange": 38}, true), 92},
+		{"unfinished tracing is never high", vresult("low", 0.92, map[string]float64{"exchange": 92}, false), 89},
+	} {
+		if v := Decide(tc.r, rules); v.ConfidencePct != tc.want {
+			t.Errorf("%s: confidence %d%%, want %d%% (%+v)", tc.name, v.ConfidencePct, tc.want, v)
+		}
 	}
 }

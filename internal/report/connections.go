@@ -50,9 +50,10 @@ type ConnectionsInput struct {
 
 // ConnectionsVerdict is the answer to "is this wallet clean?".
 type ConnectionsVerdict struct {
-	Level      string // clear, caution, high_risk
-	Confidence string // high, medium, low
-	Reasons    []ConnectionsVerdictReason
+	Level         string // clear, caution, high_risk
+	Confidence    string // high, medium, low
+	ConfidencePct int    // 1-99
+	Reasons       []ConnectionsVerdictReason
 }
 
 type ConnectionsVerdictReason struct {
@@ -521,28 +522,15 @@ func unidentifiedPct(v *ConnectionsVerdict) float64 {
 	return 0
 }
 
-// writeVerdict puts the answer first: the level, how far to trust it, and
-// why, so a reader who stops after three lines still has it.
+// writeVerdict puts the answer first: risky or not risky, the confidence as
+// a percentage, and a line or two on why, so a reader who stops there still
+// has it. The owner asked for exactly this shape.
 func writeVerdict(b *strings.Builder, v *ConnectionsVerdict, l loc) {
 	if v == nil {
 		return
 	}
-	b.WriteString(l.f("v_"+v.Level, l.f("conf_"+v.Confidence)))
+	b.WriteString(l.f("v_"+v.Level, v.ConfidencePct))
 	b.WriteString(whyText(v, l))
-	for _, r := range v.Reasons {
-		switch r.Code {
-		case "own_listed":
-			b.WriteString(l.f("vr_own_listed", l.category(r.Category)))
-		case "exposure", "exposure_minor":
-			b.WriteString(l.f("vr_"+r.Code, l.pct(r.Pct), l.category(r.Category)))
-		case "low_coverage", "unidentified", "clean":
-			b.WriteString(l.f("vr_"+r.Code, l.pct(r.Pct)))
-		case "behaviour":
-			b.WriteString(l.f("vr_behaviour", l.f("flagname_"+r.Flag)))
-		default:
-			b.WriteString(l.f("vr_" + r.Code))
-		}
-	}
 	b.WriteString("\n")
 }
 
@@ -569,7 +557,7 @@ func whyText(v *ConnectionsVerdict, l loc) string {
 			seen[p] = true
 			parts = append(parts, p)
 		}
-		if len(parts) == 3 {
+		if len(parts) == 2 {
 			break
 		}
 	}

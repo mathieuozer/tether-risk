@@ -106,19 +106,18 @@ func TestBehaviourNotes(t *testing.T) {
 
 func TestVerdictComesFirst(t *testing.T) {
 	in := ConnectionsInput{Address: "TAddr", Chain: "tron", Band: "high", Score: 63.9, Coverage: 0.918,
-		Verdict: &ConnectionsVerdict{Level: "high_risk", Confidence: "high", Reasons: []ConnectionsVerdictReason{
+		Verdict: &ConnectionsVerdict{Level: "high_risk", Confidence: "high", ConfidencePct: 92, Reasons: []ConnectionsVerdictReason{
 			{Code: "band_high"}, {Code: "exposure", Category: "frozen_funds", Pct: 54.05},
 		}}}
 	en := Connections(in)
-	if !strings.Contains(en, "🔴 HIGH RISK · confidence: high\n   High risk because its overall risk score is high; 54.0% of its money is linked to Frozen by Tether.") ||
-		!strings.Contains(en, "  •   Exposure score is High\n  •   54.0% of traced value reaches Frozen by Tether") {
+	if !strings.Contains(en, "🔴 RISKY · confidence 92%\n   Risky because its overall risk score is high; 54.0% of its money is linked to Frozen by Tether.") {
 		t.Errorf("English verdict:\n%s", en)
 	}
-	if strings.Index(en, "HIGH RISK") > strings.Index(en, "Exposure score") {
+	if strings.Index(en, "RISKY") > strings.Index(en, "Exposure score") {
 		t.Error("the verdict must come before the details")
 	}
 	in.Lang = "tr"
-	if tr := Connections(in); !strings.Contains(tr, "Riskli, çünkü genel risk puanı yüksek; parasının %54,0 kadarı “Tether tarafından dondurulmuş” kategorisine bağlanıyor") || !strings.Contains(tr, "🔴 RİSKLİ · güven: yüksek") || !strings.Contains(tr, "Tether tarafından dondurulmuş: izlenen değerin %54,0 kadarı") {
+	if tr := Connections(in); !strings.Contains(tr, "Riskli, çünkü genel risk puanı yüksek; parasının %54,0 kadarı “Tether tarafından dondurulmuş” kategorisine bağlanıyor") || !strings.Contains(tr, "🔴 RİSKLİ · güven %92\n") {
 		t.Errorf("Turkish verdict:\n%s", tr)
 	}
 }

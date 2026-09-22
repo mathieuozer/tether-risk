@@ -224,8 +224,19 @@ verdict:
   # the answer is caution: the other side of those services is not visible,
   # so their customers' funds cannot be vouched for (D30).
   max_unnamed_pct: 50
-  # Confidence: high at or above this coverage with tracing finished,
-  # medium at or above the second, low below.
+  # Confidence is a percentage: the share of traced value that could be
+  # seen well enough to vouch for. Value at a named, non-risk entity counts
+  # fully; value at a category below counts only by its credit (an
+  # unidentified service is half seen: we know it is a service, not what is
+  # behind it; dust proves nothing). Unknown value counts nothing, and each
+  # behaviour note takes behaviour_penalty points off. A risky verdict's
+  # confidence is its coverage, at least 50; a direct listing is 99.
+  confidence_credit:
+    unnamed_service: 0.5
+    dust: 0
+  behaviour_penalty: 15
+  # Confidence buckets, for the API's word: high at or above the first,
+  # medium at or above the second, low below. Unfinished tracing is never high.
   confidence_high: 0.90
   confidence_medium: 0.60
 
