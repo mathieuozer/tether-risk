@@ -320,10 +320,18 @@ func connectionsDirection(d *scoring.DirectionResult) *report.ConnectionsDirecti
 		})
 	}
 	for _, c := range d.Connections {
-		out.Entries = append(out.Entries, report.ConnectionsEntry{
+		e := report.ConnectionsEntry{
 			Address: c.Address, Entity: c.Entity, Category: c.Category,
 			Pct: c.Pct.InexactFloat64(), MinHops: c.MinHops,
-		})
+		}
+		if p := c.Profile; p != nil {
+			e.Profile = &report.ConnectionsProfile{
+				VolumeUSD: p.VolumeUSD.InexactFloat64(), Transfers: p.Transfers, Counterparties: p.Counterparties,
+				FirstSeen: p.FirstSeen.UTC().Format("2006-01-02"), LastSeen: p.LastSeen.UTC().Format("2006-01-02"),
+				Assets: p.Assets, Partial: p.Partial,
+			}
+		}
+		out.Entries = append(out.Entries, e)
 	}
 	for _, r := range d.UnattributedReasons {
 		out.Reasons = append(out.Reasons, report.ConnectionsReason{Reason: r.Reason, Pct: r.Pct.InexactFloat64()})

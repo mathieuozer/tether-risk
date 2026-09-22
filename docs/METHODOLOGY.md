@@ -164,6 +164,29 @@ Every emitted label records the full arithmetic in `evidence` — the hot wallet
 transfer counts, value shares and the thresholds in force — so a reviewer can
 recompute the judgement rather than trust it.
 
+A candidate is judged only once its own history has been fetched. Before
+that, the stored edges show only its transfers to the hot wallet, and every
+such address would pass with a 100% share. Unfetched candidates that could
+pass are queued (`fetch_candidates`, 200 per run) and judged on a later run.
+
+**Reserve-list anchors (D25).** Addresses on HTX's and Poloniex's own
+proof-of-reserves lists also anchor the heuristic (`anchor_sources`). What
+sweeps into a reserve wallet is not always a customer deposit wallet: some
+senders move hundreds of millions in a handful of transfers, which is the
+exchange's own wallet. These labels are therefore named for what was
+observed, "Poloniex (sends to its reserves)", and keep the anchor's
+`unnamed_service` category. First runs, 2026-09-22:
+
+| | Value |
+|---|---|
+| Anchors (HTX 15, Poloniex 7) | 22 |
+| Addresses seen sending to them | 9,439 |
+| Fetched and judged | 400 |
+| Accepted | 208 (Poloniex 197, HTX 11) |
+
+**Precision is not yet measured** for either anchor kind. SPEC.md §6 requires
+it, and it needs a hand-labelled sample, which does not exist yet.
+
 ## 4b. Behavioural service detection
 
 No citable source for named TRON exchange hot wallets exists within the
@@ -344,7 +367,9 @@ measurement.
    are exchanges. The engine traces flows correctly but
    usually cannot name the counterparties. This is a labelling gap, not a
    traversal one, and the reports say so rather than rounding it away.
-2. **The deposit-wallet heuristic has never run**, for the same reason.
+2. **The deposit-wallet heuristic runs only on HTX and Poloniex reserve
+   wallets** (D25), and its precision is unmeasured. With no exchange hot
+   wallets labelled, it has nothing else to anchor on.
 3. **Ethereum and BSC have no live data path.**
 4. **Block-explorer labels are deliberately not ingested.**
 5. **TRC-20 transfers carry a synthetic log index.** TronGrid's TRC-20

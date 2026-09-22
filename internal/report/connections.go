@@ -73,6 +73,21 @@ type ConnectionsEntry struct {
 	Category string
 	Pct      float64 // 0-100 of its direction's traced value
 	MinHops  int
+
+	// Profile is the counterparty's own stored activity, set for unnamed
+	// services; nil otherwise.
+	Profile *ConnectionsProfile
+}
+
+// ConnectionsProfile is what an unnamed service did, which is how it is
+// judged when there is no name to go on.
+type ConnectionsProfile struct {
+	VolumeUSD           float64
+	Transfers           uint64
+	Counterparties      uint64
+	FirstSeen, LastSeen string // YYYY-MM-DD
+	Assets              []string
+	Partial             bool // older history beyond the fetch limit is missing
 }
 
 // ConnectionsReason is part of the unattributed share with one cause.
@@ -194,6 +209,14 @@ func Connections(in ConnectionsInput) string {
 				fmt.Fprintf(&b, "  •   %s\n", displayCategory(s.Category))
 			}
 		}
+		// Every category is accounted for, so a missing line cannot be read
+		// as "not checked".
+		if absent := notFound(shares); len(absent) > 0 {
+			b.WriteString("\nNot found (0%):\n\n")
+			for _, c := range absent {
+				fmt.Fprintf(&b, "  •   %s\n", displayCategory(c))
+			}
+		}
 		b.WriteString("\n")
 
 		writeEntries(&b, in)
@@ -260,6 +283,30 @@ func combine(dirs ...*ConnectionsDirection) ([]ConnectionsCategory, float64, flo
 
 func truncated(d *ConnectionsDirection) bool {
 	return d != nil && (d.FanoutCapped || d.HopLimitReached)
+}
+
+// categoryOrder is every category in config/weights.yaml, highest weight
+// first. A test keeps it in step with the config.
+var categoryOrder = []string{
+	"sanctions", "terrorist_financing", "darknet", "stolen_funds", "mixer", "scam",
+	"high_risk_exchange", "gambling", "unnamed_service", "dust", "dex", "exchange",
+}
+
+// notFound is every category with no traced value, in categoryOrder.
+func notFound(shares []ConnectionsCategory) []string {
+	seen := map[string]bool{}
+	for _, s := range shares {
+		if s.Pct > 0 {
+			seen[s.Category] = true
+		}
+	}
+	var out []string
+	for _, c := range categoryOrder {
+		if !seen[c] {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 var categoryNames = map[string]string{
@@ -340,10 +387,7 @@ func writeEntries(b *strings.Builder, in ConnectionsInput) {
 				fmt.Fprintf(b, "    … and %d more\n", len(sd.d.Entries)-5)
 				break
 			}
-			name := e.Entity
-			if name == "" {
-				name = displayCategory(e.Category)
-			}
+			name := entryName(e)
 			amount := ""
 			if sd.volume > 0 {
 				amount = " ≈ " + usd(e.Pct/100*sd.volume)
@@ -354,6 +398,9 @@ func writeEntries(b *strings.Builder, in ConnectionsInput) {
 			}
 			fmt.Fprintf(b, "    %d. %s (%s)\n       %s · %s%s · %s\n",
 				i+1, name, shortAddress(e.Address), displayCategory(e.Category), share, amount, hops(e.MinHops))
+			if p := e.Profile; p != nil {
+				fmt.Fprintf(b, "       %s\n", profileText(p))
+			}
 		}
 	}
 	b.WriteString("\n")
@@ -439,6 +486,37 @@ func reasonText(r string) string {
 	return strings.ReplaceAll(r, "_", " ")
 }
 
+// entryName is how a counterparty is named in the list. The service
+// detector's labels read "Unidentified high-volume service"; the category
+// line already says the operator is unnamed, and the profile says what the
+// service is, so the name says only what kind of wallet it is.
+func entryName(e ConnectionsEntry) string {
+	if e.Entity == "" {
+		return displayCategory(e.Category)
+	}
+	if rest, ok := strings.CutPrefix(e.Entity, "Unidentified "); ok && rest != "" {
+		return strings.ToUpper(rest[:1]) + rest[1:]
+	}
+	return e.Entity
+}
+
+// profileText describes an unnamed service by what it did: how much it moved,
+// with how many addresses, when, and in what.
+func profileText(p *ConnectionsProfile) string {
+	out := fmt.Sprintf("%s moved with %s across %s",
+		usd(p.VolumeUSD), plural(p.Counterparties, "address"), plural(p.Transfers, "stored transfer"))
+	if p.Partial {
+		out += " (partial history)"
+	}
+	if p.FirstSeen != "" {
+		out += fmt.Sprintf(" · %s → %s", p.FirstSeen, p.LastSeen)
+	}
+	if len(p.Assets) > 0 {
+		out += " · " + strings.Join(p.Assets, ", ")
+	}
+	return out
+}
+
 func hops(n int) string {
 	switch n {
 	case 0, 1:
@@ -460,9 +538,18 @@ func plural(n uint64, word string) string {
 		return "1 " + word
 	}
 	if strings.HasSuffix(word, "ss") {
-		return fmt.Sprintf("%d %ses", n, word)
+		return fmt.Sprintf("%s %ses", thousands(n), word)
 	}
-	return fmt.Sprintf("%d %ss", n, word)
+	return fmt.Sprintf("%s %ss", thousands(n), word)
+}
+
+// thousands formats n with comma separators: 10000 -> "10,000".
+func thousands(n uint64) string {
+	s := fmt.Sprintf("%d", n)
+	for i := len(s) - 3; i > 0; i -= 3 {
+		s = s[:i] + "," + s[i:]
+	}
+	return s
 }
 
 // usd formats a dollar amount compactly.

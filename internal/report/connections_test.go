@@ -1,6 +1,9 @@
 package report
 
 import (
+	"path/filepath"
+
+	"github.com/mozer/tether-risk/internal/config"
 	"strings"
 	"testing"
 )
@@ -186,5 +189,87 @@ func TestConnectionsReportsFrontier(t *testing.T) {
 	})
 	if !strings.Contains(out, "Tracing further: 100 of 122 addresses where the trail stops are queued") {
 		t.Errorf("frontier progress missing:\n%s", out)
+	}
+}
+
+func TestCategoryOrderMatchesWeights(t *testing.T) {
+	cfg, err := config.Load(filepath.Join("..", "..", "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := map[string]bool{}
+	for _, c := range categoryOrder {
+		listed[c] = true
+		if _, ok := cfg.Weights.Categories[c]; !ok {
+			t.Errorf("categoryOrder has %q, which weights.yaml does not define", c)
+		}
+		if _, ok := categoryNames[c]; !ok {
+			t.Errorf("category %q has no display name", c)
+		}
+	}
+	for c := range cfg.Weights.Categories {
+		if !listed[c] {
+			t.Errorf("weights.yaml defines %q, missing from categoryOrder", c)
+		}
+	}
+}
+
+func TestConnectionsListsEveryCategory(t *testing.T) {
+	out := Connections(ConnectionsInput{
+		Address: "TAddr", Chain: "tron", Band: "low", Coverage: 1,
+		Inbound: &ConnectionsDirection{
+			TracedWeight: 1,
+			Categories: []ConnectionsCategory{
+				{Category: "unnamed_service", Pct: 99.95},
+				{Category: "dust", Pct: 0.05},
+			},
+		},
+	})
+	for _, want := range []string{
+		"Unnamed service - 100.0%",
+		"Less than 0.1%:\n\n  •   Dust",
+		"Not found (0%):\n\n  •   Sanctions\n",
+		"  •   Exchange\n",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	notFoundPart := out[strings.Index(out, "Not found (0%)"):]
+	notFoundPart = notFoundPart[:strings.Index(notFoundPart, "🛡")]
+	for _, gone := range []string{"Unnamed service", "Dust"} {
+		if strings.Contains(notFoundPart, gone) {
+			t.Errorf("%s has traced value but is listed as not found:\n%s", gone, notFoundPart)
+		}
+	}
+}
+
+func TestConnectionsDescribesUnnamedService(t *testing.T) {
+	out := Connections(ConnectionsInput{
+		Address: "TAddr", Chain: "tron", Band: "low", Coverage: 1,
+		Activity: &ConnectionsActivity{InUSD: 19600, InTransfers: 39, InCounterparties: 31},
+		Inbound: &ConnectionsDirection{
+			TracedWeight: 1,
+			Categories:   []ConnectionsCategory{{Category: "unnamed_service", Pct: 100}},
+			Entries: []ConnectionsEntry{{
+				Address: "TFTqpcigcD64vsg9W8WsSYJZ5t8PqrTAYX", Entity: "Unidentified high-volume service",
+				Category: "unnamed_service", Pct: 67.1, MinHops: 1,
+				Profile: &ConnectionsProfile{
+					VolumeUSD: 43977446, Transfers: 10000, Counterparties: 6402,
+					FirstSeen: "2026-09-04", LastSeen: "2026-09-21", Assets: []string{"USDT"}, Partial: true,
+				},
+			}},
+		},
+	})
+	for _, want := range []string{
+		"1. High-volume service (TFTqpc…TAYX)",
+		"$43.98M moved with 6,402 addresses across 10,000 stored transfers (partial history) · 2026-09-04 → 2026-09-21 · USDT",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "Unidentified") {
+		t.Errorf("entry still reads as unidentified:\n%s", out)
 	}
 }

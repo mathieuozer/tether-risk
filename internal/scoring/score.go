@@ -182,6 +182,28 @@ type Connection struct {
 	// MinHops is the shortest path length at which it was reached.
 	MinHops int
 	Paths   int
+
+	// Profile is the counterparty's own stored activity. It is filled in for
+	// unnamed services, which a label identifies only by behaviour, so a
+	// reader can judge one by its size and shape. It does not affect the
+	// score. Nil when the counterparty's history has not been fetched.
+	Profile *Profile
+}
+
+// Profile summarises an address's own stored transfers.
+type Profile struct {
+	VolumeUSD      decimal.Decimal // in plus out
+	Transfers      uint64
+	Counterparties uint64
+	FirstSeen      time.Time
+	LastSeen       time.Time
+	Assets         []string
+
+	// Partial reports that the address's own fetch stopped at the
+	// per-address page limit, so older history is missing. Transfers can
+	// still exceed that limit: stored edges also hold transfers seen from
+	// other fetched addresses.
+	Partial bool
 }
 
 // ReasonShare is the part of the unattributed share with one stopping reason.

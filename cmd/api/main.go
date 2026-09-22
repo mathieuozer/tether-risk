@@ -246,6 +246,19 @@ type connectionResponse struct {
 	Pct        float64 `json:"pct"`
 	MinHops    int     `json:"min_hops"`
 	Paths      int     `json:"paths"`
+
+	Profile *profileResponse `json:"profile,omitempty"`
+}
+
+// profileResponse is an unnamed service's own stored activity.
+type profileResponse struct {
+	VolumeUSD      float64  `json:"volume_usd"`
+	Transfers      uint64   `json:"transfers"`
+	Counterparties uint64   `json:"counterparties"`
+	FirstSeen      string   `json:"first_seen"` // YYYY-MM-DD
+	LastSeen       string   `json:"last_seen"`
+	Assets         []string `json:"assets"`
+	Partial        bool     `json:"partial"` // most recent history only
 }
 
 type reasonResponse struct {
@@ -515,10 +528,18 @@ func toDirection(d *scoring.DirectionResult) *directionResponse {
 		})
 	}
 	for _, c := range d.Connections {
-		out.Connections = append(out.Connections, connectionResponse{
+		cr := connectionResponse{
 			Address: c.Address, Entity: c.Entity, Category: c.Category, Source: c.Source,
 			Confidence: c.Confidence, Pct: round(c.Pct, 4), MinHops: c.MinHops, Paths: c.Paths,
-		})
+		}
+		if p := c.Profile; p != nil {
+			cr.Profile = &profileResponse{
+				VolumeUSD: round(p.VolumeUSD, 2), Transfers: p.Transfers, Counterparties: p.Counterparties,
+				FirstSeen: p.FirstSeen.UTC().Format("2006-01-02"), LastSeen: p.LastSeen.UTC().Format("2006-01-02"),
+				Assets: p.Assets, Partial: p.Partial,
+			}
+		}
+		out.Connections = append(out.Connections, cr)
 	}
 	for _, r := range d.UnattributedReasons {
 		out.UnattributedReasons = append(out.UnattributedReasons, reasonResponse{

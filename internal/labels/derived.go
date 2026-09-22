@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/mozer/tether-risk/internal/config"
 	"github.com/shopspring/decimal"
@@ -44,7 +45,16 @@ type DepositCandidate struct {
 
 	Accepted bool
 	Rejected string // why, when not accepted
+
+	// NeedsFetch marks a candidate rejected only because its own history is
+	// not stored. It could pass once fetched, so the caller queues it.
+	NeedsFetch bool
 }
+
+// FetchedFunc reports which of the addresses have had their own history
+// fetched. Everything else is known only from the transfers stored for
+// other addresses.
+type FetchedFunc func(ctx context.Context, addresses []string) (map[string]bool, error)
 
 // DeriveDeposits finds deposit wallets feeding known hot wallets.
 //
@@ -57,6 +67,10 @@ var DepositAnchorCategories = []string{"exchange", "high_risk_exchange"}
 
 // DepositAnchors picks the hot wallets the deposit heuristic may anchor on.
 //
+// A label anchors when it carries an exchange category, or when it comes from
+// one of anchorSources (config derived_deposit.anchor_sources) and names its
+// entity: an exchange's own reserve list proves who controls the address.
+//
 // Labels the heuristic itself produced are excluded even though they carry an
 // exchange category. A deposit wallet is not a hot wallet: anchoring on it
 // would label its own senders as deposit wallets too, and each run would push
@@ -65,13 +79,18 @@ var DepositAnchorCategories = []string{"exchange", "high_risk_exchange"}
 // Where an address carries several qualifying labels, the most confident
 // wins, ties broken by source then id so the choice is deterministic
 // (docs/DECISIONS.md D6).
-func DepositAnchors(in []Label) map[string]Label {
+func DepositAnchors(in []Label, anchorSources []string) map[string]Label {
+	bySource := make(map[string]bool, len(anchorSources))
+	for _, s := range anchorSources {
+		bySource[s] = true
+	}
 	out := map[string]Label{}
 	for _, l := range in {
 		if l.Source == "derived:deposit" {
 			continue
 		}
-		if l.Category != "exchange" && l.Category != "high_risk_exchange" {
+		exchange := l.Category == "exchange" || l.Category == "high_risk_exchange"
+		if !exchange && !(bySource[l.Source] && l.Entity != "") {
 			continue
 		}
 		cur, ok := out[l.Address]
@@ -84,7 +103,13 @@ func DepositAnchors(in []Label) map[string]Label {
 	return out
 }
 
-func DeriveDeposits(ctx context.Context, ch *sql.DB, cfg *config.Config, snapshotLabels map[string]Label, chainID string) ([]DepositCandidate, []Label, error) {
+// anchors is DepositAnchors' output. fetched decides which candidates can be
+// judged: "little or no outbound activity to anything else" cannot be
+// evaluated for an address whose own history was never fetched, because the
+// stored edges then show only its transfers to the hot wallet. Judging it
+// anyway would accept every such address with a 100% share.
+func DeriveDeposits(ctx context.Context, ch *sql.DB, cfg *config.Config, anchors map[string]Label, chainID string, fetched FetchedFunc) ([]DepositCandidate, []Label, error) {
+	snapshotLabels := anchors
 	rules := cfg.Weights.DerivedDeposit
 	if !rules.Enabled {
 		return nil, nil, nil
@@ -95,14 +120,12 @@ func DeriveDeposits(ctx context.Context, ch *sql.DB, cfg *config.Config, snapsho
 	// so plainly beats returning an empty result that reads like "no deposit
 	// wallets exist".
 	hot := make([]string, 0, len(snapshotLabels))
-	for addr, l := range snapshotLabels {
-		if l.Category == "exchange" || l.Category == "high_risk_exchange" {
-			hot = append(hot, addr)
-		}
+	for addr := range snapshotLabels {
+		hot = append(hot, addr)
 	}
 	if len(hot) == 0 {
 		return nil, nil, fmt.Errorf(
-			"no exchange labels in this snapshot, so no deposit wallets can be derived; " +
+			"no anchor labels in this snapshot, so no deposit wallets can be derived; " +
 				"populate config/curated_labels.yaml with exchange hot wallets first")
 	}
 	sort.Strings(hot) // determinism (docs/DECISIONS.md D6)
@@ -159,6 +182,11 @@ func DeriveDeposits(ctx context.Context, ch *sql.DB, cfg *config.Config, snapsho
 	}
 	sort.Strings(order)
 
+	have, err := fetched(ctx, order)
+	if err != nil {
+		return nil, nil, fmt.Errorf("deposit candidates: %w", err)
+	}
+
 	isHot := make(map[string]bool, len(hot))
 	for _, h := range hot {
 		isHot[h] = true
@@ -192,7 +220,9 @@ func DeriveDeposits(ctx context.Context, ch *sql.DB, cfg *config.Config, snapsho
 				others++
 			}
 		}
-		if !bestFound {
+		if !bestFound || isHot[addr] {
+			// A hot wallet sending to another of the same exchange's hot
+			// wallets is an internal transfer, not a deposit.
 			continue
 		}
 
@@ -207,6 +237,14 @@ func DeriveDeposits(ctx context.Context, ch *sql.DB, cfg *config.Config, snapsho
 		}
 		if l, ok := snapshotLabels[best.to]; ok {
 			c.HotWalletEntity = l.Entity
+		}
+
+		if !have[addr] {
+			c.Rejected = "own history not fetched, so its other outbound activity is unknown"
+			// Worth fetching only if it could pass once its history is known.
+			c.NeedsFetch = c.TransfersToHotWallet >= rules.MinTransfers
+			candidates = append(candidates, c)
+			continue
 		}
 
 		// An address whose outbound value is entirely unpriced cannot be
@@ -242,14 +280,10 @@ func DeriveDeposits(ctx context.Context, ch *sql.DB, cfg *config.Config, snapsho
 			continue
 		}
 
-		entity := c.HotWalletEntity
-		if entity == "" {
-			entity = c.HotWallet
-		}
 		out = append(out, Label{
 			Chain:   chainID,
 			Address: addr,
-			Entity:  entity + " (deposit wallet)",
+			Entity:  depositEntity(snapshotLabels[c.HotWallet], c.HotWallet, rules.AnchorSources),
 			// A deposit wallet belongs to its exchange, so it inherits the
 			// exchange category. That is the whole point: funds reaching it
 			// have reached that exchange.
@@ -279,6 +313,27 @@ func DeriveDeposits(ctx context.Context, ch *sql.DB, cfg *config.Config, snapsho
 	}
 
 	return candidates, out, nil
+}
+
+// depositEntity names a derived label after its anchor.
+//
+// Anchored on an exchange hot wallet, the address is a customer deposit wallet
+// sweeping into it. Anchored on a reserve-list address it is not: reserve
+// wallets are mostly cold storage, and what sweeps into cold storage is the
+// exchange's own wallet, often a hot wallet moving millions in a few
+// transfers. So those say only what was observed. The anchor's own role, such
+// as "(proof-of-reserves wallet)", is dropped from the name.
+func depositEntity(anchor Label, hotWallet string, anchorSources []string) string {
+	name, _, _ := strings.Cut(anchor.Entity, " (")
+	if name == "" {
+		name = hotWallet
+	}
+	for _, s := range anchorSources {
+		if anchor.Source == s {
+			return name + " (sends to its reserves)"
+		}
+	}
+	return name + " (deposit wallet)"
 }
 
 func categoryOf(labels map[string]Label, address string) string {

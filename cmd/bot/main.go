@@ -271,6 +271,15 @@ type direction struct {
 		Category string  `json:"category"`
 		Pct      float64 `json:"pct"`
 		MinHops  int     `json:"min_hops"`
+		Profile  *struct {
+			VolumeUSD      float64  `json:"volume_usd"`
+			Transfers      uint64   `json:"transfers"`
+			Counterparties uint64   `json:"counterparties"`
+			FirstSeen      string   `json:"first_seen"`
+			LastSeen       string   `json:"last_seen"`
+			Assets         []string `json:"assets"`
+			Partial        bool     `json:"partial"`
+		} `json:"profile"`
 	} `json:"connections"`
 	UnattributedReasons []struct {
 		Reason string  `json:"reason"`
@@ -411,9 +420,16 @@ func summaryDirection(d *direction) *report.ConnectionsDirection {
 		out.Categories = append(out.Categories, report.ConnectionsCategory{Category: c.Category, Pct: c.Pct})
 	}
 	for _, c := range d.Connections {
-		out.Entries = append(out.Entries, report.ConnectionsEntry{
+		e := report.ConnectionsEntry{
 			Address: c.Address, Entity: c.Entity, Category: c.Category, Pct: c.Pct, MinHops: c.MinHops,
-		})
+		}
+		if p := c.Profile; p != nil {
+			e.Profile = &report.ConnectionsProfile{
+				VolumeUSD: p.VolumeUSD, Transfers: p.Transfers, Counterparties: p.Counterparties,
+				FirstSeen: p.FirstSeen, LastSeen: p.LastSeen, Assets: p.Assets, Partial: p.Partial,
+			}
+		}
+		out.Entries = append(out.Entries, e)
 	}
 	for _, rs := range d.UnattributedReasons {
 		out.Reasons = append(out.Reasons, report.ConnectionsReason{Reason: rs.Reason, Pct: rs.Pct})

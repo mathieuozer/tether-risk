@@ -92,7 +92,7 @@ func TestDepositAnchorsExcludeDerivedDeposits(t *testing.T) {
 		{ID: 2, Address: "TDeposit", Category: "exchange", Source: "derived:deposit", Confidence: 0.8},
 		{ID: 3, Address: "TRisky", Category: "high_risk_exchange", Source: "curated", Confidence: 0.95},
 		{ID: 4, Address: "TScam", Category: "scam", Source: "scamsniffer", Confidence: 0.5},
-	})
+	}, nil)
 	if len(got) != 2 {
 		t.Fatalf("got %d anchors, want 2: %v", len(got), got)
 	}
@@ -110,8 +110,39 @@ func TestDepositAnchorsPickMostConfidentLabel(t *testing.T) {
 	got := DepositAnchors([]Label{
 		{ID: 7, Address: "THot", Category: "exchange", Source: "curated", Confidence: 0.95, Entity: "Curated name"},
 		{ID: 3, Address: "THot", Category: "high_risk_exchange", Source: "dune", Confidence: 0.8, Entity: "Dune name"},
-	})
+	}, nil)
 	if got["THot"].Entity != "Curated name" {
 		t.Errorf("picked %q, want the more confident label", got["THot"].Entity)
+	}
+}
+
+// An exchange's own reserve list anchors the heuristic even though its labels
+// are unnamed_service: it proves who controls the address. A derived service
+// label in the same category does not, because it names nobody.
+func TestDepositAnchorsIncludeReserveLists(t *testing.T) {
+	got := DepositAnchors([]Label{
+		{ID: 1, Address: "THtx", Category: "unnamed_service", Source: "htx_por", Confidence: 0.9, Entity: "HTX"},
+		{ID: 2, Address: "TBusy", Category: "unnamed_service", Source: "derived:service", Confidence: 0.75,
+			Entity: "Unidentified high-volume service"},
+		{ID: 3, Address: "TNoName", Category: "unnamed_service", Source: "htx_por", Confidence: 0.9},
+	}, []string{"htx_por", "poloniex_por"})
+	if len(got) != 1 || got["THtx"].Entity != "HTX" {
+		t.Fatalf("got %v, want only THtx anchored as HTX", got)
+	}
+}
+
+func TestDepositEntityNamesWhatWasObserved(t *testing.T) {
+	sources := []string{"htx_por", "poloniex_por"}
+	for _, tc := range []struct {
+		anchor Label
+		want   string
+	}{
+		{Label{Entity: "Poloniex (proof-of-reserves wallet)", Source: "poloniex_por"}, "Poloniex (sends to its reserves)"},
+		{Label{Entity: "Binance hot wallet", Source: "curated"}, "Binance hot wallet (deposit wallet)"},
+		{Label{Source: "curated"}, "THot (deposit wallet)"},
+	} {
+		if got := depositEntity(tc.anchor, "THot", sources); got != tc.want {
+			t.Errorf("depositEntity(%+v) = %q, want %q", tc.anchor, got, tc.want)
+		}
 	}
 }

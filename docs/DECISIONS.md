@@ -743,3 +743,52 @@ before it is abandoned, which a rate-limit window does not last. `Release`
 clears `not_before`, because a worker shutting down is not a failure.
 Nothing waits on a job finishing: screening scores what is stored and says
 what is still being fetched, so the backoff only delays the retry.
+
+## D25 — reserve lists anchor the deposit heuristic; unnamed services are described, not hidden
+
+**Date:** 2026-09-22 · **Status:** active · **Follows:** D19, D24
+
+A commercial screener's report on the same kind of address reads "Exchange
+61%". Ours read "Unidentified high-volume service" for nearly all of it. We
+hold no `exchange` labels (D19), so the gap is naming, not tracing.
+
+**The weight of `unnamed_service` stays at 15.** Lowering it was considered
+and rejected. Unnamed flow alone can score at most 15, inside the Low band,
+so the weight never flags a clean address. What it does is keep an unnamed
+service from reading as a regulated exchange. Many service-shaped wallets
+are no-KYC exchanges, OTC desks or payment processors, and at weight 2 an
+address that is 60% unnamed and 20% gambling would score 6, not 14. A score
+comes down honestly when a service is named, not when unknown is re-rated.
+
+**Reserve lists anchor the deposit heuristic.** The heuristic anchored only
+on `exchange` labels, so it had never fired. The HTX and Poloniex reserve
+addresses (D19) name the exchange, so `derived_deposit.anchor_sources` now
+lets them anchor it. Labels keep the anchor's category, `unnamed_service`:
+the list names the exchange without saying anything about its KYC tier.
+They are named "Poloniex (sends to its reserves)" rather than "deposit
+wallet", because some senders move hundreds of millions in a few transfers,
+which is the exchange's own wallet rather than a customer's.
+
+Two faults surfaced on the first run:
+
+- **Unfetched candidates would have passed.** An address never fetched shows
+  only its transfers to the hot wallet, so its share was 100% by
+  construction. Candidates are now judged only once fetched; the rest are
+  queued, 200 per run, and judged on the next.
+- **A TRC-20 item with no token contract failed the whole address.**
+  TronGrid returns an empty `token_info` for tokens it cannot resolve (seen
+  on 2021 transfers of value 1). Every retry failed the same way, and D24's
+  backoff only spread five doomed attempts over 16 minutes. The item is now
+  skipped. It is never stored under a guessed asset, so D18 still holds.
+
+Result: 9,439 addresses sent to the 22 reserve wallets. Of the 400 fetched
+and judged, 208 were accepted: 197 Poloniex, 11 HTX. Precision is
+unmeasured; see METHODOLOGY.md §4.
+
+**Unnamed services are described.** The connections summary now shows each
+unnamed service's stored activity, for example "$43.98M moved with 6,402
+addresses across 10,000 stored transfers", so a reader can judge its size and
+shape without a name. The "Unidentified" prefix is dropped from the list,
+because the category line already says the operator is unnamed. Every
+category is listed, including those at 0%, so a missing line cannot be read
+as "not checked".

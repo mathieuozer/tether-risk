@@ -116,6 +116,16 @@ type DerivedDeposit struct {
 	MinOutboundShare float64 `yaml:"min_outbound_share"`
 	MaxOtherShare    float64 `yaml:"max_other_share"`
 	Confidence       float64 `yaml:"confidence"`
+
+	// AnchorSources are label sources whose addresses anchor the heuristic
+	// whatever their category: an exchange's own reserve list proves who
+	// controls an address without saying anything about its KYC tier.
+	AnchorSources []string `yaml:"anchor_sources"`
+
+	// FetchCandidates caps how many unfetched candidates one run queues for
+	// fetching. A candidate is judged on its whole outbound history, which
+	// is unknown until it has been fetched.
+	FetchCandidates int `yaml:"fetch_candidates"`
 }
 
 // ---------------------------------------------------------------------------
@@ -337,6 +347,9 @@ func (c *Config) Validate() error {
 		if d.Confidence <= 0 || d.Confidence > 1 {
 			bad("derived_deposit.confidence: must be in (0,1], got %v", d.Confidence)
 		}
+		if d.FetchCandidates < 0 {
+			bad("derived_deposit.fetch_candidates: must not be negative, got %d", d.FetchCandidates)
+		}
 	}
 
 	// --- label rules reference real categories and real sources ---
@@ -401,6 +414,11 @@ func (c *Config) Validate() error {
 	for _, id := range c.Weights.Labels.AbuseReports.Sources {
 		if !known[id] {
 			bad("labels.abuse_reports.sources: %q is not a source in sources.yaml", id)
+		}
+	}
+	for _, id := range c.Weights.DerivedDeposit.AnchorSources {
+		if !known[id] {
+			bad("derived_deposit.anchor_sources: %q is not a source in sources.yaml", id)
 		}
 	}
 

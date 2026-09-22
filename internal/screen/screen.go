@@ -254,6 +254,10 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 	}
 	res.Activity = act
 
+	if err := s.profile(ctx, chainID, res); err != nil {
+		return nil, err
+	}
+
 	if err := s.depthStatus(ctx, chainID, address, depth); err != nil {
 		return nil, err
 	}

@@ -138,6 +138,16 @@ derived_deposit:
   max_other_share: 0.20
   # Confidence stamped on emitted labels.
   confidence: 0.6
+  # Sources whose addresses anchor the heuristic whatever their category.
+  # An exchange's own proof-of-reserves list proves it controls an address,
+  # so a wallet sweeping into one is that exchange's deposit wallet. The
+  # label keeps the anchor's category (unnamed_service for these, D19): the
+  # list names the exchange without saying anything about its KYC tier
+  # (docs/DECISIONS.md D25).
+  anchor_sources: [htx_por, poloniex_por]
+  # Unfetched candidates queued per run. A candidate is judged on its whole
+  # outbound history, which is unknown until fetched; the next run judges it.
+  fetch_candidates: 200
 
 # ---------------------------------------------------------------------------
 # Pricing. docs/PLAN.md F3: no commercial price feed is available, so USD

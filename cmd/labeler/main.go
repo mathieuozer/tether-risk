@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"flag"
 	"fmt"
 	"io"
@@ -115,7 +116,7 @@ func run(ctx context.Context, cmd, configDir, chainID, ofacFile string, log *slo
 	case "derive-services":
 		return deriveServices(ctx, cfg, st, chainID, log)
 	case "derive":
-		return derive(ctx, cfg, st, chainID, log)
+		return derive(ctx, cfg, pg, st, chainID, log)
 	case "counts":
 		return counts(ctx, st)
 	case "conflicts":
@@ -474,7 +475,7 @@ func deriveServices(ctx context.Context, cfg *config.Config, st *labels.Store,
 	return nil
 }
 
-func derive(ctx context.Context, cfg *config.Config, st *labels.Store, chainID string, log *slog.Logger) error {
+func derive(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labels.Store, chainID string, log *slog.Logger) error {
 	ch, err := store.OpenClickHouse(ctx)
 	if err != nil {
 		return err
@@ -493,7 +494,15 @@ func derive(ctx context.Context, cfg *config.Config, st *labels.Store, chainID s
 	if err != nil {
 		return err
 	}
-	known := labels.DepositAnchors(exchangeLabels)
+	rules := cfg.Weights.DerivedDeposit
+	if len(rules.AnchorSources) > 0 {
+		bySource, err := st.BySources(ctx, snapshotID, chainID, rules.AnchorSources)
+		if err != nil {
+			return err
+		}
+		exchangeLabels = append(exchangeLabels, bySource...)
+	}
+	known := labels.DepositAnchors(exchangeLabels, rules.AnchorSources)
 	log.Info("deposit anchors loaded", "snapshot", snapshotID, "hot_wallets", len(known))
 	if len(known) == 0 {
 		// Not a failure of this run: there is simply nothing to anchor on
@@ -506,9 +515,56 @@ func derive(ctx context.Context, cfg *config.Config, st *labels.Store, chainID s
 		return nil
 	}
 
-	candidates, derived, err := labels.DeriveDeposits(ctx, ch, cfg, known, chainID)
+	jobs := store.NewJobs(pg)
+	fetched := func(ctx context.Context, addrs []string) (map[string]bool, error) {
+		return fetchedAddresses(ctx, pg, chainID, addrs)
+	}
+
+	// An anchor's depositors are found from its own history, so an anchor
+	// never fetched finds none. Queue those; the worker fetches them and the
+	// next run sees their senders.
+	anchors := make([]string, 0, len(known))
+	for a := range known {
+		anchors = append(anchors, a)
+	}
+	sort.Strings(anchors)
+	haveAnchor, err := fetched(ctx, anchors)
 	if err != nil {
 		return err
+	}
+	var anchorsQueued int
+	for _, a := range anchors {
+		if !haveAnchor[a] {
+			if err := jobs.Enqueue(ctx, chainID, a, 0, nil); err != nil {
+				return err
+			}
+			anchorsQueued++
+		}
+	}
+
+	candidates, derived, err := labels.DeriveDeposits(ctx, ch, cfg, known, chainID, fetched)
+	if err != nil {
+		return err
+	}
+
+	// Candidates rejected only for lack of history are queued, largest
+	// value to the hot wallet first, so the next run can judge them.
+	var needFetch []labels.DepositCandidate
+	for _, c := range candidates {
+		if c.NeedsFetch {
+			needFetch = append(needFetch, c)
+		}
+	}
+	sort.SliceStable(needFetch, func(i, j int) bool {
+		return needFetch[i].ValueToHotWallet.GreaterThan(needFetch[j].ValueToHotWallet)
+	})
+	if len(needFetch) > rules.FetchCandidates {
+		needFetch = needFetch[:rules.FetchCandidates]
+	}
+	for _, c := range needFetch {
+		if err := jobs.Enqueue(ctx, chainID, c.Address, 0, nil); err != nil {
+			return err
+		}
 	}
 
 	var accepted int
@@ -520,6 +576,8 @@ func derive(ctx context.Context, cfg *config.Config, st *labels.Store, chainID s
 	fmt.Printf("candidates examined: %d\n", len(candidates))
 	fmt.Printf("accepted:            %d\n", accepted)
 	fmt.Printf("rejected:            %d\n", len(candidates)-accepted)
+	fmt.Printf("anchors:             %d (%d queued for fetching)\n", len(known), anchorsQueued)
+	fmt.Printf("candidates queued:   %d (judged on the next run, once fetched)\n", len(needFetch))
 
 	if len(derived) > 0 {
 		snap, err := st.OpenSnapshot(ctx, "derived deposit wallets")
@@ -536,6 +594,28 @@ func derive(ctx context.Context, cfg *config.Config, st *labels.Store, chainID s
 		log.Info("derived labels written", "snapshot", snap, "inserted", res.Inserted)
 	}
 	return nil
+}
+
+// fetchedAddresses reports which addresses have their own history stored.
+func fetchedAddresses(ctx context.Context, pg *sql.DB, chainID string, addrs []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	if len(addrs) == 0 {
+		return out, nil
+	}
+	rows, err := pg.QueryContext(ctx,
+		`SELECT address FROM address_freshness WHERE chain = $1 AND address = ANY($2)`, chainID, addrs)
+	if err != nil {
+		return nil, fmt.Errorf("fetched addresses: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		out[a] = true
+	}
+	return out, rows.Err()
 }
 
 func counts(ctx context.Context, st *labels.Store) error {
