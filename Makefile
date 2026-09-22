@@ -129,6 +129,8 @@ worker-install: ## Run the ingest worker permanently, restarting it if it stops
 		'  <key>StandardErrorPath</key><string>$(CURDIR)/.data/logs/worker.log</string>' \
 		'</dict></plist>' > $(WORKER_PLIST)
 	@launchctl bootout gui/$$(id -u)/$(WORKER_LABEL) 2>/dev/null || true
+	@# bootout returns before the service is gone; bootstrapping too soon fails with error 5.
+	@while launchctl print gui/$$(id -u)/$(WORKER_LABEL) >/dev/null 2>&1; do sleep 1; done
 	@launchctl bootstrap gui/$$(id -u) $(WORKER_PLIST)
 	@echo "ingest worker running under launchd; log in .data/logs/worker.log"
 
@@ -137,6 +139,41 @@ worker-uninstall: ## Stop and remove the permanent ingest worker
 	@launchctl bootout gui/$$(id -u)/$(WORKER_LABEL) 2>/dev/null || true
 	@rm -f $(WORKER_PLIST)
 	@echo "ingest worker removed"
+
+# ---------------------------------------------------------------------------
+# Screening API (scripts/api.sh), kept alive by launchd
+# ---------------------------------------------------------------------------
+
+API_LABEL := com.tether-risk.api
+API_PLIST := $(HOME)/Library/LaunchAgents/$(API_LABEL).plist
+
+.PHONY: api-install
+api-install: ## Run the API permanently on API_ADDR (default :8099), restarting it if it stops
+	@mkdir -p $(HOME)/Library/LaunchAgents .data/logs
+	@printf '%s\n' \
+		'<?xml version="1.0" encoding="UTF-8"?>' \
+		'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+		'<plist version="1.0"><dict>' \
+		'  <key>Label</key><string>$(API_LABEL)</string>' \
+		'  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$(CURDIR)/scripts/api.sh</string></array>' \
+		'  <key>WorkingDirectory</key><string>$(CURDIR)</string>' \
+		'  <key>RunAtLoad</key><true/>' \
+		'  <key>KeepAlive</key><true/>' \
+		'  <key>ThrottleInterval</key><integer>60</integer>' \
+		'  <key>StandardOutPath</key><string>$(CURDIR)/.data/logs/api.log</string>' \
+		'  <key>StandardErrorPath</key><string>$(CURDIR)/.data/logs/api.log</string>' \
+		'</dict></plist>' > $(API_PLIST)
+	@launchctl bootout gui/$$(id -u)/$(API_LABEL) 2>/dev/null || true
+	@# bootout returns before the service is gone; bootstrapping too soon fails with error 5.
+	@while launchctl print gui/$$(id -u)/$(API_LABEL) >/dev/null 2>&1; do sleep 1; done
+	@launchctl bootstrap gui/$$(id -u) $(API_PLIST)
+	@echo "api running under launchd; log in .data/logs/api.log"
+
+.PHONY: api-uninstall
+api-uninstall: ## Stop and remove the permanent API
+	@launchctl bootout gui/$$(id -u)/$(API_LABEL) 2>/dev/null || true
+	@rm -f $(API_PLIST)
+	@echo "api removed"
 
 # ---------------------------------------------------------------------------
 # Build gates

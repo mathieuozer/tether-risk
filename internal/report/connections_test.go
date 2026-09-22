@@ -227,20 +227,21 @@ func TestConnectionsListsEveryCategory(t *testing.T) {
 	})
 	for _, want := range []string{
 		"Unnamed service - 100.0%",
-		"Less than 0.1%:\n\n  •   Dust",
-		"Not found (0%):\n\n  •   Sanctions\n",
-		"  •   Exchange\n",
+		// Trace amounts first, then every category not found, in one list.
+		"Less than 0.1%:\n\n  •   Dust\n  •   Sanctions\n  •   Terrorist Financing\n",
+		"  •   DEX\n  •   Exchange\n",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
 	}
-	notFoundPart := out[strings.Index(out, "Not found (0%)"):]
-	notFoundPart = notFoundPart[:strings.Index(notFoundPart, "🛡")]
-	for _, gone := range []string{"Unnamed service", "Dust"} {
-		if strings.Contains(notFoundPart, gone) {
-			t.Errorf("%s has traced value but is listed as not found:\n%s", gone, notFoundPart)
-		}
+	small := out[strings.Index(out, "Less than 0.1%"):]
+	small = small[:strings.Index(small, "🛡")]
+	if strings.Contains(small, "Unnamed service") {
+		t.Errorf("a listed category is repeated under less than 0.1%%:\n%s", small)
+	}
+	if strings.Count(small, "Dust") != 1 {
+		t.Errorf("dust should appear once:\n%s", small)
 	}
 }
 

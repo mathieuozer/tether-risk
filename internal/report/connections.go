@@ -203,17 +203,17 @@ func Connections(in ConnectionsInput) string {
 				}
 			}
 		}
-		if len(minor) > 0 {
-			b.WriteString("\nLess than 0.1%:\n\n")
-			for _, s := range minor {
-				fmt.Fprintf(&b, "  •   %s\n", displayCategory(s.Category))
-			}
-		}
 		// Every category is accounted for, so a missing line cannot be read
-		// as "not checked".
-		if absent := notFound(shares); len(absent) > 0 {
-			b.WriteString("\nNot found (0%):\n\n")
-			for _, c := range absent {
+		// as "not checked". Those found in trace amounts come first, then
+		// those not found at all, in one list as other screeners lay it out.
+		small := make([]string, 0, len(minor)+len(categoryOrder))
+		for _, s := range minor {
+			small = append(small, s.Category)
+		}
+		small = append(small, notFound(shares)...)
+		if len(small) > 0 {
+			b.WriteString("\nLess than 0.1%:\n\n")
+			for _, c := range small {
 				fmt.Fprintf(&b, "  •   %s\n", displayCategory(c))
 			}
 		}
