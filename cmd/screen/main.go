@@ -276,7 +276,7 @@ func connectionsInput(res *scoring.Result) report.ConnectionsInput {
 		Disclaimer:        disclaimer,
 	}
 	if l := res.OwnLabel; l != nil {
-		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: l.Entity, Category: l.Category}
+		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: l.Entity, Category: l.Category, Imitates: l.Imitates}
 	}
 	if d := res.Depth; d != nil {
 		in.Depth = &report.ConnectionsDepth{
@@ -307,12 +307,12 @@ func connectionsInput(res *scoring.Result) report.ConnectionsInput {
 	for _, f := range res.Flags {
 		in.Flags = append(in.Flags, report.ConnectionsFlag{Code: f.Code, InUSD: f.InUSD.InexactFloat64(),
 			OutUSD: f.OutUSD.InexactFloat64(), VolumeUSD: f.VolumeUSD.InexactFloat64(), Days: f.Days, AgeDays: f.AgeDays,
-			Count: f.Count, AmountUSD: f.AmountUSD.InexactFloat64(), Minutes: f.Minutes})
+			Count: f.Count, AmountUSD: f.AmountUSD.InexactFloat64(), Minutes: f.Minutes, Address: f.Address})
 	}
 	if v := res.Verdict; v != nil {
 		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Insufficient: v.Insufficient}
 		for _, r := range v.Reasons {
-			cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: r.Code, Category: r.Category, Flag: r.Flag, Pct: r.Pct})
+			cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: r.Code, Category: r.Category, Flag: r.Flag, Address: r.Address, Pct: r.Pct})
 		}
 		in.Verdict = cv
 	}

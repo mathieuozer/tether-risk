@@ -187,7 +187,9 @@ type ownLabelResponse struct {
 	Source     string  `json:"source"`
 	Confidence float64 `json:"confidence"`
 	Conflicted bool    `json:"conflicted,omitempty"`
-	Note       string  `json:"note"`
+	// Imitates: for an address-poisoning sender, the address it imitates.
+	Imitates string `json:"imitates,omitempty"`
+	Note     string `json:"note"`
 }
 
 type directionResponse struct {
@@ -227,6 +229,8 @@ type verdictReasonResponse struct {
 	Category string  `json:"category,omitempty"`
 	Pct      float64 `json:"pct,omitempty"`
 	Flag     string  `json:"flag,omitempty"`
+	// Address is the address a poisoning sender imitates.
+	Address string `json:"address,omitempty"`
 }
 
 func toVerdict(v *scoring.Verdict) *verdictResponse {
@@ -236,7 +240,7 @@ func toVerdict(v *scoring.Verdict) *verdictResponse {
 	out := &verdictResponse{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, InsufficientData: v.Insufficient, Reasons: []verdictReasonResponse{}}
 	for _, r := range v.Reasons {
 		out.Reasons = append(out.Reasons, verdictReasonResponse{Code: r.Code, Category: r.Category,
-			Pct: float64(int(r.Pct*100+0.5)) / 100, Flag: r.Flag})
+			Pct: float64(int(r.Pct*100+0.5)) / 100, Flag: r.Flag, Address: r.Address})
 	}
 	return out
 }
@@ -251,6 +255,7 @@ type flagResponse struct {
 	Count     int     `json:"count,omitempty"`
 	AmountUSD float64 `json:"amount_usd,omitempty"`
 	Minutes   int     `json:"minutes,omitempty"`
+	Address   string  `json:"address,omitempty"`
 }
 
 type activityResponse struct {
@@ -501,7 +506,7 @@ func toResponse(res *scoring.Result) screenResponse {
 	if l := res.OwnLabel; l != nil {
 		own = &ownLabelResponse{
 			Entity: l.Entity, Category: l.Category, Source: l.Source,
-			Confidence: l.Confidence, Conflicted: l.Conflicted,
+			Confidence: l.Confidence, Conflicted: l.Conflicted, Imitates: l.Imitates,
 			Note: "This address is directly listed by the named source. " +
 				"That is a finding in its own right, separate from the traced exposure below.",
 		}
@@ -546,7 +551,7 @@ func toFlags(fs []scoring.Flag) []flagResponse {
 	for _, f := range fs {
 		out = append(out, flagResponse{Code: f.Code, InUSD: round(f.InUSD, 2), OutUSD: round(f.OutUSD, 2),
 			VolumeUSD: round(f.VolumeUSD, 2), Days: f.Days, AgeDays: f.AgeDays,
-			Count: f.Count, AmountUSD: round(f.AmountUSD, 2), Minutes: f.Minutes})
+			Count: f.Count, AmountUSD: round(f.AmountUSD, 2), Minutes: f.Minutes, Address: f.Address})
 	}
 	return out
 }

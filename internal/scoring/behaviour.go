@@ -12,15 +12,16 @@ import (
 // D28). Flags are shown with the result and never enter the score: they say
 // what the address did, not what it is.
 type Flag struct {
-	Code      string          // pass_through, new_address, high_volume_new, round_split, parked_funds
+	Code      string          // pass_through, new_address, high_volume_new, round_split, parked_funds, poisoning_target
 	InUSD     decimal.Decimal // pass_through
 	OutUSD    decimal.Decimal // pass_through
 	VolumeUSD decimal.Decimal // high_volume_new
 	Days      int             // pass_through: span of activity
 	AgeDays   int             // new_address, high_volume_new
-	Count     int             // round_split: recipients; parked_funds: wallets
+	Count     int             // round_split: recipients; parked_funds: wallets; poisoning_target: look-alikes
 	AmountUSD decimal.Decimal // round_split: each amount; parked_funds: total held
 	Minutes   int             // round_split: window
+	Address   string          // poisoning_target: one address a look-alike imitated
 }
 
 // OutTransfer is one outbound edge as seen for splitting and parking.

@@ -26,6 +26,11 @@ categories:
   scam:                 {weight: 70,  description: "Fraud, phishing, ponzi"}
   high_risk_exchange:   {weight: 40,  description: "Exchange with absent or nominal KYC"}
   gambling:             {weight: 25,  description: "Gambling service"}
+  # A service whose operator is named (by its own reserve list, or by chain
+  # evidence tied to it) while its KYC tier is not rated. Weighted as an
+  # unnamed service, since a name is not a KYC claim (D19), but its value
+  # counts as seen for confidence, because we know who holds it (D32).
+  named_service:        {weight: 15,  description: "Service with a named operator, KYC tier unrated"}
   unnamed_service:      {weight: 15,  description: "Service-shaped behaviour, operator unidentified"}
   dust:                 {weight: 5,   description: "Unsolicited inbound below the dust threshold"}
   dex:                  {weight: 5,   description: "Decentralised exchange or AMM"}
@@ -105,6 +110,8 @@ labels:
     - poloniex_por
     - dune
     - derived:hotwallet
+    - derived:operator
+    - derived:poisoning
     - derived:deposit
     - derived:service
     - chainabuse
@@ -368,3 +375,29 @@ derived_service:
   # and that uncertainty is carried by the category's weight rather than by
   # the confidence.
   confidence: 0.75
+
+# ---------------------------------------------------------------------------
+# Operator grouping (docs/DECISIONS.md D31). A TRON account exists once
+# something pays to create it, and operators create their wallets from a few
+# operations accounts. Wallets sharing such an activator are one operator's.
+derived_operator:
+  enabled: true
+  # Activations read per run, one API call each.
+  max_fetches: 3000
+  # The smallest creating transfer that names its sender as the reserve
+  # wallet's operator. Anyone can send a fraction of a TRX to an address;
+  # two HTX reserves were first reached by 0.1 and 1 TRX.
+  min_creator_trx: 10
+
+# ---------------------------------------------------------------------------
+# Address poisoning (docs/DECISIONS.md D32). A dust transfer to a victim from
+# an address that starts and ends like one of the victim's real
+# counterparties is a poisoning, and its sender is labelled scam. The match
+# counts from the leading T, so 4 + 4 fixes seven random characters: odds of
+# a coincidence are about one in two trillion per comparison.
+derived_poisoning:
+  enabled: true
+  max_dust_usd: 1
+  min_real_usd: 100
+  match_prefix: 4
+  match_suffix: 4

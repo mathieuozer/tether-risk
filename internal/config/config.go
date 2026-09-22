@@ -46,6 +46,8 @@ type Weights struct {
 	Labels           LabelRules       `yaml:"labels"`
 	DerivedDeposit   DerivedDeposit   `yaml:"derived_deposit"`
 	DerivedHotWallet DerivedHotWallet `yaml:"derived_hotwallet"`
+	DerivedOperator  DerivedOperator  `yaml:"derived_operator"`
+	DerivedPoisoning DerivedPoisoning `yaml:"derived_poisoning"`
 	Behaviour        Behaviour        `yaml:"behaviour"`
 	Verdict          Verdict          `yaml:"verdict"`
 	DerivedService   DerivedService   `yaml:"derived_service"`
@@ -173,6 +175,31 @@ type Behaviour struct {
 		MinWallets   int     `yaml:"min_wallets"`
 		MinTotalUSD  float64 `yaml:"min_total_usd"`
 	} `yaml:"parked"`
+}
+
+// DerivedPoisoning configures address-poisoning detection
+// (docs/DECISIONS.md D32).
+type DerivedPoisoning struct {
+	Enabled bool `yaml:"enabled"`
+	// MaxDustUSD: a sender-to-victim edge below this is the poisoning dust.
+	MaxDustUSD float64 `yaml:"max_dust_usd"`
+	// MinRealUSD: a victim-counterparty edge at or above this is the real
+	// relationship being imitated.
+	MinRealUSD float64 `yaml:"min_real_usd"`
+	// MatchPrefix and MatchSuffix: characters that must agree at each end.
+	MatchPrefix int `yaml:"match_prefix"`
+	MatchSuffix int `yaml:"match_suffix"`
+}
+
+// DerivedOperator configures grouping service wallets by the operations
+// account that created them (docs/DECISIONS.md D31).
+type DerivedOperator struct {
+	Enabled bool `yaml:"enabled"`
+	// MaxFetches bounds the activations read per run, one API call each.
+	MaxFetches int `yaml:"max_fetches"`
+	// MinCreatorTRX is the smallest creating transfer that makes its sender
+	// a reserve wallet's operator.
+	MinCreatorTRX int64 `yaml:"min_creator_trx"`
 }
 
 // DerivedHotWallet configures exchange hot-wallet detection from two-way

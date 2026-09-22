@@ -135,3 +135,31 @@ func TestRiskConnectionsListedFirst(t *testing.T) {
 		t.Errorf("frozen connection not listed first:\n%s", out)
 	}
 }
+
+// A poisoning answer names the look-alike and says only that.
+func TestPoisoningVerdictText(t *testing.T) {
+	in := ConnectionsInput{Address: "TBkgVghdGoFYpP3EajvuNt8j8qX4xEEtN8", Chain: "tron", Lang: "tr",
+		OwnLabel: &ConnectionsOwnLabel{Category: "scam", Imitates: "TBkgikRealxxxxxxxxxxxxxxxxxxxEtN8"},
+		Verdict: &ConnectionsVerdict{Level: "high_risk", ConfidencePct: 99, Reasons: []ConnectionsVerdictReason{
+			{Code: "poisoning", Category: "scam", Address: "TBkgikRealxxxxxxxxxxxxxxxxxxxEtN8"}, {Code: "low_coverage", Pct: 51}}}}
+	tr := Connections(in)
+	for _, want := range []string{"🔴 RİSKLİ · güven %99\n   Riskli: bu bir adres zehirleme adresi, TBkgik…EtN8 adresine benzetilmiş.",
+		"Bu adres doğrudan listede: Adres zehirleme, TBkgik…EtN8 adresinin taklidi (Dolandırıcılık)"} {
+		if !strings.Contains(tr, want) {
+			t.Errorf("missing %q in:\n%s", want, tr)
+		}
+	}
+	if strings.Contains(tr, "%51") {
+		t.Errorf("a secondary reason leaked into a poisoning answer:\n%s", tr)
+	}
+}
+
+// A poisoning target is warned, with an address it was made to confuse.
+func TestPoisoningTargetNote(t *testing.T) {
+	in := ConnectionsInput{Address: "TVictim", Chain: "tron", Lang: "tr",
+		Flags: []ConnectionsFlag{{Code: "poisoning_target", Count: 3, Address: "TBkgikRealxxxxxxxxxxxxxxxxxxxEtN8"}}}
+	want := "Adres zehirleme hedefi: bu cüzdana 3 taklit adresten değersiz transfer gelmiş, örneğin TBkgik…EtN8 adresini taklit eden biri."
+	if tr := Connections(in); !strings.Contains(tr, want) {
+		t.Errorf("missing %q in:\n%s", want, tr)
+	}
+}

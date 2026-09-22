@@ -1149,3 +1149,150 @@ minutes, none of which has moved since):
   reasons, thresholds in `behaviour`;
 - a plain-language paragraph under every verdict saying why, in the
   reader's language.
+
+---
+
+## D31 — naming wallets by who created them, and what else closes the gap
+
+**Date:** 2026-09-22 · **Status:** active · **Follows:** D19, D28, D30
+
+Our largest gap against competitors is naming. They name exchanges; we
+mostly say "unidentified service", so a wallet AMLBot calls 87.5% exchange
+reads to us as 50% confidence. This entry records what was tried without
+the owner, what worked and what did not.
+
+**Account creation is first-party evidence.** A TRON account exists once
+something pays to create it. `labeler activations` reads the creating
+transaction of every labelled service wallet (1,922 read, 8 with none, in
+13 minutes) into `activations`. Two rules follow from an exchange's own
+reserve list, and only from it:
+
+- whoever created a reserve wallet is the exchange. HTX's reserves were
+  created with transfers of up to 951M, 600M and 100M TRX. A creation under
+  10 TRX (`derived_operator.min_creator_trx`) is not counted, because
+  anyone can send a fraction of a TRX to an address; two HTX reserves were
+  first reached by 0.1 and 1 TRX;
+- whatever a reserve wallet created is the exchange's, because reserves
+  never pay customers. Poloniex's reserve TWhDfw…5M2 created 265 of its
+  deposit wallets.
+
+Wallets created by a hot wallet are not named: a payout to a customer's
+fresh wallet creates it, so "created by an exchange's hot wallet" describes
+customers too. Nine wallets are named (`derived:operator`), four of them
+service hubs. The yield is small today because only 22 reserve wallets are
+known. Each wallet named another way, such as a test transfer, now names its
+creator and its creations too.
+
+**Found in my own code:** the rule read its own earlier labels as "already
+named", so the second run produced nothing and withdrew all eleven labels
+the first had made. `OperatorInputs` now separates the rule's own output from
+its inputs, and `TestReserveOperatorsRerunIsStable` pins it.
+
+**Sources read on the owner's behalf.** Both remain closed to a paid
+product:
+
+- Chainabuse: the Terms of Use grant a licence "solely for your personal,
+  non-commercial use". Only a Chainabuse Pro agreement changes that.
+- OKX reserve addresses: Terms of Service §9.4 forbid commercial use
+  without OKX's explicit authorisation, and §8.1 forbids copying. This is
+  the same position as Binance in D19.
+
+**First-ring fetching.** A screen now fetches its largest unknown direct
+counterparties itself before answering (20 s budget, serial because
+TronGrid penalises concurrency, only those carrying at least 5% of the
+address's value). Measured with `validate ring` on two samples of 20
+fetched wallets:
+
+| | Coverage | Confidence | Screen time |
+|---|---|---|---|
+| Every counterparty (first sample) | 12.0% → 15.4% | 9.9% → 10.6% | +~20 s |
+| Value-gated (second sample) | 29.9% → 30.7% | 12.9% → 16.6% | 11.1 s → 17.4 s |
+
+The gain is concentrated: two wallets went from 1.6% to 51.7% and from 5.1%
+to 57.9%. A counterparty too large to fetch within the budget used to cost
+the whole budget; each now gets at most 8 s, and the worker finishes it.
+The measurement repeated D30's queue mistake: `validate ring` queued its
+screens' follow-ups at customer priority, and with ad-hoc test screens that
+put 8,574 jobs ahead of a real request. It now queues in the background,
+as `validate verdict` does.
+
+**Comparison tooling.** `validate sample` writes a stratified sheet (15
+listed, 25 exposed, 20 deposit, 10 service, 30 ordinary wallets) for the
+owner to screen in a competitor's tool. `validate compare` on the filled
+sheet sets our risky or not-risky answer, confidence and category shares
+beside theirs, counted per stratum. The sheet lives under `.data/`, not in
+this public repository, because a competitor's results are theirs to
+publish.
+
+---
+
+## D32 — address-poisoning senders are labelled scam
+
+**Date:** 2026-09-22 · **Status:** active · **Follows:** D31
+
+A poisoner watches for a real transfer between a victim and a
+counterparty. It generates an address that starts and ends like the
+counterparty's, and sends the victim a worthless transfer from it. The
+look-alike now sits in the victim's history, and a victim who copies the
+usual address from there pays the poisoner. It was found while measuring
+D31: a wallet we called "not risky" had sent 144 transfers of 2 sun to 94
+addresses.
+
+**The signature is exact.** Take a dust edge (under $1) from S to V where V
+has a real counterparty C (at least $100) with S's first four and last four
+characters. Counting from the leading T, that fixes seven random
+characters, so a coincidence has odds of about one in two trillion. In
+stored data:
+
+| | |
+|---|---|
+| Look-alike pairs | 31,007 |
+| Dust arriving after the real transfer it imitates | 30,937 (99.8%) |
+| … within the hour | 11,106 |
+| Senders labelled | 24,952 |
+| Distinct victims | ~2,500 |
+| Overlap with any other label | none |
+
+Only senders with at least one reactive pair (dust after the real
+transfer) are labelled, since a coincidence between vanity addresses could
+only hide among the rest. The rule is rerun in full daily and withdraws what
+it no longer produces. Joining on the recipient and the look-alike key
+together keeps the query at 21 s. Filtering after a join on the recipient
+alone ran past the ClickHouse read timeout.
+
+**What the reader sees.** Screening a poisoner answers "RİSKLİ · güven %99",
+names the address it imitates, and tells the reader to take the real address
+from the recipient, never from history. The listing line says "Adres
+zehirleme, TBkgik…EtN8 adresinin taklidi". No secondary reason follows a
+listing or a poisoning: "coverage 51%" under "this is a poisoner" read as
+if it mattered as much.
+
+**Found in my own code on the way:** a verdict reason read "0.0% of its
+money is linked to Frozen by Tether". Exposures under 0.1%, which the
+report lists as "less than 0.1%", are no longer reasons
+(`TestVerdictIgnoresNegligibleExposure`).
+
+**The other side: warning the target.** A screened wallet that poisoning
+senders have dusted gets a note: how many look-alikes reached it, one
+address they imitate, and "never copy an address from history". The
+victim did nothing, so the note changes neither verdict nor confidence.
+Inbound dust is classified as dust before labels are consulted, so a
+victim's traced exposure never turns scam because it was dusted. Of 40
+victims screened, the 3 answered risky were risky for Tether-frozen
+exposure of 6–27%, not for the poisoning.
+
+**Batch queries get their own timeout.** Under a busy worker the
+poisoning join ran past the 60 s read timeout meant for interactive
+screens (3 m 37 s on the second run, 43,717 pairs, 33,540 senders). The
+labeler now opens ClickHouse with a 15-minute read timeout
+(`store.OpenClickHouseBatch`); screens keep 60 s.
+
+**`named_service` split from `unnamed_service`.** The benchmark showed
+all 50 exchange deposit wallets answering caution, because wallets we know
+to be HTX's or Poloniex's carried the same category as wallets nobody can
+name. The report called HTX "a service whose operator is unknown" and
+confidence counted it at half. Reserve lists, and every wallet derived from
+them (hot wallets, operators, deposits: 455 today), are now
+`named_service`. It is weighted 15 like `unnamed_service`, because a name is
+not a KYC tier (D19). Its value counts fully towards confidence, and it
+never triggers the unidentified-service reason.

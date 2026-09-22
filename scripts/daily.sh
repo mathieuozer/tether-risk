@@ -80,6 +80,8 @@ step "price load TRX"         bin/price -chain tron load TRX
 step "labeler ingest"         bin/labeler ingest
 step "price backfill"         bin/price -chain tron backfill
 step "labeler derive-services" bin/labeler -chain tron derive-services
+# Who created each service wallet: only new ones cost a call (D31).
+step "labeler activations"    bin/labeler -chain tron activations
 step "labeler derive"         bin/labeler -chain tron derive
 
 # Keep a month of logs.

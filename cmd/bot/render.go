@@ -43,6 +43,7 @@ type screenResponse struct {
 			Category string  `json:"category"`
 			Pct      float64 `json:"pct"`
 			Flag     string  `json:"flag"`
+			Address  string  `json:"address"`
 		} `json:"reasons"`
 	} `json:"verdict"`
 
@@ -56,11 +57,13 @@ type screenResponse struct {
 		Count     int     `json:"count"`
 		AmountUSD float64 `json:"amount_usd"`
 		Minutes   int     `json:"minutes"`
+		Address   string  `json:"address"`
 	} `json:"flags"`
 
 	OwnLabel *struct {
 		Entity   string `json:"entity"`
 		Category string `json:"category"`
+		Imitates string `json:"imitates"`
 	} `json:"own_label"`
 
 	Activity *struct {
@@ -233,17 +236,17 @@ func summary(r *screenResponse, lang string, followUp bool) string {
 	}
 	for _, f := range r.Flags {
 		in.Flags = append(in.Flags, report.ConnectionsFlag{Code: f.Code, InUSD: f.InUSD, OutUSD: f.OutUSD,
-			VolumeUSD: f.VolumeUSD, Days: f.Days, AgeDays: f.AgeDays, Count: f.Count, AmountUSD: f.AmountUSD, Minutes: f.Minutes})
+			VolumeUSD: f.VolumeUSD, Days: f.Days, AgeDays: f.AgeDays, Count: f.Count, AmountUSD: f.AmountUSD, Minutes: f.Minutes, Address: f.Address})
 	}
 	if v := r.Verdict; v != nil {
 		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Insufficient: v.InsufficientData}
 		for _, x := range v.Reasons {
-			cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: x.Code, Category: x.Category, Flag: x.Flag, Pct: x.Pct})
+			cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: x.Code, Category: x.Category, Flag: x.Flag, Address: x.Address, Pct: x.Pct})
 		}
 		in.Verdict = cv
 	}
 	if r.OwnLabel != nil {
-		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: r.OwnLabel.Entity, Category: r.OwnLabel.Category}
+		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: r.OwnLabel.Entity, Category: r.OwnLabel.Category, Imitates: r.OwnLabel.Imitates}
 	}
 	if d := r.Depth; d != nil {
 		in.Depth = &report.ConnectionsDepth{

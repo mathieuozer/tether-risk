@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	_ "github.com/ClickHouse/clickhouse-go/v2" // registers the "clickhouse" driver
@@ -72,7 +73,23 @@ func OpenPostgres(ctx context.Context) (*sql.DB, error) {
 
 // OpenClickHouse opens and verifies a ClickHouse connection pool.
 func OpenClickHouse(ctx context.Context) (*sql.DB, error) {
-	db, err := sql.Open("clickhouse", ClickHouseDSN())
+	return openClickHouse(ctx, ClickHouseDSN())
+}
+
+// OpenClickHouseBatch opens a pool for batch analytics, whose whole-table
+// joins can outlast the 60 s read timeout meant for interactive screens:
+// the poisoning join took 21 s alone and over 60 s beside a busy worker
+// (docs/DECISIONS.md D32). A DSN from the environment is left as given.
+func OpenClickHouseBatch(ctx context.Context) (*sql.DB, error) {
+	dsn := ClickHouseDSN()
+	if os.Getenv("CLICKHOUSE_DSN") == "" {
+		dsn = strings.Replace(dsn, "read_timeout=60s", "read_timeout=15m", 1)
+	}
+	return openClickHouse(ctx, dsn)
+}
+
+func openClickHouse(ctx context.Context, dsn string) (*sql.DB, error) {
+	db, err := sql.Open("clickhouse", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open clickhouse: %w", err)
 	}

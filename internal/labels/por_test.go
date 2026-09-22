@@ -59,8 +59,8 @@ func TestParsePoRCSVDoesNotAssertExchangeTier(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, l := range got {
-		if l.Category != "unnamed_service" {
-			t.Errorf("%s category = %s, want unnamed_service", l.Address, l.Category)
+		if l.Category != "named_service" {
+			t.Errorf("%s category = %s, want named_service", l.Address, l.Category)
 		}
 		if !strings.HasPrefix(l.Entity, "HTX") {
 			t.Errorf("entity %q should name the exchange", l.Entity)

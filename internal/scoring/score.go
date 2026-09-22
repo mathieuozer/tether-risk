@@ -141,6 +141,9 @@ type DepthStatus struct {
 	// HistoryTruncated reports that the address has more history than the
 	// per-address page limit fetches, so its own activity is partial.
 	HistoryTruncated bool
+	// RingFetched is how many of the largest unknown counterparties the
+	// screen fetched itself before answering (docs/DECISIONS.md D31).
+	RingFetched int
 	// Counterparties is how many counterparties are queued for tracing (the
 	// most active, up to the enqueue cap); Traced is how many of them have
 	// their own history stored.
@@ -173,6 +176,10 @@ type OwnLabel struct {
 
 	// Conflicted reports that sources disagreed about what this address is.
 	Conflicted bool
+
+	// Imitates is set when the address is an address-poisoning sender: the
+	// real address it was made to look like (docs/DECISIONS.md D32).
+	Imitates string
 }
 
 // Connection is one identified counterparty, reached directly or through

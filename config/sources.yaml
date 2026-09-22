@@ -126,13 +126,15 @@ sources:
   # -------------------------------------------------------------------------
   - id: chainabuse
     name: "Chainabuse community reports"
-    status: needs_review
+    status: blocked
     confidence: 0.5
-    checked: 2026-09-20
+    checked: 2026-09-22
     blocked_reason: >
-      Bulk access requires an API key issued under terms that have not yet
-      been read by a human. Left disabled until they are. Do not enable by
-      scraping the public site.
+      Terms of Use (chainabuse.com/ChainAbuse_TermsofUse.pdf) grant "a limited
+      license ... to access and use the Chainabuse Content solely for your
+      personal, non-commercial use". A paid screening product is commercial,
+      so neither the API nor the site may be used. Only a commercial
+      agreement (Chainabuse Pro) would change this (docs/DECISIONS.md D31).
 
   - id: cryptoscamdb
     name: "CryptoScamDB"
@@ -234,13 +236,16 @@ sources:
 
   - id: okx_por
     name: "OKX proof-of-reserves addresses"
-    status: needs_review
+    status: blocked
     confidence: 0.9
-    checked: 2026-09-21
+    checked: 2026-09-22
     blocked_reason: >
       OKX's GitHub repository holds only the verification tool; the address
-      file is downloaded from okx.com. OKX's website terms have not been read,
-      so this stays disabled until they are.
+      file is downloaded from okx.com. OKX's Terms of Service §9.4: "You may
+      not use the OKX Platform or the Services for any commercial purpose
+      unless otherwise explicitly authorized by OKX"; §8.1 forbids copying or
+      distributing any of its products. As with Binance (D19), only written
+      permission from OKX would change this (docs/DECISIONS.md D31).
 
   # -------------------------------------------------------------------------
   # Curated in-repo list. SPEC.md §6.5.
@@ -292,6 +297,37 @@ sources:
       sweeps back. Labelled with the reserve list's category (unnamed_service,
       D19) and the exchange named. Thresholds in weights.yaml under
       derived_hotwallet (docs/DECISIONS.md D28).
+
+  - id: "derived:operator"
+    name: "Wallets linked to an exchange's reserves by account creation"
+    status: allowed
+    confidence: 0.8
+    schedule: after_ingest
+    licence: "Derived from chain data"
+    redistribution: permitted
+    checked: 2026-09-22
+    notes: >
+      A TRON account exists once something pays to create it. Whoever created
+      an exchange's reserve wallet is the exchange, and what a reserve wallet
+      created is the exchange's, since reserves never pay customers. Wallets
+      created by hot wallets are not named: payouts create customers' wallets
+      too. Labelled with the reserve list's category and the exchange named
+      (docs/DECISIONS.md D31).
+
+  - id: "derived:poisoning"
+    name: "Address-poisoning senders"
+    status: allowed
+    confidence: 0.9
+    schedule: after_ingest
+    licence: "Derived from chain data"
+    redistribution: permitted
+    checked: 2026-09-22
+    notes: >
+      An address that sends a victim dust while starting and ending like one
+      of the victim's real counterparties, after the real transfer it
+      imitates, is a poisoner: it plants a look-alike in the victim's history
+      to be copied by mistake. Labelled scam. Thresholds in weights.yaml
+      under derived_poisoning (docs/DECISIONS.md D32).
 
   - id: "derived:deposit"
     name: "Derived exchange deposit wallets"

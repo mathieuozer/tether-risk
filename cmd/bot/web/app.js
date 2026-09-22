@@ -24,7 +24,7 @@
 
   // Same as categoryOrder / riskChecks in internal/report/connections.go.
   var CATEGORY_ORDER = ['sanctions', 'terrorist_financing', 'darknet', 'stolen_funds', 'frozen_funds', 'mixer', 'scam',
-    'high_risk_exchange', 'gambling', 'unnamed_service', 'dust', 'dex', 'exchange'];
+    'high_risk_exchange', 'gambling', 'named_service', 'unnamed_service', 'dust', 'dex', 'exchange'];
   var RISK_CHECKS = ['sanctions', 'terrorist_financing', 'darknet', 'stolen_funds', 'frozen_funds',
     'mixer', 'scam', 'high_risk_exchange', 'gambling'];
   var SEVERE = ['sanctions', 'terrorist_financing', 'darknet', 'stolen_funds', 'frozen_funds', 'mixer', 'scam'];
@@ -1149,7 +1149,8 @@
   function resultBanners(r) {
     var out = '';
     if (r.own_label) {
-      var name = r.own_label.entity || catName(r.own_label.category);
+      var name = r.own_label.imitates ? tt('poisoning_entity', { addr: short(r.own_label.imitates) })
+        : (r.own_label.entity || catName(r.own_label.category));
       out += '<div class="note danger strong" role="alert">' + icon('ban') + '<div class="note-body"><p><strong>' +
         tt('listed_title') + '</strong></p><p>' + tt('listed_body', { name: name, category: catName(r.own_label.category) }) + '</p></div></div>';
     }
@@ -1300,7 +1301,8 @@
     var v = r.verdict;
     if (!v || !v.level) return '';
     var reasons = (v.reasons || []).slice(0, 2).map(function (x) {
-      var p = { pct: fmtPct(x.pct || 0), cat: x.category ? catName(x.category) : '', flag: x.flag ? tt('flag_' + x.flag + '_title') : '' };
+      var p = { pct: fmtPct(x.pct || 0), cat: x.category ? catName(x.category) : '', flag: x.flag ? tt('flag_' + x.flag + '_title') : '',
+        addr: x.address ? short(x.address) : '' };
       return '<li>' + esc(tt('vr_' + x.code, p)) + '</li>';
     }).join('');
     return '<section class="card verdict verdict-' + esc(v.level) + '" aria-labelledby="verdict-title">' +
@@ -1320,7 +1322,8 @@
         '<span class="flag-text">' + tt(FLAG_TEXT[f.code], {
           inn: fmtUSD(f.in_usd || 0), out: fmtUSD(f.out_usd || 0), vol: fmtUSD(f.volume_usd || 0),
           days: fmtInt(f.days || 0), age: fmtInt(f.age_days || 0),
-          n: fmtInt(f.count || 0), amt: fmtUSD(f.amount_usd || 0), min: fmtInt(f.minutes || 0)
+          n: fmtInt(f.count || 0), amt: fmtUSD(f.amount_usd || 0), min: fmtInt(f.minutes || 0),
+          addr: f.address ? short(f.address) : ''
         }) + '</span></li>';
     }).join('');
     return '<section class="card" aria-labelledby="flags-title"><div class="card-head"><div><h2 id="flags-title">' +
@@ -1329,7 +1332,7 @@
   }
 
   var FLAG_TEXT = { pass_through: 'flag_pass_through', high_volume_new: 'flag_high_volume_new', new_address: 'flag_new_address',
-    round_split: 'flag_round_split', parked_funds: 'flag_parked_funds' };
+    round_split: 'flag_round_split', parked_funds: 'flag_parked_funds', poisoning_target: 'flag_poisoning_target' };
 
   function entriesCard(r) {
     var inN = hasEntries(r.inbound) ? r.inbound.connections.length : 0;

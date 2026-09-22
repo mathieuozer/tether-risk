@@ -17,7 +17,8 @@ import (
 // authoritative about the exchange's own wallets, these are the cleanest
 // open source of named exchange addresses (docs/DECISIONS.md D19).
 //
-// They are labelled unnamed_service, not exchange. Whether an exchange has
+// They are labelled named_service, not exchange (D32 split it from
+// unnamed_service: the operator is known, the KYC tier is not). Whether an exchange has
 // functioning KYC is what separates `exchange` (weight 2) from
 // `high_risk_exchange` (weight 40), and a reserve list says nothing about it.
 // The exchange's name is recorded as the entity, so the address is identified
@@ -113,7 +114,7 @@ func ParsePoRCSV(ctx context.Context, r io.Reader, exchange, sourceID, sourceURL
 			Chain:      "tron",
 			Address:    a,
 			Entity:     exchange + " (proof-of-reserves wallet)",
-			Category:   "unnamed_service",
+			Category:   "named_service",
 			Confidence: confidence,
 			Source:     sourceID,
 			Evidence: map[string]any{
@@ -122,7 +123,7 @@ func ParsePoRCSV(ctx context.Context, r io.Reader, exchange, sourceID, sourceURL
 				"snapshot_height":  e.height,
 				"ownership_signed": e.signed,
 				"note": "Published by the exchange as part of its own reserve attestation. " +
-					"Labelled unnamed_service because the list establishes who controls the " +
+					"Labelled named_service because the list establishes who controls the " +
 					"address, not the exchange's KYC standard (docs/DECISIONS.md D19).",
 			},
 		})

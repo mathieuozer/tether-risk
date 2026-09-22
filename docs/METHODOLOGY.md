@@ -305,6 +305,32 @@ heuristic, which in turn is what moves coverage off the floor.
 
 ---
 
+## 4e. Wallets named by account creation (D31)
+
+A TRON account exists once something pays to create it, and the creating
+transaction is on chain. Starting from an exchange's own reserve list:
+
+| Rule | Why it holds |
+|---|---|
+| The creator of a reserve wallet is the exchange | Reserves were created with up to 951M TRX; only the owner makes that transfer. Creations under 10 TRX are ignored, because anyone can send a fraction of a TRX. |
+| A wallet a reserve created is the exchange's | Reserves are cold and never pay customers. |
+
+Wallets created by hot wallets are not named, because a payout creates a
+customer's wallet the same way. Labels are `derived:operator`, confidence
+0.8, category taken from the reserve list (identity, not a KYC tier).
+
+## 4f. Address-poisoning senders (D32)
+
+A dust transfer (under $1) from S to V, where V has a real counterparty C
+(at least $100) sharing S's first four and last four characters, is a
+poisoning. Counting from the leading T, seven random characters agree, so a
+coincidence has odds of about one in two trillion. A sender is labelled
+`scam` (`derived:poisoning`, confidence 0.9) when at least one of its dust
+transfers arrived after the real transfer it imitates. That was 99.8% of
+31,007 pairs, 11,106 of them within the hour. Screening such a sender
+answers risky, names the address it imitates, and tells the reader to take
+addresses from the recipient rather than from history.
+
 ## 5. Traversal
 
 Breadth-first over the aggregated `edges` table, one direction at a time.
@@ -367,6 +393,7 @@ recomputing a score by hand from the stored path set gets the same number back.
 | `high_risk_exchange` | 40 | Absent or nominal KYC. A real signal, but these process large volumes of ordinary activity. |
 | `gambling` | 25 | Legal in most jurisdictions; elevated only because it is a common layering venue. |
 | `unnamed_service` | 15 | Service-shaped behaviour with an unidentified operator. Mild, and mostly a prompt to investigate. |
+| `named_service` | 15 | A service whose operator is named by its own reserve list or by chain evidence tied to it, KYC tier unrated. Weighted as `unnamed_service` because a name is not a KYC claim (D19). Its value counts fully towards confidence (D32). |
 | `dust` | 5 | Near-zero by design: the address owner did not consent to receiving it. |
 | `dex` | 5 | Ordinary activity; non-custodial and fully transparent on-chain. |
 | `exchange` | 2 | Functioning KYC. Reaching a regulated exchange is close to reassuring. |

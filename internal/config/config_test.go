@@ -37,6 +37,9 @@ func TestLoadRealConfig(t *testing.T) {
 		// Added beyond SPEC.md §7 by docs/DECISIONS.md D29; justified in
 		// docs/METHODOLOGY.md.
 		"frozen_funds": 85,
+		// Split from unnamed_service by D32: a named operator, weighted the
+		// same because a name is not a KYC tier.
+		"named_service": 15,
 	}
 	for cat, w := range want {
 		got, ok := c.CategoryWeight(cat)

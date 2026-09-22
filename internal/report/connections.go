@@ -58,8 +58,8 @@ type ConnectionsVerdict struct {
 }
 
 type ConnectionsVerdictReason struct {
-	Code, Category, Flag string
-	Pct                  float64
+	Code, Category, Flag, Address string
+	Pct                           float64
 }
 
 // ConnectionsFlag is one behaviour note.
@@ -67,6 +67,7 @@ type ConnectionsFlag struct {
 	Code                                string
 	InUSD, OutUSD, VolumeUSD, AmountUSD float64
 	Days, AgeDays, Count, Minutes       int
+	Address                             string // poisoning_target: an imitated address
 }
 
 // ConnectionsActivity is what the address itself did, before attribution.
@@ -132,6 +133,7 @@ type ConnectionsReason struct {
 type ConnectionsOwnLabel struct {
 	Entity   string
 	Category string
+	Imitates string // an address-poisoning sender's look-alike target
 }
 
 type ConnectionsDirection struct {
@@ -177,6 +179,9 @@ func Connections(in ConnectionsInput) string {
 
 	if in.OwnLabel != nil {
 		name := in.OwnLabel.Entity
+		if in.OwnLabel.Imitates != "" {
+			name = l.f("poisoning_entity", shortAddress(in.OwnLabel.Imitates))
+		}
 		if name == "" {
 			name = l.category(in.OwnLabel.Category)
 		}
@@ -336,7 +341,7 @@ func truncated(d *ConnectionsDirection) bool {
 // first. A test keeps it in step with the config.
 var categoryOrder = []string{
 	"sanctions", "terrorist_financing", "darknet", "stolen_funds", "frozen_funds", "mixer", "scam",
-	"high_risk_exchange", "gambling", "unnamed_service", "dust", "dex", "exchange",
+	"high_risk_exchange", "gambling", "named_service", "unnamed_service", "dust", "dex", "exchange",
 }
 
 // notFound is every category with no traced value, in categoryOrder.
@@ -366,6 +371,7 @@ var categoryNames = map[string]string{
 	"scam":                "Scam",
 	"high_risk_exchange":  "High-Risk Exchange",
 	"gambling":            "Gambling",
+	"named_service":       "Named service",
 	"unnamed_service":     "Unnamed service",
 	"dust":                "Dust",
 	"dex":                 "DEX",
@@ -542,6 +548,16 @@ func writeVerdict(b *strings.Builder, v *ConnectionsVerdict, l loc) {
 // whyText is the verdict in plain words, one short paragraph, for a reader
 // who is not an analyst: what decided it, and what that means for them.
 func whyText(v *ConnectionsVerdict, l loc) string {
+	// A listing or a poisoning is the whole answer; anything after it
+	// would read as if it mattered as much.
+	if len(v.Reasons) > 0 && v.Level == "high_risk" {
+		switch r := v.Reasons[0]; r.Code {
+		case "poisoning":
+			return l.f("why_poisoning_verdict", shortAddress(r.Address))
+		case "own_listed":
+			return l.f("why_high_risk", l.f("why_own_listed", l.category(r.Category)))
+		}
+	}
 	var parts []string
 	seen := map[string]bool{}
 	for _, r := range v.Reasons {
@@ -599,6 +615,8 @@ func writeFlags(b *strings.Builder, flags []ConnectionsFlag, l loc) {
 			b.WriteString(l.f("flag_round_split", usd(f.AmountUSD), f.Count, f.Minutes))
 		case "parked_funds":
 			b.WriteString(l.f("flag_parked_funds", f.Count, usd(f.AmountUSD)))
+		case "poisoning_target":
+			b.WriteString(l.f("flag_poisoning_target", f.Count, shortAddress(f.Address)))
 		}
 	}
 	b.WriteString("\n")

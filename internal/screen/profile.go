@@ -14,7 +14,7 @@ import (
 // profiledCategories are the categories whose connections get a profile. A
 // named entity is identified by its label. An unnamed service is identified
 // only by what it does, so what it does is shown: volume, reach and dates.
-var profiledCategories = map[string]bool{"unnamed_service": true}
+var profiledCategories = map[string]bool{"unnamed_service": true, "named_service": true}
 
 // profile fills in Connection.Profile from stored chain data. Only addresses
 // whose own history has been fetched are profiled. For any other address the

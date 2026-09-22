@@ -27,12 +27,13 @@ type Verdict struct {
 // VerdictReason is one fact behind a verdict, rendered by each channel in
 // its own language.
 type VerdictReason struct {
-	// Code: own_listed, band_high, exposure, band_medium, exposure_minor,
+	// Code: own_listed, poisoning, band_high, exposure, band_medium, exposure_minor,
 	// low_coverage, unidentified, tracing_incomplete, behaviour, clean.
 	Code     string
 	Category string  // for own_listed, exposure, exposure_minor
 	Pct      float64 // exposure share, coverage for low_coverage, unnamed share for unidentified
 	Flag     string  // for behaviour
+	Address  string  // for poisoning: the address imitated
 }
 
 // Verdict levels.
@@ -47,6 +48,9 @@ var riskCategories = map[string]bool{
 	"sanctions": true, "terrorist_financing": true, "frozen_funds": true, "darknet": true,
 	"stolen_funds": true, "mixer": true, "scam": true, "high_risk_exchange": true, "gambling": true,
 }
+
+// minReasonPct is the smallest exposure, in percent, that becomes a reason.
+const minReasonPct = 0.1
 
 // CombinedShares merges both directions into shares of all traced value,
 // weighted by each direction's traced total, as the report does.
@@ -82,7 +86,12 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 	done := r.Depth == nil || r.Depth.Complete() || pendingShare(r) < rules.MaxPendingPct
 
 	var red, caution []VerdictReason
-	if r.OwnLabel != nil && (riskCategories[r.OwnLabel.Category] || r.SanctionsOverride) {
+	switch {
+	case r.OwnLabel != nil && r.OwnLabel.Imitates != "":
+		// Said as what it is, with the address it imitates: the reader may
+		// be about to pay it by mistake.
+		red = append(red, VerdictReason{Code: "poisoning", Category: r.OwnLabel.Category, Address: r.OwnLabel.Imitates})
+	case r.OwnLabel != nil && (riskCategories[r.OwnLabel.Category] || r.SanctionsOverride):
 		red = append(red, VerdictReason{Code: "own_listed", Category: r.OwnLabel.Category})
 	}
 	if r.Band == "high" && len(red) == 0 {
@@ -92,7 +101,9 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 	// Risk exposures, largest first, each either decisive or a caution.
 	cats := make([]string, 0, len(shares))
 	for c := range shares {
-		if riskCategories[c] && shares[c] > 0 {
+		// Below 0.1% the report lists a category as "less than 0.1%", and a
+		// reason reading "0.0% of its money" says nothing.
+		if riskCategories[c] && shares[c] >= minReasonPct {
 			cats = append(cats, c)
 		}
 	}
@@ -142,7 +153,7 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 		// Risk found stays found whatever else is unknown, so the floor is
 		// even odds; a direct listing is as certain as the list.
 		v.ConfidencePct = clampPct(coverage*100, 50)
-		if red[0].Code == "own_listed" {
+		if red[0].Code == "own_listed" || red[0].Code == "poisoning" {
 			v.ConfidencePct = 99
 		}
 	case len(caution) > 0:

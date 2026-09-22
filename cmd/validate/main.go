@@ -5,6 +5,9 @@
 //	validate dust         synthesised dust must barely move a score
 //	validate stability    the same input must produce identical output
 //	validate compare      divergence table against externally-obtained scores
+//	validate sample       write a stratified address list to screen in a competitor's tool
+//	validate verdict      verdict benchmark (-rounds N measures after follow-up)
+//	validate ring         what the screen's first-ring fetching buys
 //	validate all          every check
 //
 // SPEC.md §9 calls this a real harness rather than ad-hoc scripts, and makes a
@@ -136,6 +139,19 @@ func run(ctx context.Context, cmd, configDir, chainID string, limit int, compare
 			return 2, err
 		}
 		results = append(results, r)
+
+	case "ring":
+		r, err := checkRing(ctx, cfg, ch, pg, chainID, limit)
+		if err != nil {
+			return 2, err
+		}
+		results = append(results, r)
+
+	case "sample":
+		if err := writeCompareSample(ctx, ch, pg, chainID, limit, compareFile); err != nil {
+			return 2, err
+		}
+		return 0, nil
 
 	case "compare":
 		r, err := checkExternalComparison(ctx, svc, chainID, compareFile)
@@ -401,6 +417,18 @@ func checkExternalComparison(ctx context.Context, svc *screen.Service, chainID, 
 	r := csv.NewReader(f)
 	r.FieldsPerRecord = -1
 
+	// A filled-in `validate sample` sheet carries a stratum column and the
+	// competitor's categories; it gets the verdict comparison.
+	if all, err := r.ReadAll(); err == nil && len(all) > 0 {
+		for _, h := range all[0] {
+			if strings.EqualFold(strings.TrimSpace(h), "stratum") {
+				return compareSample(ctx, svc, chainID, all[0], all[1:])
+			}
+		}
+		r = csv.NewReader(strings.NewReader(csvJoin(all)))
+		r.FieldsPerRecord = -1
+	}
+
 	type row struct {
 		address, vendor, band string
 		score                 decimal.Decimal
@@ -600,4 +628,13 @@ func dustScenario(cfg *config.Config) (clean, dusted decimal.Decimal, err error)
 	}
 
 	return cleanRes.Score, dustedRes.Score, nil
+}
+
+// csvJoin writes records back to CSV text, so a file read once to inspect
+// its header can be read again row by row.
+func csvJoin(recs [][]string) string {
+	var b strings.Builder
+	w := csv.NewWriter(&b)
+	_ = w.WriteAll(recs)
+	return b.String()
 }

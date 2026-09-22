@@ -86,6 +86,7 @@ commands:
   ingest       run every permitted source into a new snapshot
   derive-services  detect high-volume service addresses from behaviour
   derive       run the deposit-wallet heuristic against stored chain data
+  activations  read who created each labelled service wallet (for operator grouping)
   counts       per-source label counts for the latest sealed snapshot
   conflicts    unreviewed category conflicts
   trace-tx <txid>  follow a controlled test transfer to its hot wallets;
@@ -118,6 +119,8 @@ func run(ctx context.Context, cmd, configDir, chainID, ofacFile string, log *slo
 		return deriveServices(ctx, cfg, st, chainID, log)
 	case "derive":
 		return derive(ctx, cfg, pg, st, chainID, log)
+	case "activations":
+		return fetchActivations(ctx, cfg, pg, chainID, log)
 	case "counts":
 		return counts(ctx, st)
 	case "conflicts":
@@ -491,7 +494,7 @@ func ingestPoR(ctx context.Context, url, exchange, sourceID string, confidence f
 func deriveServices(ctx context.Context, cfg *config.Config, st *labels.Store,
 	chainID string, log *slog.Logger) error {
 
-	ch, err := store.OpenClickHouse(ctx)
+	ch, err := store.OpenClickHouseBatch(ctx)
 	if err != nil {
 		return err
 	}
@@ -658,7 +661,7 @@ func deriveServices(ctx context.Context, cfg *config.Config, st *labels.Store,
 }
 
 func derive(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labels.Store, chainID string, log *slog.Logger) error {
-	ch, err := store.OpenClickHouse(ctx)
+	ch, err := store.OpenClickHouseBatch(ctx)
 	if err != nil {
 		return err
 	}
@@ -695,6 +698,25 @@ func derive(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labels.Stor
 			if _, err := st.SealSnapshot(ctx, snap); err != nil {
 				return err
 			}
+			snapshotID = snap
+		}
+	}
+
+	if cfg.Weights.DerivedOperator.Enabled {
+		snap, err := deriveOperators(ctx, cfg, pg, st, snapshotID, chainID)
+		if err != nil {
+			return err
+		}
+		if snap != 0 {
+			snapshotID = snap
+		}
+	}
+	if cfg.Weights.DerivedPoisoning.Enabled {
+		snap, err := derivePoisoning(ctx, cfg, ch, st, snapshotID, chainID)
+		if err != nil {
+			return err
+		}
+		if snap != 0 {
 			snapshotID = snap
 		}
 	}

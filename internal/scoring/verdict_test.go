@@ -120,3 +120,22 @@ func TestVerdictConfidencePct(t *testing.T) {
 		}
 	}
 }
+
+// A poisoning sender is risky with the address it imitates, however little
+// value it moved: its dust is worth nothing and is the whole point.
+func TestVerdictPoisoning(t *testing.T) {
+	r := vresult("low", 1, map[string]float64{"dust": 100}, true)
+	r.OwnLabel = &OwnLabel{Category: "scam", Source: "derived:poisoning", Imitates: "TBkgikRealAddressxxxxxxxxxxxxEtN8"}
+	v := Decide(r, verdictRules())
+	if v.Level != VerdictHighRisk || v.ConfidencePct != 99 || v.Reasons[0].Code != "poisoning" || v.Reasons[0].Address != r.OwnLabel.Imitates {
+		t.Errorf("poisoning: %+v", v)
+	}
+}
+
+// An exposure the report lists as "less than 0.1%" is not a reason.
+func TestVerdictIgnoresNegligibleExposure(t *testing.T) {
+	v := Decide(vresult("low", 0.99, map[string]float64{"exchange": 98.97, "frozen_funds": 0.03}, true), verdictRules())
+	if v.Level != VerdictClear {
+		t.Errorf("0.03%% exposure: %+v", v)
+	}
+}

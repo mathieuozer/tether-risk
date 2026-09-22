@@ -107,6 +107,8 @@ type Service struct {
 	scorer   *scoring.Scorer
 
 	prefetch map[string]Prefetcher // by chain
+
+	ringBudget *time.Duration // nil: the default
 }
 
 // Prefetcher fetches an address's history before it is scored, and queues
@@ -198,6 +200,11 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 			depth.Fetched = !r.Skipped
 			depth.HistoryTruncated = r.Truncated
 		}
+		// The address is stored: fetch its largest unknown counterparties
+		// too, so the first answer is not mostly dead ends.
+		if !depth.StillFetching && depth.FetchError == "" {
+			depth.RingFetched = s.fetchFirstRing(ctx, p, chainID, address, snapshotID)
+		}
 	}
 
 	edges := clickhouseEdges{ch: s.ch}
@@ -246,6 +253,11 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 			Confidence: ownResolution.Confidence,
 			Conflicted: ownResolution.Conflicted,
 		}
+		for _, l := range own {
+			if im, ok := l.Evidence["imitates"].(string); ok && l.Source == "derived:poisoning" {
+				res.OwnLabel.Imitates = im
+			}
+		}
 	}
 
 	act, err := activity(ctx, s.ch, chainID, address)
@@ -259,6 +271,9 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 		return nil, err
 	}
 	res.Flags = append(res.Flags, scoring.FlowFlags(outs, s.cfg.Weights.Behaviour)...)
+	if f, ok := s.poisoningTarget(ctx, chainID, address, snapshotID); ok {
+		res.Flags = append(res.Flags, f)
+	}
 
 	if err := s.profile(ctx, chainID, res); err != nil {
 		return nil, err
