@@ -53,6 +53,7 @@ type ConnectionsVerdict struct {
 	Level         string // clear, caution, high_risk
 	Confidence    string // high, medium, low
 	ConfidencePct int    // 1-99
+	Insufficient  bool   // not risky, but too little data to lean on
 	Reasons       []ConnectionsVerdictReason
 }
 
@@ -529,7 +530,11 @@ func writeVerdict(b *strings.Builder, v *ConnectionsVerdict, l loc) {
 	if v == nil {
 		return
 	}
-	b.WriteString(l.f("v_"+v.Level, v.ConfidencePct))
+	head := l.f("v_"+v.Level, v.ConfidencePct)
+	if v.Insufficient {
+		head = strings.TrimSuffix(head, "\n") + l.f("v_insufficient")
+	}
+	b.WriteString(head)
 	b.WriteString(whyText(v, l))
 	b.WriteString("\n")
 }

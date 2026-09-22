@@ -1131,7 +1131,9 @@ behaviour note takes 15 points off. A risky answer's confidence is its
 coverage, never under 50; a direct listing is 99. Behaviour reasons are
 listed before coverage reasons, because only two are shown. Measured:
 TTrcHL…BPQp and TNwf8V…crmL not risky at 50%; TPJZrw…uBhM at 1% (round split,
-new with large volume); TJBsbT…Y5P at 4%.
+new with large volume); TJBsbT…Y5P at 4%, and 16% once follow-up fetching
+finished. Below `verdict.insufficient_below` (10%) a not-risky answer also
+says "not enough data", because "not risky" alone reads as a clean bill.
 
 **Measuring the final answer.** Unfetched addresses now count as unknown, so
 first answers show lower coverage (deposit-set mean 80% → 63.5%) until the

@@ -18,7 +18,10 @@ type Verdict struct {
 	// ConfidencePct is how much of the answer rests on value that could be
 	// seen, 1-99. Readers get the verdict as risky or not risky and this.
 	ConfidencePct int
-	Reasons       []VerdictReason
+	// Insufficient marks a not-risky answer whose confidence is too low to
+	// lean on: readers see "not enough data" beside it.
+	Insufficient bool
+	Reasons      []VerdictReason
 }
 
 // VerdictReason is one fact behind a verdict, rendered by each channel in
@@ -155,6 +158,7 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 		v.ConfidencePct = high - 1
 	}
 	v.Confidence = confidenceWord(v.ConfidencePct, rules)
+	v.Insufficient = v.Level != VerdictHighRisk && v.ConfidencePct < rules.InsufficientBelow
 	return v
 }
 

@@ -1306,7 +1306,8 @@
     return '<section class="card verdict verdict-' + esc(v.level) + '" aria-labelledby="verdict-title">' +
       '<div class="verdict-head"><span class="verdict-dot" aria-hidden="true"></span>' +
       '<h2 id="verdict-title">' + tt('v_' + v.level) + '</h2>' +
-      '<span class="verdict-conf">' + tt('conf_label', { pct: String(v.confidence_pct || 0) }) + '</span></div>' +
+      '<span class="verdict-conf">' + tt('conf_label', { pct: String(v.confidence_pct || 0) }) +
+      (v.insufficient_data ? ' · ' + tt('v_insufficient') : '') + '</span></div>' +
       '<ul class="verdict-reasons">' + reasons + '</ul></section>';
   }
 

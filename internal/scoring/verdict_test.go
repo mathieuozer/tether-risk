@@ -11,7 +11,7 @@ func verdictRules() config.Verdict {
 	return config.Verdict{
 		RedExposure:      map[string]float64{"sanctions": 1, "frozen_funds": 5, "scam": 10},
 		ClearMinCoverage: 0.8, ConfidenceHigh: 0.9, ConfidenceMedium: 0.6, MaxPendingPct: 5, MaxUnnamedPct: 50,
-		ConfidenceCredit: map[string]float64{"unnamed_service": 0.5, "dust": 0}, BehaviourPenalty: 15,
+		ConfidenceCredit: map[string]float64{"unnamed_service": 0.5, "dust": 0}, BehaviourPenalty: 15, InsufficientBelow: 10,
 	}
 }
 
@@ -99,6 +99,8 @@ func TestVerdictConfidencePct(t *testing.T) {
 		r    *Result
 		want int
 	}{
+		// TPJZrw…uBhM: almost nothing traced, and a round split.
+		{"not enough data", vresult("low", 0.02, map[string]float64{"exchange": 2}, true), 2},
 		{"named exchanges", vresult("low", 0.99, map[string]float64{"exchange": 99}, true), 99},
 		// TTrcHL…BPQp: everything at one unidentified hub is half seen.
 		{"unidentified hub", vresult("low", 1, map[string]float64{"unnamed_service": 100}, true), 50},
@@ -108,8 +110,13 @@ func TestVerdictConfidencePct(t *testing.T) {
 		{"risk found at high coverage", vresult("high", 0.92, map[string]float64{"frozen_funds": 54, "exchange": 38}, true), 92},
 		{"unfinished tracing is never high", vresult("low", 0.92, map[string]float64{"exchange": 92}, false), 89},
 	} {
-		if v := Decide(tc.r, rules); v.ConfidencePct != tc.want {
+		v := Decide(tc.r, rules)
+		if v.ConfidencePct != tc.want {
 			t.Errorf("%s: confidence %d%%, want %d%% (%+v)", tc.name, v.ConfidencePct, tc.want, v)
+		}
+		// Only a not-risky answer can lack data; found risk stays found.
+		if want := v.Level != VerdictHighRisk && tc.want < 10; v.Insufficient != want {
+			t.Errorf("%s: insufficient %v, want %v", tc.name, v.Insufficient, want)
 		}
 	}
 }

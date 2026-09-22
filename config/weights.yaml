@@ -235,6 +235,9 @@ verdict:
     unnamed_service: 0.5
     dust: 0
   behaviour_penalty: 15
+  # A not-risky answer below this confidence, in percent, also says there
+  # is not enough data: "not risky" alone would read as a clean bill.
+  insufficient_below: 10
   # Confidence buckets, for the API's word: high at or above the first,
   # medium at or above the second, low below. Unfinished tracing is never high.
   confidence_high: 0.90

@@ -140,14 +140,15 @@ type DerivedDeposit struct {
 
 // Verdict configures the three-state answer (docs/DECISIONS.md D29).
 type Verdict struct {
-	RedExposure      map[string]float64 `yaml:"red_exposure"`
-	ClearMinCoverage float64            `yaml:"clear_min_coverage"`
-	MaxPendingPct    float64            `yaml:"max_pending_pct"`
-	MaxUnnamedPct    float64            `yaml:"max_unnamed_pct"`
-	ConfidenceCredit map[string]float64 `yaml:"confidence_credit"`
-	BehaviourPenalty float64            `yaml:"behaviour_penalty"`
-	ConfidenceHigh   float64            `yaml:"confidence_high"`
-	ConfidenceMedium float64            `yaml:"confidence_medium"`
+	RedExposure       map[string]float64 `yaml:"red_exposure"`
+	ClearMinCoverage  float64            `yaml:"clear_min_coverage"`
+	MaxPendingPct     float64            `yaml:"max_pending_pct"`
+	MaxUnnamedPct     float64            `yaml:"max_unnamed_pct"`
+	ConfidenceCredit  map[string]float64 `yaml:"confidence_credit"`
+	BehaviourPenalty  float64            `yaml:"behaviour_penalty"`
+	InsufficientBelow int                `yaml:"insufficient_below"`
+	ConfidenceHigh    float64            `yaml:"confidence_high"`
+	ConfidenceMedium  float64            `yaml:"confidence_medium"`
 }
 
 // Behaviour configures the unscored behaviour notes (docs/DECISIONS.md D28).

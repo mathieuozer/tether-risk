@@ -310,7 +310,7 @@ func connectionsInput(res *scoring.Result) report.ConnectionsInput {
 			Count: f.Count, AmountUSD: f.AmountUSD.InexactFloat64(), Minutes: f.Minutes})
 	}
 	if v := res.Verdict; v != nil {
-		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct}
+		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Insufficient: v.Insufficient}
 		for _, r := range v.Reasons {
 			cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: r.Code, Category: r.Category, Flag: r.Flag, Pct: r.Pct})
 		}
