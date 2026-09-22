@@ -37,6 +37,9 @@ type ConnectionsInput struct {
 	Depth *ConnectionsDepth
 
 	Disclaimer string
+
+	// Lang is "en" or "tr"; anything else renders English.
+	Lang string
 }
 
 // ConnectionsActivity is what the address itself did, before attribution.
@@ -136,51 +139,48 @@ const minListedPct = 0.1
 // on the address itself.
 func Connections(in ConnectionsInput) string {
 	var b strings.Builder
+	l := newLoc(in.Lang)
 
-	fmt.Fprintf(&b, "🔵 Address: %s\n\n", in.Address)
-	fmt.Fprintf(&b, "⛓ Blockchain: %s\n\n", chainName(in.Chain))
+	b.WriteString(l.f("address", in.Address))
+	b.WriteString(l.f("chain", chainName(in.Chain)))
 
 	if in.OwnLabel != nil {
 		name := in.OwnLabel.Entity
 		if name == "" {
-			name = displayCategory(in.OwnLabel.Category)
+			name = l.category(in.OwnLabel.Category)
 		}
-		fmt.Fprintf(&b, "🚫 This address is directly listed: %s (%s)\n\n",
-			name, displayCategory(in.OwnLabel.Category))
+		b.WriteString(l.f("listed", name, l.category(in.OwnLabel.Category)))
 	}
 	if in.SanctionsOverride {
-		b.WriteString("🚫 Direct sanctions match. Risk is High regardless of score.\n\n")
+		b.WriteString(l.f("sanctioned"))
 	}
 
 	if a := in.Activity; a != nil && (a.InTransfers+a.OutTransfers+a.UnpricedTransfers) > 0 {
-		b.WriteString("📊 Activity\n\n")
-		fmt.Fprintf(&b, "  •   Received: %s in %s from %s\n",
-			usd(a.InUSD), plural(a.InTransfers, "transfer"), plural(a.InCounterparties, "address"))
-		fmt.Fprintf(&b, "  •   Sent: %s in %s to %s\n",
-			usd(a.OutUSD), plural(a.OutTransfers, "transfer"), plural(a.OutCounterparties, "address"))
+		b.WriteString(l.f("activity"))
+		b.WriteString(l.f("received", usd(a.InUSD), l.n(a.InTransfers, "transfer"), l.n(a.InCounterparties, "address")))
+		b.WriteString(l.f("sent", usd(a.OutUSD), l.n(a.OutTransfers, "transfer"), l.n(a.OutCounterparties, "address")))
 		if a.FirstSeen != "" {
-			fmt.Fprintf(&b, "  •   Active: %s → %s\n", a.FirstSeen, a.LastSeen)
+			b.WriteString(l.f("active", a.FirstSeen, a.LastSeen))
 		}
 		if len(a.Assets) > 0 {
 			parts := make([]string, 0, len(a.Assets))
 			for _, as := range a.Assets {
 				parts = append(parts, as.Asset+" "+usd(as.USD))
 			}
-			fmt.Fprintf(&b, "  •   Assets: %s\n", strings.Join(parts, " · "))
+			b.WriteString(l.f("assets", strings.Join(parts, " · ")))
 		}
 		if a.UnpricedTransfers > 0 {
-			fmt.Fprintf(&b, "  •   Unrecognised tokens: %s of %s, not valued (typical of spam and airdrops)\n",
-				plural(a.UnpricedTransfers, "transfer"), plural(a.UnpricedTokens, "token"))
+			b.WriteString(l.f("unpriced", l.n(a.UnpricedTransfers, "transfer"), l.n(a.UnpricedTokens, "token")))
 		}
 		b.WriteString("\n")
 	}
 
-	writeDepth(&b, in.Depth)
+	writeDepth(&b, in.Depth, l)
 
 	shares, unattributed, total := combine(in.Inbound, in.Outbound)
 
 	if total <= 0 {
-		b.WriteString("Connections of the address:\n\n  •   No traced value\n\n")
+		b.WriteString(l.f("connections") + l.f("no_value"))
 	} else {
 		var listed, minor []ConnectionsCategory
 		for _, s := range shares {
@@ -191,15 +191,15 @@ func Connections(in ConnectionsInput) string {
 			}
 		}
 
-		b.WriteString("Connections of the address:\n\n")
+		b.WriteString(l.f("connections"))
 		for _, s := range listed {
-			fmt.Fprintf(&b, "  •   %s - %.1f%%\n", displayCategory(s.Category), s.Pct)
+			fmt.Fprintf(&b, "  •   %s - %s\n", l.category(s.Category), l.pct(s.Pct))
 		}
 		if unattributed > 0 {
-			fmt.Fprintf(&b, "  •   Unattributed (unknown, not clean) - %.1f%%\n", unattributed)
+			b.WriteString(l.f("unattributed", l.pct(unattributed)))
 			for _, r := range combineReasons(in.Inbound, in.Outbound) {
 				if r.Pct >= minListedPct {
-					fmt.Fprintf(&b, "        ◦ %s - %.1f%%\n", reasonText(r.Reason), r.Pct)
+					fmt.Fprintf(&b, "        ◦ %s - %s\n", reasonText(l, r.Reason), l.pct(r.Pct))
 				}
 			}
 		}
@@ -212,32 +212,37 @@ func Connections(in ConnectionsInput) string {
 		}
 		small = append(small, notFound(shares)...)
 		if len(small) > 0 {
-			b.WriteString("\nLess than 0.1%:\n\n")
+			b.WriteString(l.f("less_than"))
 			for _, c := range small {
-				fmt.Fprintf(&b, "  •   %s\n", displayCategory(c))
+				fmt.Fprintf(&b, "  •   %s\n", l.category(c))
 			}
 		}
 		b.WriteString("\n")
 
-		writeEntries(&b, in)
-		writeChecks(&b, in, shares)
+		writeEntries(&b, in, l)
+		writeChecks(&b, in, shares, l)
 	}
 
-	fmt.Fprintf(&b, "📈 Risk level: %s (%.1f / 100)\n", titleCase(in.Band), in.Score)
-	fmt.Fprintf(&b, "🎯 Coverage: %.1f%%\n", in.Coverage*100)
+	b.WriteString(l.f("risk_level", l.band(in.Band), in.Score))
+	b.WriteString(l.f("coverage", l.pct(in.Coverage*100)))
 
 	if in.LowConfidence {
-		fmt.Fprintf(&b, "\n⚠️ Low confidence: only %.1f%% of traced value reached a known entity. "+
-			"The rest is unknown, not clean.\n", in.Coverage*100)
+		b.WriteString(l.f("low_confidence", l.pct(in.Coverage*100)))
 	}
 	if in.BandCappedByAbuse {
-		b.WriteString("\n⚠️ Band capped: the only evidence is unverified abuse reports.\n")
+		b.WriteString(l.f("band_capped"))
 	}
 	if truncated(in.Inbound) || truncated(in.Outbound) {
-		b.WriteString("\nℹ️ Traversal was truncated; value beyond the limit is unknown.\n")
+		b.WriteString(l.f("truncated"))
 	}
 	if in.Disclaimer != "" {
-		fmt.Fprintf(&b, "\n%s\n", in.Disclaimer)
+		// The API's disclaimer is English; its meaning, not its wording, is
+		// what must reach the reader.
+		disclaimer := in.Disclaimer
+		if l.tr {
+			disclaimer = l.f("disclaimer")
+		}
+		fmt.Fprintf(&b, "\n%s\n", disclaimer)
 	}
 	return b.String()
 }
@@ -324,13 +329,6 @@ var categoryNames = map[string]string{
 	"exchange":            "Exchange",
 }
 
-func displayCategory(c string) string {
-	if n, ok := categoryNames[c]; ok {
-		return n
-	}
-	return titleCase(strings.ReplaceAll(c, "_", " "))
-}
-
 var chainNames = map[string]string{
 	"tron":     "Tron (TRX)",
 	"ethereum": "Ethereum (ETH)",
@@ -354,7 +352,7 @@ func titleCase(s string) string {
 // writeEntries lists identified counterparties per direction, with an
 // approximate dollar figure: the share times that direction's volume, which
 // is how proportional (haircut) attribution allocates value.
-func writeEntries(b *strings.Builder, in ConnectionsInput) {
+func writeEntries(b *strings.Builder, in ConnectionsInput, l loc) {
 	type side struct {
 		title  string
 		d      *ConnectionsDirection
@@ -364,7 +362,7 @@ func writeEntries(b *strings.Builder, in ConnectionsInput) {
 	if in.Activity != nil {
 		inVol, outVol = in.Activity.InUSD, in.Activity.OutUSD
 	}
-	sides := []side{{"⬅️ Inbound (funds came from)", in.Inbound, inVol}, {"➡️ Outbound (funds went to)", in.Outbound, outVol}}
+	sides := []side{{l.f("inbound"), in.Inbound, inVol}, {l.f("outbound"), in.Outbound, outVol}}
 
 	var any bool
 	for _, sd := range sides {
@@ -376,7 +374,7 @@ func writeEntries(b *strings.Builder, in ConnectionsInput) {
 		return
 	}
 
-	b.WriteString("🏷 Identified connections\n")
+	b.WriteString(l.f("identified"))
 	for _, sd := range sides {
 		if sd.d == nil || len(sd.d.Entries) == 0 {
 			continue
@@ -384,22 +382,22 @@ func writeEntries(b *strings.Builder, in ConnectionsInput) {
 		fmt.Fprintf(b, "\n  %s\n", sd.title)
 		for i, e := range sd.d.Entries {
 			if i >= 5 {
-				fmt.Fprintf(b, "    … and %d more\n", len(sd.d.Entries)-5)
+				b.WriteString(l.f("and_more", len(sd.d.Entries)-5))
 				break
 			}
-			name := entryName(e)
+			name := entryName(l, e)
 			amount := ""
 			if sd.volume > 0 {
 				amount = " ≈ " + usd(e.Pct/100*sd.volume)
 			}
-			share := fmt.Sprintf("%.1f%%", e.Pct)
+			share := l.pct(e.Pct)
 			if e.Pct < minListedPct {
-				share = "under 0.1%"
+				share = l.f("under")
 			}
 			fmt.Fprintf(b, "    %d. %s (%s)\n       %s · %s%s · %s\n",
-				i+1, name, shortAddress(e.Address), displayCategory(e.Category), share, amount, hops(e.MinHops))
+				i+1, name, shortAddress(e.Address), l.category(e.Category), share, amount, hops(l, e.MinHops))
 			if p := e.Profile; p != nil {
-				fmt.Fprintf(b, "       %s\n", profileText(p))
+				fmt.Fprintf(b, "       %s\n", profileText(l, p))
 			}
 		}
 	}
@@ -413,7 +411,7 @@ var riskChecks = []string{
 	"mixer", "scam", "high_risk_exchange", "gambling",
 }
 
-func writeChecks(b *strings.Builder, in ConnectionsInput, shares []ConnectionsCategory) {
+func writeChecks(b *strings.Builder, in ConnectionsInput, shares []ConnectionsCategory, l loc) {
 	found := map[string]float64{}
 	for _, s := range shares {
 		found[s.Category] = s.Pct
@@ -425,19 +423,19 @@ func writeChecks(b *strings.Builder, in ConnectionsInput, shares []ConnectionsCa
 		clear = "⚪"
 	}
 
-	b.WriteString("🛡 Risk checks\n\n")
+	b.WriteString(l.f("checks"))
 	for _, c := range riskChecks {
 		if pct, ok := found[c]; ok && pct > 0 {
-			share := fmt.Sprintf("%.1f%%", pct)
+			share := l.pct(pct)
 			if pct < minListedPct {
-				share = "under 0.1%"
+				share = l.f("under")
 			}
-			fmt.Fprintf(b, "  🔴  %s - found, %s\n", displayCategory(c), share)
+			b.WriteString(l.f("found", l.category(c), share))
 		} else {
-			fmt.Fprintf(b, "  %s  %s - not found\n", clear, displayCategory(c))
+			b.WriteString(l.f("not_found", clear, l.category(c)))
 		}
 	}
-	fmt.Fprintf(b, "\n  Checks cover the %.1f%% of traced value that could be attributed.\n\n", in.Coverage*100)
+	b.WriteString(l.f("checks_cover", l.pct(in.Coverage*100)))
 }
 
 func combineReasons(dirs ...*ConnectionsDirection) []ConnectionsReason {
@@ -472,16 +470,16 @@ func combineReasons(dirs ...*ConnectionsDirection) []ConnectionsReason {
 	return out
 }
 
-func reasonText(r string) string {
+func reasonText(l loc, r string) string {
 	switch r {
 	case "dead_end":
-		return "trail stops (no stored history beyond this point)"
+		return l.f("r_dead_end")
 	case "hop_limit":
-		return "beyond the hop limit"
+		return l.f("r_hop_limit")
 	case "fanout_cap":
-		return "too many counterparties to follow"
+		return l.f("r_fanout_cap")
 	case "unlabelled_category":
-		return "labelled, but without a category"
+		return l.f("r_unlabelled")
 	}
 	return strings.ReplaceAll(r, "_", " ")
 }
@@ -490,9 +488,12 @@ func reasonText(r string) string {
 // detector's labels read "Unidentified high-volume service"; the category
 // line already says the operator is unnamed, and the profile says what the
 // service is, so the name says only what kind of wallet it is.
-func entryName(e ConnectionsEntry) string {
+func entryName(l loc, e ConnectionsEntry) string {
 	if e.Entity == "" {
-		return displayCategory(e.Category)
+		return l.category(e.Category)
+	}
+	if e.Entity == "Unidentified high-volume service" {
+		return l.f("service")
 	}
 	if rest, ok := strings.CutPrefix(e.Entity, "Unidentified "); ok && rest != "" {
 		return strings.ToUpper(rest[:1]) + rest[1:]
@@ -502,11 +503,10 @@ func entryName(e ConnectionsEntry) string {
 
 // profileText describes an unnamed service by what it did: how much it moved,
 // with how many addresses, when, and in what.
-func profileText(p *ConnectionsProfile) string {
-	out := fmt.Sprintf("%s moved with %s across %s",
-		usd(p.VolumeUSD), plural(p.Counterparties, "address"), plural(p.Transfers, "stored transfer"))
+func profileText(l loc, p *ConnectionsProfile) string {
+	out := l.f("profile", usd(p.VolumeUSD), l.n(p.Counterparties, "address"), l.n(p.Transfers, "stored transfer"))
 	if p.Partial {
-		out += " (partial history)"
+		out += l.f("partial")
 	}
 	if p.FirstSeen != "" {
 		out += fmt.Sprintf(" · %s → %s", p.FirstSeen, p.LastSeen)
@@ -517,12 +517,12 @@ func profileText(p *ConnectionsProfile) string {
 	return out
 }
 
-func hops(n int) string {
+func hops(l loc, n int) string {
 	switch n {
 	case 0, 1:
-		return "direct"
+		return l.f("direct")
 	default:
-		return fmt.Sprintf("%d hops away", n)
+		return l.f("hops_away", n)
 	}
 }
 
@@ -531,25 +531,6 @@ func shortAddress(a string) string {
 		return a
 	}
 	return a[:6] + "…" + a[len(a)-4:]
-}
-
-func plural(n uint64, word string) string {
-	if n == 1 {
-		return "1 " + word
-	}
-	if strings.HasSuffix(word, "ss") {
-		return fmt.Sprintf("%s %ses", thousands(n), word)
-	}
-	return fmt.Sprintf("%s %ss", thousands(n), word)
-}
-
-// thousands formats n with comma separators: 10000 -> "10,000".
-func thousands(n uint64) string {
-	s := fmt.Sprintf("%d", n)
-	for i := len(s) - 3; i > 0; i -= 3 {
-		s = s[:i] + "," + s[i:]
-	}
-	return s
 }
 
 // usd formats a dollar amount compactly.
@@ -569,28 +550,25 @@ func usd(v float64) string {
 // writeDepth says whether this is a finished answer. A result scored while
 // counterparties are still being fetched is shallower than the one that will
 // follow, and must not read as final.
-func writeDepth(b *strings.Builder, d *ConnectionsDepth) {
+func writeDepth(b *strings.Builder, d *ConnectionsDepth, l loc) {
 	if d == nil {
 		return
 	}
 	if d.FetchError != "" {
-		fmt.Fprintf(b, "⚠️ Could not refresh this address from the chain, so stored data was used: %s\n\n", d.FetchError)
+		b.WriteString(l.f("fetch_error", d.FetchError))
 	}
 	if d.StillFetching {
-		b.WriteString("🔄 This address's history is still being fetched. " +
-			"The figures below are partial; screen again in a few minutes.\n\n")
+		b.WriteString(l.f("still_fetching"))
 	}
 	if d.HistoryTruncated {
-		b.WriteString("ℹ️ This address has more history than the per-address fetch limit " +
-			"(10,000 transfers); activity figures cover the most recent part.\n\n")
+		b.WriteString(l.f("history_limit"))
 	}
 	if d.FrontierPending > 0 {
 		queued := fmt.Sprintf("%d", d.FrontierQueued)
 		if d.FrontierQueued < d.FrontierPending {
-			queued = fmt.Sprintf("%d of %d", d.FrontierQueued, d.FrontierPending)
+			queued = l.f("queued_of", d.FrontierQueued, d.FrontierPending)
 		}
-		fmt.Fprintf(b, "🔭 Tracing further: %s addresses where the trail stops are queued. "+
-			"Screen again later for a deeper result.\n", queued)
+		b.WriteString(l.f("frontier", queued))
 	}
 	if d.Counterparties == 0 {
 		if d.FrontierPending > 0 {
@@ -599,14 +577,12 @@ func writeDepth(b *strings.Builder, d *ConnectionsDepth) {
 		return
 	}
 	if d.Traced < d.Counterparties {
-		fmt.Fprintf(b, "🔄 Tracing in progress: %d of %d counterparties traced. "+
-			"Screen again later for a deeper result.\n", d.Traced, d.Counterparties)
+		b.WriteString(l.f("tracing", d.Traced, d.Counterparties))
 	} else {
-		fmt.Fprintf(b, "🔎 Counterparties traced: %d of %d.\n", d.Traced, d.Counterparties)
+		b.WriteString(l.f("traced", d.Traced, d.Counterparties))
 	}
 	if d.TotalCounterparties > d.Counterparties {
-		fmt.Fprintf(b, "   The %d most active of %d counterparties are traced.\n",
-			d.Counterparties, d.TotalCounterparties)
+		b.WriteString(l.f("most_active", d.Counterparties, d.TotalCounterparties))
 	}
 	b.WriteString("\n")
 }

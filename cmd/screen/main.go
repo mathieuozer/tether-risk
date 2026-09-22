@@ -35,6 +35,7 @@ func main() {
 		pdfOut    = flag.String("pdf", "", "also write a PDF report to this path")
 		fetch     = flag.Bool("fetch", true,
 			"fetch the address and queue its counterparties before scoring; false scores stored data only")
+		lang   = flag.String("lang", "en", "summary language: en or tr")
 		format = flag.String("format", "detailed",
 			"output format: detailed (per-direction breakdown) or summary (combined connections list)")
 	)
@@ -54,13 +55,13 @@ func main() {
 		os.Exit(2)
 	}
 
-	if err := run(ctx, *configDir, *chainID, address, *pdfOut, *format, *fetch); err != nil {
+	if err := run(ctx, *configDir, *chainID, address, *pdfOut, *format, *lang, *fetch); err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, configDir, chainID, address, pdfOut, format string, fetch bool) error {
+func run(ctx context.Context, configDir, chainID, address, pdfOut, format, lang string, fetch bool) error {
 	cfg, err := config.Load(configDir)
 	if err != nil {
 		return err
@@ -94,7 +95,9 @@ func run(ctx context.Context, configDir, chainID, address, pdfOut, format string
 
 	if format == "summary" {
 		fmt.Println()
-		fmt.Print(report.Connections(connectionsInput(res)))
+		in := connectionsInput(res)
+		in.Lang = lang
+		fmt.Print(report.Connections(in))
 		fmt.Println()
 	} else {
 		print(res)
