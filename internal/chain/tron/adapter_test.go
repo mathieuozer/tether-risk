@@ -377,9 +377,11 @@ func TestTRC20AssetComesFromContractNotSymbol(t *testing.T) {
 	}
 }
 
-// A transfer whose contract cannot be identified is rejected rather than
-// stored under a guessed asset.
-func TestTRC20WithoutValidContractIsRejected(t *testing.T) {
+// A transfer whose contract cannot be identified is never stored under a
+// guessed asset. An empty contract, which TronGrid returns for tokens it
+// cannot resolve, is skipped so one such item does not fail the address. A
+// malformed one is an error, because it means the API's format changed.
+func TestTRC20WithoutValidContractIsNotStored(t *testing.T) {
 	it := trc20Item{
 		TransactionID: "abc",
 		From:          "TZ8Ksz21Hk1tQuztCKCUJBRXStCav9uyjM",
@@ -388,8 +390,14 @@ func TestTRC20WithoutValidContractIsRejected(t *testing.T) {
 		Value:         "1",
 	}
 	it.TokenInfo.Symbol = "USDT"
+	_, ok, err := NewAdapter(nil).toTransfer(it)
+	if err != nil || ok {
+		t.Fatalf("empty contract: got ok=%v err=%v, want skipped without error", ok, err)
+	}
+
+	it.TokenInfo.Address = "not-an-address"
 	if _, _, err := NewAdapter(nil).toTransfer(it); err == nil {
-		t.Fatal("expected an error for a transfer with no token contract")
+		t.Fatal("expected an error for a malformed token contract")
 	}
 }
 

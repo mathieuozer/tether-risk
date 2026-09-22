@@ -228,6 +228,14 @@ func (a *Adapter) toTransfer(it trc20Item) (chain.Transfer, bool, error) {
 		return chain.Transfer{}, false, fmt.Errorf("trc20 %s: value %q is not an integer", it.TransactionID, it.Value)
 	}
 
+	// TronGrid returns an empty token_info for a token it cannot resolve,
+	// seen on 2021 transfers of value 1. With no contract the asset cannot
+	// be identified, priced or told apart from any other token, so the item
+	// is skipped. Failing on it instead failed the whole address, on every
+	// retry, and left it permanently unfetched.
+	if strings.TrimSpace(it.TokenInfo.Address) == "" {
+		return chain.Transfer{}, false, nil
+	}
 	contract, err := Normalise(it.TokenInfo.Address)
 	if err != nil || contract == "" {
 		return chain.Transfer{}, false, fmt.Errorf("trc20 %s: invalid token contract %q", it.TransactionID, it.TokenInfo.Address)
