@@ -24,6 +24,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/mozer/tether-risk/internal/chain/tron"
 	"github.com/mozer/tether-risk/internal/config"
 	"github.com/mozer/tether-risk/internal/labels"
 	"github.com/mozer/tether-risk/internal/store"
@@ -213,6 +214,32 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 		total = add(total, res)
 	}
 
+	// --- Tether's USDT blacklist (docs/DECISIONS.md D29) ---
+	// First-party and authoritative, but not a sanctions list: a failure is
+	// logged and the run continues, and the previous snapshot's list stands.
+	if src, ok := cfg.Source("tether_blacklist"); ok && src.Ingestible() {
+		batch, err := ingestTetherBlacklist(ctx, cfg, log)
+		if err != nil {
+			log.Error("tether blacklist failed; the previous list stands", "error", err)
+		} else {
+			res, err := st.Upsert(ctx, snapshotID, batch)
+			if err != nil {
+				return err
+			}
+			keep := make(map[string]bool, len(batch))
+			for _, l := range batch {
+				keep[l.Address] = true
+			}
+			released, err := st.Retire(ctx, snapshotID, "tether_blacklist", "tron", keep)
+			if err != nil {
+				return err
+			}
+			log.Info("tether blacklist ingested", "frozen", len(batch), "inserted", res.Inserted,
+				"released_since_last_run", released)
+			total = add(total, res)
+		}
+	}
+
 	// --- exchange proof-of-reserves lists (docs/DECISIONS.md D19) ---
 	// Like the abuse feeds, not load-bearing: a missing list reduces coverage
 	// rather than opening a sanctions gap, so the run continues and says so.
@@ -349,6 +376,32 @@ func ingestAbuse(ctx context.Context, url string,
 		log.Warn("abuse feed entry could not be parsed", "detail", m)
 	}
 	return out, res, nil
+}
+
+// ingestTetherBlacklist reads the USDT contract's blacklist events from the
+// start and folds them into the current list.
+func ingestTetherBlacklist(ctx context.Context, cfg *config.Config, log *slog.Logger) ([]labels.Label, error) {
+	chainCfg, ok := cfg.Chain("tron")
+	if !ok {
+		return nil, fmt.Errorf("tron is not declared in sources.yaml")
+	}
+	key := os.Getenv("TRONGRID_API_KEY")
+	client := tron.NewClient(tron.Options{BaseURL: chainCfg.URL, APIKey: key,
+		RequestsPerSecond: chainCfg.RequestRate(key != ""), Logger: log})
+	src, _ := cfg.Source("tether_blacklist")
+
+	events := map[string][]tron.ContractEvent{}
+	for _, name := range []string{"AddedBlackList", "RemovedBlackList", "DestroyedBlackFunds"} {
+		evs, err := client.ContractEvents(ctx, tron.USDTContract, name, time.Unix(0, 0))
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
+		events[name] = evs
+	}
+	frozen := labels.TetherBlacklist(events["AddedBlackList"], events["RemovedBlackList"], events["DestroyedBlackFunds"])
+	log.Info("tether blacklist read", "added_events", len(events["AddedBlackList"]),
+		"removed_events", len(events["RemovedBlackList"]), "frozen_now", len(frozen))
+	return labels.TetherLabels(frozen, src.Confidence), nil
 }
 
 func ingestPoR(ctx context.Context, url, exchange, sourceID string, confidence float64) ([]labels.Label, *labels.PoRResult, error) {

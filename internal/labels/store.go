@@ -182,6 +182,41 @@ func (s *Store) Upsert(ctx context.Context, snapshotID int64, in []Label) (Upser
 	return res, nil
 }
 
+// Retire closes, at this snapshot, every current label of a source on a
+// chain whose address is not in keep. It is for sources that publish their
+// whole list each time, so an address that left the list stops being
+// labelled rather than keeping a stale label forever.
+func (s *Store) Retire(ctx context.Context, snapshotID int64, source, chainID string, keep map[string]bool) (int, error) {
+	rows, err := s.pg.QueryContext(ctx, `
+		SELECT id, address FROM labels
+		WHERE source = $1 AND chain = $2 AND valid_to_snapshot IS NULL`, source, chainID)
+	if err != nil {
+		return 0, err
+	}
+	var gone []int64
+	for rows.Next() {
+		var id int64
+		var addr string
+		if err := rows.Scan(&id, &addr); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if !keep[addr] {
+			gone = append(gone, id)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(gone) == 0 {
+		return 0, nil
+	}
+	_, err = s.pg.ExecContext(ctx,
+		`UPDATE labels SET valid_to_snapshot = $2, last_updated = now() WHERE id = ANY($1)`, gone, snapshotID)
+	return len(gone), err
+}
+
 // ForAddress returns every label an address carries at a snapshot.
 func (s *Store) ForAddress(ctx context.Context, snapshotID int64, chainID, address string) ([]Label, error) {
 	rows, err := s.pg.QueryContext(ctx, `

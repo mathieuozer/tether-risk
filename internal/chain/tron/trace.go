@@ -135,6 +135,66 @@ func (c *Client) Outbound(ctx context.Context, address string, since time.Time) 
 	return out, nil
 }
 
+// ContractEvent is one decoded event of a contract, with addresses in the
+// result converted to base58.
+type ContractEvent struct {
+	TxID   string
+	Time   time.Time
+	Block  int64
+	Name   string
+	Result map[string]string
+}
+
+// maxEventPages bounds one ContractEvents call: 200 pages of 200 events.
+const maxEventPages = 200
+
+// ContractEvents returns every confirmed event of one name emitted by a
+// contract at or after since, oldest first. Values that are 20-byte hex
+// addresses are converted to base58, so callers compare like with like.
+func (c *Client) ContractEvents(ctx context.Context, contract, event string, since time.Time) ([]ContractEvent, error) {
+	u := fmt.Sprintf("%s/v1/contracts/%s/events?event_name=%s&only_confirmed=true&limit=200&order_by=block_timestamp,asc&min_block_timestamp=%d",
+		c.baseURL, url.PathEscape(contract), url.QueryEscape(event), since.UnixMilli())
+	var out []ContractEvent
+	for page := 0; u != ""; page++ {
+		if page == maxEventPages {
+			return nil, fmt.Errorf("tron: %s %s events exceed %d pages; narrow the window", contract, event, maxEventPages)
+		}
+		var resp struct {
+			Data []struct {
+				TransactionID  string            `json:"transaction_id"`
+				BlockNumber    int64             `json:"block_number"`
+				BlockTimestamp int64             `json:"block_timestamp"`
+				EventName      string            `json:"event_name"`
+				Result         map[string]string `json:"result"`
+			} `json:"data"`
+			Success bool   `json:"success"`
+			Error   string `json:"error"`
+			Meta    meta   `json:"meta"`
+		}
+		if err := c.get(ctx, u, &resp); err != nil {
+			return nil, err
+		}
+		if !resp.Success {
+			return nil, fmt.Errorf("tron: %s events: %s", event, resp.Error)
+		}
+		for _, d := range resp.Data {
+			res := make(map[string]string, len(d.Result))
+			for k, v := range d.Result {
+				if strings.HasPrefix(v, "0x") && len(v) == 42 {
+					if a, err := eventAddress(v); err == nil {
+						v = a
+					}
+				}
+				res[k] = v
+			}
+			out = append(out, ContractEvent{TxID: d.TransactionID, Block: d.BlockNumber,
+				Time: time.UnixMilli(d.BlockTimestamp).UTC(), Name: d.EventName, Result: res})
+		}
+		u = resp.Meta.Links.Next
+	}
+	return out, nil
+}
+
 // USDTContract is Tether's TRC-20 contract. Payments are accepted in this
 // token only: anyone can deploy a token called "USDT" (docs/DECISIONS.md D18).
 const USDTContract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"

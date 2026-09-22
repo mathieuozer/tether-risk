@@ -34,6 +34,9 @@ func TestLoadRealConfig(t *testing.T) {
 		"high_risk_exchange": 40, "gambling": 25,
 		"unnamed_service": 15, "dust": 5,
 		"exchange": 2, "dex": 5,
+		// Added beyond SPEC.md §7 by docs/DECISIONS.md D29; justified in
+		// docs/METHODOLOGY.md.
+		"frozen_funds": 85,
 	}
 	for cat, w := range want {
 		got, ok := c.CategoryWeight(cat)

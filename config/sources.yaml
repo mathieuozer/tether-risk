@@ -169,6 +169,23 @@ sources:
   # address, not the exchange's KYC standard, which is what separates
   # `exchange` from `high_risk_exchange`.
   # -------------------------------------------------------------------------
+  - id: tether_blacklist
+    name: "Tether USDT blacklist (on-chain)"
+    status: allowed
+    confidence: 1.0
+    schedule: daily
+    url: "https://api.trongrid.io/v1/contracts/TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t/events"
+    format: tron_events
+    licence: "Public blockchain data"
+    redistribution: permitted
+    checked: 2026-09-22
+    notes: >
+      AddedBlackList, RemovedBlackList and DestroyedBlackFunds events on
+      Tether's own USDT contract, read through TronGrid. First-party and
+      authoritative: an address is listed from its latest AddedBlackList until
+      a later RemovedBlackList. 8,555 additions and 967 removals as of
+      2026-09-22 (docs/DECISIONS.md D29).
+
   - id: htx_por
     name: "HTX proof-of-reserves addresses"
     status: allowed
