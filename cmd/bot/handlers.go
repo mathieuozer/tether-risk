@@ -252,9 +252,11 @@ func (b *bot) screenCommand(ctx context.Context, c chatCtx, arg string, kind scr
 	case kindPDF:
 		err = b.tg.sendDocument(ctx, c.chat, out.Chain+"-"+out.Address+".pdf", out.PDF, t(c.lang, "pdf_caption", out.Address))
 	case kindDetails:
+		b.startFollowUp(c.user.ID, c.lang, out.Chain, out.Address, out.Result)
 		err = b.tg.sendMessage(ctx, c.chat, format(out.Result), nil)
 	default:
-		err = b.tg.sendMessage(ctx, c.chat, summary(out.Result, c.lang), nil)
+		following := b.startFollowUp(c.user.ID, c.lang, out.Chain, out.Address, out.Result)
+		err = b.tg.sendMessage(ctx, c.chat, summary(out.Result, c.lang, following), nil)
 	}
 	if err != nil {
 		b.log.Warn("deliver screen", "user", c.user.ID, "error", err)

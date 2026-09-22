@@ -313,6 +313,15 @@ Bu fatura %[6]d dakika geçerli. Ödeme onaylanır onaylanmaz, genellikle 2 daki
 	"app_open":  {"Open the app for charts, history, watches and your plan:", "Grafikler, geçmiş, izlemeler ve planınız için uygulamayı açın:"},
 	"app_off":   {"The app is not available yet. Everything works here in the chat.", "Uygulama henüz kullanılamıyor. Her şey burada, sohbette çalışıyor."},
 
+	// --- follow-up ---
+	"fu_state":  {"%s %.1f/100, coverage %s", "%s %.1f/100, kapsam %s"},
+	"fu_title":  {"✅ Final result for %s\n\n", "✅ %s için kesin sonuç\n\n"},
+	"fu_change": {"First answer: %s\nNow: %s\n\n", "İlk sonuç: %s\nŞimdi: %s\n\n"},
+	"fu_same": {
+		"✅ Tracing finished for %s. The result did not change: %s.",
+		"✅ %s için izleme tamamlandı. Sonuç değişmedi: %s.",
+	},
+
 	// --- details view headings ---
 	"d_band":     {"Risk band: %s\nScore: %.1f / 100\n", "Risk seviyesi: %s\nPuan: %.1f / 100\n"},
 	"d_coverage": {"Coverage: %.1f%%\n", "Kapsam: %%%.1f\n"},

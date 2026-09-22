@@ -80,3 +80,25 @@ func TestConnectionsInTurkish(t *testing.T) {
 		}
 	}
 }
+
+func TestBehaviourNotes(t *testing.T) {
+	in := ConnectionsInput{Address: "TAddr", Chain: "tron", Band: "low", Flags: []ConnectionsFlag{
+		{Code: "pass_through", InUSD: 7_110_000, OutUSD: 7_105_000, Days: 11},
+		{Code: "high_volume_new", VolumeUSD: 14_215_000, AgeDays: 12},
+	}}
+	en := Connections(in)
+	for _, want := range []string{"Behaviour notes (not part of the score)", "Pass-through: $7.11M in and $7.11M out within 11 days",
+		"New address with high volume: $14.21M moved within 12 days"} {
+		if !strings.Contains(en, want) {
+			t.Errorf("missing %q in:\n%s", want, en)
+		}
+	}
+	in.Lang = "tr"
+	tr := Connections(in)
+	for _, want := range []string{"Davranış notları (puana dahil değil)", "Gir-çık cüzdanı: $7.11M girdi, $7.11M çıktı, 11 gün içinde",
+		"ilk hareketinden bu yana 12 günde $14.21M hareket etti"} {
+		if !strings.Contains(tr, want) {
+			t.Errorf("missing %q in:\n%s", want, tr)
+		}
+	}
+}

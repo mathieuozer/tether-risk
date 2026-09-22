@@ -40,13 +40,15 @@ type Weights struct {
 
 	SanctionsOverrideBand string `yaml:"sanctions_override_band"`
 
-	Traversal      Traversal      `yaml:"traversal"`
-	Dust           Dust           `yaml:"dust"`
-	Coverage       Coverage       `yaml:"coverage"`
-	Labels         LabelRules     `yaml:"labels"`
-	DerivedDeposit DerivedDeposit `yaml:"derived_deposit"`
-	DerivedService DerivedService `yaml:"derived_service"`
-	Pricing        Pricing        `yaml:"pricing"`
+	Traversal        Traversal        `yaml:"traversal"`
+	Dust             Dust             `yaml:"dust"`
+	Coverage         Coverage         `yaml:"coverage"`
+	Labels           LabelRules       `yaml:"labels"`
+	DerivedDeposit   DerivedDeposit   `yaml:"derived_deposit"`
+	DerivedHotWallet DerivedHotWallet `yaml:"derived_hotwallet"`
+	Behaviour        Behaviour        `yaml:"behaviour"`
+	DerivedService   DerivedService   `yaml:"derived_service"`
+	Pricing          Pricing          `yaml:"pricing"`
 }
 
 // DerivedService configures behavioural service detection. The evidence
@@ -126,6 +128,31 @@ type DerivedDeposit struct {
 	// fetching. A candidate is judged on its whole outbound history, which
 	// is unknown until it has been fetched.
 	FetchCandidates int `yaml:"fetch_candidates"`
+}
+
+// Behaviour configures the unscored behaviour notes (docs/DECISIONS.md D28).
+type Behaviour struct {
+	PassThrough struct {
+		MinVolumeUSD     float64 `yaml:"min_volume_usd"`
+		MaxRetainedShare float64 `yaml:"max_retained_share"`
+		MaxDays          int     `yaml:"max_days"`
+	} `yaml:"pass_through"`
+	NewAddress struct {
+		MaxAgeDays    int     `yaml:"max_age_days"`
+		HighVolumeUSD float64 `yaml:"high_volume_usd"`
+	} `yaml:"new_address"`
+}
+
+// DerivedHotWallet configures exchange hot-wallet detection from two-way
+// flows with the exchange's own reserve wallets (docs/DECISIONS.md D28).
+type DerivedHotWallet struct {
+	Enabled             bool     `yaml:"enabled"`
+	ReserveSources      []string `yaml:"reserve_sources"`
+	MinTransfersEachWay int      `yaml:"min_transfers_each_way"`
+	MinInflowUSD        float64  `yaml:"min_inflow_usd"`
+	MinCounterparties   int      `yaml:"min_counterparties"`
+	MinExclusiveShare   float64  `yaml:"min_exclusive_share"`
+	Confidence          float64  `yaml:"confidence"`
 }
 
 // ---------------------------------------------------------------------------
@@ -419,6 +446,22 @@ func (c *Config) Validate() error {
 	for _, id := range c.Weights.DerivedDeposit.AnchorSources {
 		if !known[id] {
 			bad("derived_deposit.anchor_sources: %q is not a source in sources.yaml", id)
+		}
+	}
+	if h := c.Weights.DerivedHotWallet; h.Enabled {
+		for _, id := range h.ReserveSources {
+			if !known[id] {
+				bad("derived_hotwallet.reserve_sources: %q is not a source in sources.yaml", id)
+			}
+		}
+		if h.MinTransfersEachWay < 1 || h.MinCounterparties < 1 {
+			bad("derived_hotwallet: min_transfers_each_way and min_counterparties must be at least 1")
+		}
+		if h.MinExclusiveShare <= 0.5 || h.MinExclusiveShare > 1 {
+			bad("derived_hotwallet.min_exclusive_share: must be in (0.5,1], got %v", h.MinExclusiveShare)
+		}
+		if h.Confidence <= 0 || h.Confidence > 1 {
+			bad("derived_hotwallet.confidence: must be in (0,1], got %v", h.Confidence)
 		}
 	}
 

@@ -69,3 +69,21 @@ monitor:
   interval: 6h
   # Rescreens at most this many watches per pass; the rest wait for the next.
   per_pass: 200
+
+# Follow-up after a screen that has not finished tracing (docs/DECISIONS.md
+# D28). The first answer can cover a few percent of value while counterparties
+# are still being fetched; the bot keeps rescreening in the background as the
+# worker fetches each ring, and sends the final result when coverage stops
+# growing. Follow-ups do not use the customer's daily screens.
+deepen:
+  # How often to check whether the worker has caught up.
+  poll: 15s
+  # A round's rescreen waits at most this long for the fetch queue to drain.
+  round_wait: 5m
+  # Coverage must grow by at least this many points per round to continue.
+  min_gain_pct: 0.5
+  max_rounds: 12
+  max_duration: 45m
+  # Follow-ups running at once; beyond this, a screen gets the usual
+  # "screen again later" and no follow-up.
+  concurrent: 10

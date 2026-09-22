@@ -304,6 +304,10 @@ func connectionsInput(res *scoring.Result) report.ConnectionsInput {
 		}
 		in.Activity = act
 	}
+	for _, f := range res.Flags {
+		in.Flags = append(in.Flags, report.ConnectionsFlag{Code: f.Code, InUSD: f.InUSD.InexactFloat64(),
+			OutUSD: f.OutUSD.InexactFloat64(), VolumeUSD: f.VolumeUSD.InexactFloat64(), Days: f.Days, AgeDays: f.AgeDays})
+	}
 	return in
 }
 

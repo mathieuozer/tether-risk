@@ -166,6 +166,9 @@ type screenResponse struct {
 	// Activity is the address's own stored history, before attribution.
 	Activity *activityResponse `json:"activity,omitempty"`
 
+	// Flags are behaviour notes; they do not enter the score.
+	Flags []flagResponse `json:"flags"`
+
 	// Depth says whether tracing had finished when this was scored.
 	Depth *depthResponse `json:"depth,omitempty"`
 
@@ -204,6 +207,15 @@ type directionResponse struct {
 	UnattributedReasons []reasonResponse `json:"unattributed_reasons"`
 
 	Traversal traversalStats `json:"traversal"`
+}
+
+type flagResponse struct {
+	Code      string  `json:"code"`
+	InUSD     float64 `json:"in_usd,omitempty"`
+	OutUSD    float64 `json:"out_usd,omitempty"`
+	VolumeUSD float64 `json:"volume_usd,omitempty"`
+	Days      int     `json:"days,omitempty"`
+	AgeDays   int     `json:"age_days,omitempty"`
 }
 
 type activityResponse struct {
@@ -475,6 +487,7 @@ func toResponse(res *scoring.Result) screenResponse {
 		ConfigVersion:     res.ConfigVersion,
 		Disclaimer:        disclaimer,
 		Activity:          toActivity(res.Activity),
+		Flags:             toFlags(res.Flags),
 		Depth:             toDepth(res.Depth),
 	}
 }
@@ -490,6 +503,15 @@ func toDepth(d *scoring.DepthStatus) *depthResponse {
 		Counterparties: d.Counterparties, Traced: d.Traced,
 		TotalCounterparties: d.TotalCounterparties, Complete: d.Complete(),
 	}
+}
+
+func toFlags(fs []scoring.Flag) []flagResponse {
+	out := make([]flagResponse, 0, len(fs))
+	for _, f := range fs {
+		out = append(out, flagResponse{Code: f.Code, InUSD: round(f.InUSD, 2), OutUSD: round(f.OutUSD, 2),
+			VolumeUSD: round(f.VolumeUSD, 2), Days: f.Days, AgeDays: f.AgeDays})
+	}
+	return out
 }
 
 func toActivity(a *scoring.Activity) *activityResponse {

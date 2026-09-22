@@ -65,6 +65,14 @@ type Config struct {
 		Interval time.Duration `yaml:"interval"`
 		PerPass  int           `yaml:"per_pass"`
 	} `yaml:"monitor"`
+	Deepen struct {
+		Poll        time.Duration `yaml:"poll"`
+		RoundWait   time.Duration `yaml:"round_wait"`
+		MinGainPct  float64       `yaml:"min_gain_pct"`
+		MaxRounds   int           `yaml:"max_rounds"`
+		MaxDuration time.Duration `yaml:"max_duration"`
+		Concurrent  int           `yaml:"concurrent"`
+	} `yaml:"deepen"`
 
 	byID map[string]*Plan
 }
@@ -136,6 +144,10 @@ func (c *Config) init() error {
 	}
 	if c.Monitor.Interval < time.Hour || c.Monitor.PerPass < 1 {
 		return fmt.Errorf("monitor: interval must be at least 1h and per_pass at least 1")
+	}
+	d := c.Deepen
+	if d.Poll <= 0 || d.RoundWait < d.Poll || d.MaxRounds < 1 || d.MaxDuration <= 0 || d.Concurrent < 0 || d.MinGainPct < 0 {
+		return fmt.Errorf("deepen: poll, round_wait, max_rounds and max_duration must be positive, round_wait at least poll")
 	}
 	return nil
 }

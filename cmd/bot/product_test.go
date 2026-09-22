@@ -440,3 +440,72 @@ func TestMessageCatalogueIsComplete(t *testing.T) {
 		}
 	}
 }
+
+// --- follow-up ---------------------------------------------------------------
+
+func depthOf(pending, traced, of int) map[string]any {
+	return map[string]any{"frontier_pending": pending, "frontier_queued": pending, "traced": traced, "counterparties": of}
+}
+
+func TestFollowUpDeliversTheFinalResult(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.mu.Lock()
+	h.seq = []map[string]any{
+		{"score": 0.7, "band": "low", "coverage": 0.022, "depth": depthOf(17, 0, 56)},   // the customer's screen
+		{"score": 2.8, "band": "low", "coverage": 0.108, "depth": depthOf(183, 56, 56)}, // round 1
+		{"score": 9.2, "band": "low", "coverage": 0.387, "depth": depthOf(159, 56, 56)}, // round 2
+		{"score": 12.4, "band": "low", "coverage": 0.71, "depth": depthOf(0, 56, 56)},   // round 3: done
+	}
+	h.mu.Unlock()
+
+	h.text(100, addrA)
+	if !contains(h.tg.sent(100), "I will send the final result here") {
+		t.Fatalf("first answer does not promise a follow-up: %q", h.tg.sent(100))
+	}
+	h.b.wg.Wait()
+
+	msgs := h.tg.sent(100)
+	last := msgs[len(msgs)-1]
+	for _, want := range []string{"Final result for " + addrA, "First answer: Low 0.7/100, coverage 2.2%", "Now: Low 12.4/100, coverage 71.0%"} {
+		if !strings.Contains(last, want) {
+			t.Errorf("final message lacks %q:\n%s", want, last)
+		}
+	}
+	if h.calls != 4 {
+		t.Errorf("%d screens served, want 1 + 3 rounds", h.calls)
+	}
+	if used, _ := h.b.store.Used(ctx, 100, h.clock); used != 1 {
+		t.Errorf("follow-up rounds used daily screens: used = %d, want 1", used)
+	}
+	items, _ := h.b.store.History(ctx, 100, 10)
+	if len(items) != 2 || items[0].Channel != "followup" {
+		t.Errorf("history = %+v, want the screen and the follow-up", items)
+	}
+}
+
+func TestFollowUpStopsWhenCoverageStalls(t *testing.T) {
+	h := newHarness(t)
+	stuck := map[string]any{"score": 5.0, "band": "low", "coverage": 0.30, "depth": depthOf(40, 56, 56)}
+	h.setResult(stuck)
+	h.text(101, addrA)
+	h.b.wg.Wait()
+	// The first screen, then two rounds that add nothing.
+	if h.calls != 3 {
+		t.Errorf("%d screens, want 3: a stalled trace must stop", h.calls)
+	}
+	msgs := h.tg.sent(101)
+	if !strings.Contains(msgs[len(msgs)-1], "The result did not change") {
+		t.Errorf("last message: %q", msgs[len(msgs)-1])
+	}
+}
+
+func TestFinishedScreenHasNoFollowUp(t *testing.T) {
+	h := newHarness(t)
+	h.setResult(map[string]any{"score": 5.0, "band": "low", "coverage": 0.9, "depth": depthOf(0, 10, 10)})
+	h.text(102, addrA)
+	h.b.wg.Wait()
+	if h.calls != 1 || contains(h.tg.sent(102), "final result") {
+		t.Errorf("follow-up on a finished screen: %d calls, %q", h.calls, h.tg.sent(102))
+	}
+}

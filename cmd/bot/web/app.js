@@ -554,6 +554,8 @@
     if (chain) body.chain = chain;
     api('POST', '/screen', body, SCREEN_TIMEOUT).then(function (data) {
       S.result = data.result;
+      // The bot keeps tracing an unfinished screen and sends the final result to the chat.
+      S.followUp = !!data.follow_up;
       if (data.usage && S.me) S.me.usage.screens_today = data.usage.screens_today;
       S.dir = hasEntries(data.result.inbound) || !hasEntries(data.result.outbound) ? 'inbound' : 'outbound';
       S.entriesAll = {};
@@ -1134,6 +1136,7 @@
     html += depthNotes(r);
     html += connectionsCard(r, c, dirs);
     if (c.total > 0) html += checksCard(r, c.shares);
+    html += flagsCard(r);
     html += entriesCard(r);
     html += activityCard(r);
     html += breakdownBlock(r);
@@ -1202,18 +1205,19 @@
   function depthNotes(r) {
     var d = r.depth;
     var notes = [];
+    var fu = S.followUp ? '_fu' : '';
     if (d) {
       if (d.fetch_error) notes.push(['warn', t('depth_fetch_error', { err: d.fetch_error })]);
-      if (d.still_fetching) notes.push(['progress', t('depth_still_fetching')]);
+      if (d.still_fetching) notes.push(['progress', t('depth_still_fetching' + fu)]);
       if (d.history_truncated) notes.push(['info', t('depth_history_truncated', { n: fmtInt(10000) })]);
       if (d.frontier_pending > 0) {
         var q = d.frontier_queued < d.frontier_pending
           ? t('n_of_m', { n: fmtInt(d.frontier_queued), m: fmtInt(d.frontier_pending) })
           : fmtInt(d.frontier_queued);
-        notes.push(['progress', t('depth_frontier', { n: q })]);
+        notes.push(['progress', t('depth_frontier' + fu, { n: q })]);
       }
       if (d.counterparties > 0 && d.traced < d.counterparties) {
-        notes.push(['progress', t('depth_tracing', { n: fmtInt(d.traced), m: fmtInt(d.counterparties) })]);
+        notes.push(['progress', t('depth_tracing' + fu, { n: fmtInt(d.traced), m: fmtInt(d.counterparties) })]);
       }
     }
     if (truncated(r.inbound) || truncated(r.outbound)) notes.push(['info', t('traversal_truncated')]);
@@ -1285,6 +1289,24 @@
       '<p class="hint small card-foot">' + tt('checks_cover', { pct: fmtPct((r.coverage || 0) * 100) }) +
       (r.low_confidence ? ' ' + tt('checks_lowconf') : '') + '</p></section>';
   }
+
+  // Behaviour notes: what the address did, shown beside the score but never part of it.
+  function flagsCard(r) {
+    var flags = (r.flags || []).filter(function (f) { return FLAG_TEXT[f.code]; });
+    if (!flags.length) return '';
+    var rows = flags.map(function (f) {
+      return '<li class="flag"><span class="flag-name">' + tt(FLAG_TEXT[f.code] + '_title') + '</span>' +
+        '<span class="flag-text">' + tt(FLAG_TEXT[f.code], {
+          inn: fmtUSD(f.in_usd || 0), out: fmtUSD(f.out_usd || 0), vol: fmtUSD(f.volume_usd || 0),
+          days: fmtInt(f.days || 0), age: fmtInt(f.age_days || 0)
+        }) + '</span></li>';
+    }).join('');
+    return '<section class="card" aria-labelledby="flags-title"><div class="card-head"><div><h2 id="flags-title">' +
+      tt('flags_title') + '</h2><p class="hint small">' + tt('flags_hint') + '</p></div></div>' +
+      '<ul class="flags">' + rows + '</ul></section>';
+  }
+
+  var FLAG_TEXT = { pass_through: 'flag_pass_through', high_volume_new: 'flag_high_volume_new', new_address: 'flag_new_address' };
 
   function entriesCard(r) {
     var inN = hasEntries(r.inbound) ? r.inbound.connections.length : 0;

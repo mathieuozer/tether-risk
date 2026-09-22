@@ -40,6 +40,16 @@ type ConnectionsInput struct {
 
 	// Lang is "en" or "tr"; anything else renders English.
 	Lang string
+
+	// Flags are behaviour notes; shown, never scored.
+	Flags []ConnectionsFlag
+}
+
+// ConnectionsFlag is one behaviour note.
+type ConnectionsFlag struct {
+	Code                     string
+	InUSD, OutUSD, VolumeUSD float64
+	Days, AgeDays            int
 }
 
 // ConnectionsActivity is what the address itself did, before attribution.
@@ -59,8 +69,11 @@ type ConnectionsAsset struct {
 
 // ConnectionsDepth says whether tracing had finished when this was scored.
 type ConnectionsDepth struct {
-	FrontierPending     int // dead ends not yet fetched
-	FrontierQueued      int // of those, queued by this screen
+	FrontierPending int // dead ends not yet fetched
+	FrontierQueued  int // of those, queued by this screen
+	// FollowUp means the caller keeps tracing in the background and will
+	// send the final result, so the reader is not told to screen again.
+	FollowUp            bool
 	FetchError          string
 	StillFetching       bool
 	HistoryTruncated    bool
@@ -222,6 +235,7 @@ func Connections(in ConnectionsInput) string {
 		writeEntries(&b, in, l)
 		writeChecks(&b, in, shares, l)
 	}
+	writeFlags(&b, in.Flags, l)
 
 	b.WriteString(l.f("risk_level", l.band(in.Band), in.Score))
 	b.WriteString(l.f("coverage", l.pct(in.Coverage*100)))
@@ -438,6 +452,26 @@ func writeChecks(b *strings.Builder, in ConnectionsInput, shares []ConnectionsCa
 	b.WriteString(l.f("checks_cover", l.pct(in.Coverage*100)))
 }
 
+// writeFlags lists behaviour notes. They describe what the address did and
+// say plainly that they are not part of the score.
+func writeFlags(b *strings.Builder, flags []ConnectionsFlag, l loc) {
+	if len(flags) == 0 {
+		return
+	}
+	b.WriteString(l.f("flags"))
+	for _, f := range flags {
+		switch f.Code {
+		case "pass_through":
+			b.WriteString(l.f("flag_pass_through", usd(f.InUSD), usd(f.OutUSD), f.Days))
+		case "high_volume_new":
+			b.WriteString(l.f("flag_high_volume_new", usd(f.VolumeUSD), f.AgeDays))
+		case "new_address":
+			b.WriteString(l.f("flag_new_address", f.AgeDays))
+		}
+	}
+	b.WriteString("\n")
+}
+
 func combineReasons(dirs ...*ConnectionsDirection) []ConnectionsReason {
 	var total float64
 	for _, d := range dirs {
@@ -557,8 +591,12 @@ func writeDepth(b *strings.Builder, d *ConnectionsDepth, l loc) {
 	if d.FetchError != "" {
 		b.WriteString(l.f("fetch_error", d.FetchError))
 	}
+	later := ""
+	if d.FollowUp {
+		later = "_followup"
+	}
 	if d.StillFetching {
-		b.WriteString(l.f("still_fetching"))
+		b.WriteString(l.f("still_fetching" + later))
 	}
 	if d.HistoryTruncated {
 		b.WriteString(l.f("history_limit"))
@@ -568,7 +606,7 @@ func writeDepth(b *strings.Builder, d *ConnectionsDepth, l loc) {
 		if d.FrontierQueued < d.FrontierPending {
 			queued = l.f("queued_of", d.FrontierQueued, d.FrontierPending)
 		}
-		b.WriteString(l.f("frontier", queued))
+		b.WriteString(l.f("frontier"+later, queued))
 	}
 	if d.Counterparties == 0 {
 		if d.FrontierPending > 0 {
@@ -577,7 +615,7 @@ func writeDepth(b *strings.Builder, d *ConnectionsDepth, l loc) {
 		return
 	}
 	if d.Traced < d.Counterparties {
-		b.WriteString(l.f("tracing", d.Traced, d.Counterparties))
+		b.WriteString(l.f("tracing"+later, d.Traced, d.Counterparties))
 	} else {
 		b.WriteString(l.f("traced", d.Traced, d.Counterparties))
 	}

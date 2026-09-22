@@ -114,6 +114,10 @@ type Result struct {
 	// when it was not computed.
 	Activity *Activity
 
+	// Flags are behaviour notes on the address's own activity. They are shown
+	// with the result and never enter the score (docs/DECISIONS.md D28).
+	Flags []Flag
+
 	// Depth reports how much of the neighbourhood was stored when this was
 	// scored. Nil when not computed.
 	Depth *DepthStatus

@@ -37,6 +37,17 @@ func (s *Store) SetLang(ctx context.Context, userID int64, lang string) error {
 	return err
 }
 
+// FetchBacklog is how many fetch jobs the ingest worker could run now. The
+// follow-up waits for it to reach zero: a rescreen before the worker has
+// fetched the last ring would see nothing new.
+func (s *Store) FetchBacklog(ctx context.Context) (int, error) {
+	var n int
+	err := s.pg.QueryRowContext(ctx, `
+		SELECT count(*) FROM fetch_jobs
+		WHERE state = 'running' OR (state = 'pending' AND (not_before IS NULL OR not_before <= now()))`).Scan(&n)
+	return n, err
+}
+
 // ---------------------------------------------------------------------------
 // History
 // ---------------------------------------------------------------------------

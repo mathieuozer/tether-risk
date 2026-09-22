@@ -33,6 +33,15 @@ type screenResponse struct {
 	Inbound  *direction `json:"inbound"`
 	Outbound *direction `json:"outbound"`
 
+	Flags []struct {
+		Code      string  `json:"code"`
+		InUSD     float64 `json:"in_usd"`
+		OutUSD    float64 `json:"out_usd"`
+		VolumeUSD float64 `json:"volume_usd"`
+		Days      int     `json:"days"`
+		AgeDays   int     `json:"age_days"`
+	} `json:"flags"`
+
 	OwnLabel *struct {
 		Entity   string `json:"entity"`
 		Category string `json:"category"`
@@ -189,7 +198,9 @@ func format(r *screenResponse) string {
 }
 
 // summary renders the compact connections list in the user's language.
-func summary(r *screenResponse, lang string) string {
+// followUp says tracing continues in the background and the final result
+// will be sent, instead of asking the reader to screen again.
+func summary(r *screenResponse, lang string, followUp bool) string {
 	in := report.ConnectionsInput{
 		Lang:              lang,
 		Address:           r.Address,
@@ -204,13 +215,17 @@ func summary(r *screenResponse, lang string) string {
 		Outbound:          summaryDirection(r.Outbound),
 		Disclaimer:        r.Disclaimer,
 	}
+	for _, f := range r.Flags {
+		in.Flags = append(in.Flags, report.ConnectionsFlag{Code: f.Code, InUSD: f.InUSD, OutUSD: f.OutUSD,
+			VolumeUSD: f.VolumeUSD, Days: f.Days, AgeDays: f.AgeDays})
+	}
 	if r.OwnLabel != nil {
 		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: r.OwnLabel.Entity, Category: r.OwnLabel.Category}
 	}
 	if d := r.Depth; d != nil {
 		in.Depth = &report.ConnectionsDepth{
 			FetchError: d.FetchError, StillFetching: d.StillFetching, HistoryTruncated: d.HistoryTruncated,
-			FrontierPending: d.FrontierPending, FrontierQueued: d.FrontierQueued,
+			FrontierPending: d.FrontierPending, FrontierQueued: d.FrontierQueued, FollowUp: followUp,
 			Counterparties: d.Counterparties,
 			Traced:         d.Traced, TotalCounterparties: d.TotalCounterparties,
 		}

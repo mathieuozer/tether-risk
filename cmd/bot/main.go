@@ -139,6 +139,8 @@ func run(apiURL, chainID, configDir, tgBase string, concurrency int, log *slog.L
 		monitorWake: make(chan struct{}, 1),
 		root:        ctx,
 		limiter:     &keyLimiter{},
+		following:   map[string]bool{},
+		sleep:       realSleep,
 	}
 
 	if b.usdtAddr != "" {
@@ -242,6 +244,8 @@ type bot struct {
 	root        context.Context
 	wg          sync.WaitGroup // background work: batches, watchers, server
 	limiter     *keyLimiter
+	following   map[string]bool // user/chain/address with a follow-up running
+	sleep       func(context.Context, time.Duration) bool
 }
 
 // poll reads updates and handles each on its own goroutine. Handling them in

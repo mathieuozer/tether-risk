@@ -108,7 +108,9 @@ type harness struct {
 	tron  *string // body the fake TronGrid returns
 
 	mu     sync.Mutex
-	result map[string]any // fields the fake screening API returns
+	result map[string]any   // fields the fake screening API returns
+	seq    []map[string]any // if set, returned one per screen before result
+	calls  int              // screens served
 }
 
 // setResult changes what the fake screening API returns.
@@ -148,8 +150,13 @@ func newHarness(t *testing.T) *harness {
 		var req map[string]string
 		json.NewDecoder(r.Body).Decode(&req)
 		h.mu.Lock()
+		h.calls++
+		fields := h.result
+		if len(h.seq) > 0 {
+			fields, h.seq = h.seq[0], h.seq[1:]
+		}
 		out := map[string]any{"address": req["address"], "chain": req["chain"]}
-		for k, v := range h.result {
+		for k, v := range fields {
 			out[k] = v
 		}
 		h.mu.Unlock()
@@ -187,6 +194,8 @@ func newHarness(t *testing.T) *harness {
 		monitorWake: make(chan struct{}, 1),
 		root:        context.Background(),
 		limiter:     &keyLimiter{},
+		following:   map[string]bool{},
+		sleep:       func(ctx context.Context, _ time.Duration) bool { return ctx.Err() == nil },
 	}
 	return h
 }

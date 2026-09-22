@@ -187,6 +187,32 @@ observed, "Poloniex (sends to its reserves)", and keep the anchor's
 **Precision is not yet measured** for either anchor kind. SPEC.md §6 requires
 it, and it needs a hand-labelled sample, which does not exist yet.
 
+## 4a. Derived exchange hot wallets (D28)
+
+A service-shaped wallet (at least 250 counterparties) that exchanges transfers
+both ways with one exchange's own reserve wallets (at least 3 each way, at
+least $100k from the reserves), with at least 90% of its reserve traffic going
+to that exchange, is labelled that exchange's hot wallet (`derived:hotwallet`,
+confidence 0.8). Measured 2026-09-22 against the 22 HTX and Poloniex reserve
+wallets: 12,282 wallets had some reserve flow and 5 passed, all HTX. The
+rejected cases are the reasons for each rule. One-way inflow means a
+withdrawal or an OTC payment. Two to four counterparties means cold storage.
+Two-way traffic with both exchanges' reserves means a market maker.
+Precision is unmeasured, like §4's.
+
+## 4c. Behaviour notes (D28)
+
+Notes on an address's own activity accompany every result and are never
+scored:
+
+- **pass-through:** in and out each at least $10k, at most 5% retained,
+  within 30 days;
+- **new address:** first activity within 30 days;
+- **high-volume new address:** a new address that has moved at least $1M.
+
+They record what the address did. The same pattern fits layering and an OTC
+desk, and the data cannot tell them apart, so a note never moves the band.
+
 ## 4b. Behavioural service detection
 
 No citable source for named TRON exchange hot wallets exists within the

@@ -823,3 +823,10 @@ textarea.input { resize: vertical; min-height: 120px; line-height: 1.5; }
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition: none !important; }
   .spinner { animation: spin 1.6s linear infinite !important; }
 }
+
+/* Behaviour notes */
+.flags { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.flag { display: grid; gap: 4px; padding: 12px 14px; border-radius: 12px;
+  background: var(--medium-bg); border-left: 3px solid var(--medium); }
+.flag-name { font-weight: 600; }
+.flag-text { color: var(--hint, inherit); font-size: 14px; line-height: 1.45; }

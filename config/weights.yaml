@@ -102,6 +102,7 @@ labels:
     - htx_por
     - poloniex_por
     - dune
+    - derived:hotwallet
     - derived:deposit
     - derived:service
     - chainabuse
@@ -144,10 +145,55 @@ derived_deposit:
   # label keeps the anchor's category (unnamed_service for these, D19): the
   # list names the exchange without saying anything about its KYC tier
   # (docs/DECISIONS.md D25).
-  anchor_sources: [htx_por, poloniex_por]
+  anchor_sources: [htx_por, poloniex_por, "derived:hotwallet"]
   # Unfetched candidates queued per run. A candidate is judged on its whole
   # outbound history, which is unknown until fetched; the next run judges it.
   fetch_candidates: 200
+
+# ---------------------------------------------------------------------------
+# Behaviour notes (docs/DECISIONS.md D28). Patterns in an address's own
+# activity that a reviewer should see. They are shown with the result and do
+# not enter the score: a pass-through wallet can be layering or an OTC desk,
+# and the notes say what was observed, not which it is.
+# ---------------------------------------------------------------------------
+behaviour:
+  pass_through:
+    # Both directions at least this much, in USD.
+    min_volume_usd: 10000
+    # At most this share of the larger side retained: |in - out| / max(in, out).
+    max_retained_share: 0.05
+    # Over a span of activity no longer than this.
+    max_days: 30
+  new_address:
+    # First activity at most this many days before the screen.
+    max_age_days: 30
+    # A new address that has already moved at least this much, in and out
+    # together, is noted as such rather than merely new.
+    high_volume_usd: 1000000
+
+# ---------------------------------------------------------------------------
+# Derived exchange hot wallets (docs/DECISIONS.md D28). Reserve wallets refill
+# an exchange's hot wallets and hot wallets sweep back, so a wallet with
+# transfers both ways with one exchange's reserves, and service-shaped
+# itself, is that exchange's hot wallet. Measured 2026-09-22 against the 22
+# HTX and Poloniex reserve wallets: 5 wallets pass, 20 one-way or
+# few-counterparty wallets (cold storage, OTC) do not.
+# ---------------------------------------------------------------------------
+derived_hotwallet:
+  enabled: true
+  # Sources whose addresses are the exchange's own reserve wallets.
+  reserve_sources: [htx_por, poloniex_por]
+  # Transfers each way between the wallet and one exchange's reserves.
+  min_transfers_each_way: 3
+  # Value the reserves sent it, in USD.
+  min_inflow_usd: 100000
+  # Distinct counterparties in stored history: a hot wallet pays many
+  # customers; cold storage and OTC desks have a handful.
+  min_counterparties: 250
+  # Share of its reserve flows (in plus back) with that one exchange. A
+  # wallet trading with several exchanges' reserves belongs to none of them.
+  min_exclusive_share: 0.90
+  confidence: 0.8
 
 # ---------------------------------------------------------------------------
 # Pricing. docs/PLAN.md F3: no commercial price feed is available, so USD

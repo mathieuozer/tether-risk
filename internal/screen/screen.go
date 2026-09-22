@@ -253,6 +253,7 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 		return nil, err
 	}
 	res.Activity = act
+	res.Flags = scoring.BehaviourFlags(act, time.Now(), s.cfg.Weights.Behaviour)
 
 	if err := s.profile(ctx, chainID, res); err != nil {
 		return nil, err

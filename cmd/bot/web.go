@@ -374,9 +374,11 @@ func (b *bot) apiAppScreen(w http.ResponseWriter, r *http.Request, u appUser) {
 		writeErr(w, err, u.Lang)
 		return
 	}
+	following := b.startFollowUp(u.ID, u.Lang, out.Chain, out.Address, out.Result)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"result": json.RawMessage(out.Raw),
-		"usage":  map[string]int{"screens_today": out.Used, "daily_screens": out.Limit},
+		"result":    json.RawMessage(out.Raw),
+		"usage":     map[string]int{"screens_today": out.Used, "daily_screens": out.Limit},
+		"follow_up": following,
 	})
 }
 

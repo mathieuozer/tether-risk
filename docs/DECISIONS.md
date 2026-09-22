@@ -920,3 +920,63 @@ backend and a real screen, in both themes.
 **Not solved here.** A public HTTPS URL for the app (a Cloudflare tunnel on
 this Mac to start). Hosting off this Mac. Legal review of both terms files.
 Behavioural flags such as "in = out within days" are not scored yet.
+
+## D28 — more precise results: follow-up, exchange hot wallets, behaviour notes
+
+**Date:** 2026-09-22 · **Status:** active · **Follows:** D23, D25, D27
+
+The owner asked what would make results more precise and to do it. Three
+changes need nothing from outside. Naming the large exchanges needs test
+transfers (D19), and measuring accuracy needs the competitor's results for a
+set of addresses. Both wait on the owner.
+
+**Follow-up.** A first screen of a fresh address can cover almost nothing
+while its counterparties are still being fetched. D23 deepened ring by ring,
+but only when someone screened again. The bot now follows up by itself. It
+waits for the worker's queue, rescreens, and repeats until nothing is left
+to trace, coverage stops growing (under 0.5 points twice), or the round and
+time limits are reached. Then it sends the final result, with what changed
+since the first answer. Rounds use the internal API and cost no daily
+screens. At most 10 run at once, and one per user and address. Measured
+live: TKKPgK…dk4V went from 0.6% coverage (score 0.1) to 82.5% (score 10.4)
+in 6 rounds and 20 minutes, with no action from the customer. The first
+answer now says the final result will follow instead of "screen again later".
+
+That test exposed an ordering problem: the labeler's deposit candidates and
+a customer's rings shared one priority, so a customer could wait behind
+background work. Background work is now queued at priority 1000; customer
+screens stay at 99–100. A customer asking for an address already waiting in
+the background lifts it to customer priority.
+
+**Exchange hot wallets from reserve flows.** A wallet that exchanges
+transfers both ways with one exchange's own reserve wallets (at least 3
+each way, at least $100k in), is service-shaped (at least 250
+counterparties), and does at least 90% of its reserve traffic with that one
+exchange, is that exchange's hot wallet. Each rule excludes a real case in
+the data. One-way inflow is a withdrawal or a desk. A few counterparties is
+cold storage. Traffic with two exchanges' reserves is a market maker. Of
+12,282 wallets with any reserve flow, 5 passed, all HTX:
+TFTWNg…5jLu, TKFREL…3Mnf, TREnSa…vDtJ, TXJgMd…qccvd, TYyriW…RTd. They
+are labelled `derived:hotwallet` at confidence 0.8, above
+`derived:service`'s 0.75, so a named hot wallet replaces "high-volume
+service". They also anchor the deposit heuristic, since customer deposit
+wallets sweep into hot wallets. With them, accepted deposit wallets rose
+from 208 to 368. Category stays `unnamed_service` (D19): the name is
+proven, the KYC tier is not.
+
+None of the sources of the two addresses the owner screened today are HTX
+or Poloniex wallets. Those services are most likely larger exchanges, which
+only test transfers can name.
+
+**Behaviour notes.** Patterns in an address's own activity, shown with the
+result and never scored:
+
+- *Pass-through:* in and out each at least $10k, at most 5% retained,
+  within 30 days.
+- *New address:* first activity within 30 days.
+- *High-volume new address:* a new address that has moved at least $1M.
+
+TJBsbT…8Y5P ($7.11M in and out in 11 days) and TKKPgK…dk4V both show
+pass-through and high-volume new. They are notes, not scores, because a
+pass-through wallet can be layering or an OTC desk, and the data cannot
+tell which. Thresholds are in weights.yaml under `behaviour`.
