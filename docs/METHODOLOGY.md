@@ -250,6 +250,23 @@ carries weight 2 and `unnamed_service` 15, so the distinction changes a score
 sevenfold. A verified name from the curated source outranks this and should
 replace it.
 
+**Judging from stored history (D30).** A candidate whose full history is
+already stored is judged from that history rather than from an API sample,
+because a sample of its latest 600 transfers can miss a hub whose customers
+change slowly. It needs:
+
+| Threshold | Value |
+|---|---|
+| Stored transfers | 400 minimum |
+| Distinct counterparties | 250 minimum |
+| Counterparties per transfer | 0.2 minimum |
+| Days between first and last transfer | 90 minimum |
+
+The 90-day rule separates a lasting service from a wallet that was busy for a
+few weeks (a young hub, 18 days old, had been labelled a service before the
+rule). Every run rechecks labels made this way and withdraws those that no
+longer pass. Candidates whose history is not stored are sampled as before.
+
 Every label records the measurement and a URL that reproduces it.
 
 Measured results, 2026-09-21, over 101,869 transfers and 18,700 addresses:

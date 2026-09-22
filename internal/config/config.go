@@ -63,6 +63,13 @@ type DerivedService struct {
 	MinCounterparties   int     `yaml:"min_counterparties"`
 	RequireMorePages    bool    `yaml:"require_more_pages"`
 	Confidence          float64 `yaml:"confidence"`
+	MaxCandidates       int     `yaml:"max_candidates"`
+	Stored              struct {
+		MinTransfers         int     `yaml:"min_transfers"`
+		MinCounterparties    int     `yaml:"min_counterparties"`
+		MinCounterpartyRatio float64 `yaml:"min_counterparty_ratio"`
+		MinActiveDays        int     `yaml:"min_active_days"`
+	} `yaml:"stored"`
 }
 
 // Pricing controls how raw amounts become USD values. docs/PLAN.md F3.
@@ -136,6 +143,7 @@ type Verdict struct {
 	RedExposure      map[string]float64 `yaml:"red_exposure"`
 	ClearMinCoverage float64            `yaml:"clear_min_coverage"`
 	MaxPendingPct    float64            `yaml:"max_pending_pct"`
+	MaxUnnamedPct    float64            `yaml:"max_unnamed_pct"`
 	ConfidenceHigh   float64            `yaml:"confidence_high"`
 	ConfidenceMedium float64            `yaml:"confidence_medium"`
 }
@@ -151,6 +159,17 @@ type Behaviour struct {
 		MaxAgeDays    int     `yaml:"max_age_days"`
 		HighVolumeUSD float64 `yaml:"high_volume_usd"`
 	} `yaml:"new_address"`
+	RoundSplit struct {
+		MinAmountUSD  float64 `yaml:"min_amount_usd"`
+		RoundToUSD    float64 `yaml:"round_to_usd"`
+		MinRecipients int     `yaml:"min_recipients"`
+		MaxMinutes    int     `yaml:"max_minutes"`
+	} `yaml:"round_split"`
+	Parked struct {
+		MinAmountUSD float64 `yaml:"min_amount_usd"`
+		MinWallets   int     `yaml:"min_wallets"`
+		MinTotalUSD  float64 `yaml:"min_total_usd"`
+	} `yaml:"parked"`
 }
 
 // DerivedHotWallet configures exchange hot-wallet detection from two-way

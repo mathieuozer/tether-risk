@@ -5,11 +5,15 @@ import (
 	"database/sql"
 	"encoding/csv"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
 	"time"
 
+	"github.com/mozer/tether-risk/internal/config"
+	"github.com/mozer/tether-risk/internal/ingest"
 	"github.com/mozer/tether-risk/internal/scoring"
 	"github.com/mozer/tether-risk/internal/screen"
 )
@@ -29,12 +33,17 @@ import (
 // The sets are drawn from stored data, so the benchmark spends no API
 // budget. Results are written to .data/benchmark so runs can be compared.
 
+// followRounds > 0 measures the final answer: each round screens with
+// prefetching, so dead ends are queued, waits for the worker, and screens
+// again, as the bot's follow-up does (docs/DECISIONS.md D28, D30).
+var followRounds int
+
 type benchSet struct {
 	name, want string
 	addrs      []string
 }
 
-func checkVerdictBenchmark(ctx context.Context, svc *screen.Service, ch, pg *sql.DB, chainID string, limit int) (checkResult, error) {
+func checkVerdictBenchmark(ctx context.Context, svc *screen.Service, cfg *config.Config, ch, pg *sql.DB, chainID string, limit int) (checkResult, error) {
 	res := checkResult{Name: "verdict benchmark"}
 
 	listed, err := pgAddrs(ctx, pg, `
@@ -81,6 +90,25 @@ func checkVerdictBenchmark(ctx context.Context, svc *screen.Service, ch, pg *sql
 	defer w.Flush()
 	_ = w.Write([]string{"set", "address", "level", "confidence", "band", "score", "coverage", "top_reason", "ok"})
 
+	if followRounds > 0 {
+		p, err := ingest.NewPrefetcher(chainID, cfg, ch, pg, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		if err != nil {
+			return res, err
+		}
+		svc.WithPrefetch(chainID, p)
+		for r := 1; r <= followRounds; r++ {
+			for _, s := range sets {
+				for _, a := range s.addrs {
+					if _, err := svc.Screen(ctx, chainID, a); err != nil {
+						fmt.Fprintf(os.Stderr, "round %d %s: %v\n", r, a, err)
+					}
+				}
+			}
+			waitForQueue(ctx, pg, 20*time.Minute)
+			fmt.Printf("follow-up round %d of %d done\n", r, followRounds)
+		}
+	}
+
 	fmt.Println("\nVERDICT BENCHMARK")
 	fmt.Printf("%-10s %5s %7s %8s %10s   %-16s %s\n", "set", "n", "clear", "caution", "high_risk", "must be", "misses")
 	for _, s := range sets {
@@ -117,6 +145,23 @@ func checkVerdictBenchmark(ctx context.Context, svc *screen.Service, ch, pg *sql
 	}
 	res.Notes = append(res.Notes, "per-address results in "+path)
 	return res, nil
+}
+
+// waitForQueue waits until no customer-priority fetch is pending or running,
+// or until the limit.
+func waitForQueue(ctx context.Context, pg *sql.DB, limit time.Duration) {
+	deadline := time.Now().Add(limit)
+	for time.Now().Before(deadline) {
+		var n int
+		if err := pg.QueryRowContext(ctx, `SELECT count(*) FROM fetch_jobs WHERE state IN ('pending','running') AND priority < 1000`).Scan(&n); err != nil || n == 0 {
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(15 * time.Second):
+		}
+	}
 }
 
 func verdictOK(want string, v *scoring.Verdict) bool {

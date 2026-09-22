@@ -45,6 +45,13 @@ type EdgeSource interface {
 	Neighbours(ctx context.Context, chainID, address string, dir Direction) ([]Neighbour, error)
 }
 
+// HistorySource reports which addresses have had their own history fetched.
+// An address that has not is known only through the transfers stored for
+// other addresses, so its edges are a sample, not its history.
+type HistorySource interface {
+	Fetched(ctx context.Context, chainID string, addresses []string) (map[string]bool, error)
+}
+
 // LabelSource resolves labels in batch.
 type LabelSource interface {
 	Lookup(ctx context.Context, chainID string, addresses []string) (map[string]labels.Resolution, error)
@@ -134,9 +141,19 @@ func (r Result) Coverage() decimal.Decimal {
 
 // Traverser walks the edge graph.
 type Traverser struct {
-	edges  EdgeSource
-	labels LabelSource
-	cfg    *config.Config
+	edges   EdgeSource
+	labels  LabelSource
+	cfg     *config.Config
+	history HistorySource // nil: every address counts as fetched
+}
+
+// WithHistory makes the traversal stop at addresses whose own history has
+// not been fetched, recording them as dead ends instead of expanding them
+// from the fragment of their edges other addresses revealed
+// (docs/DECISIONS.md D30).
+func (t *Traverser) WithHistory(h HistorySource) *Traverser {
+	t.history = h
+	return t
 }
 
 func New(edges EdgeSource, lbls LabelSource, cfg *config.Config) *Traverser {
@@ -183,6 +200,42 @@ func (t *Traverser) Traverse(ctx context.Context, chainID, address string, dir D
 		}
 
 		var next []frontier
+
+		// Past the origin, expand only addresses whose own history is stored.
+		// Expanding one that is not splits its value over the few edges other
+		// addresses happened to reveal. That was a real bug: an intermediate
+		// wallet whose only known inbound edges were address-poisoning dust
+		// had 100% of its value classed as dust, which counts as attributed,
+		// so coverage read 94.6% and confidence high for an address mostly
+		// unknown (docs/DECISIONS.md D30). As a dead end it counts as unknown
+		// and the screen queues it for fetching.
+		if hop > 0 && t.history != nil {
+			addrs := make([]string, len(level))
+			for i, f := range level {
+				addrs[i] = f.address
+			}
+			fetched, err := t.history.Fetched(ctx, chainID, addrs)
+			if err != nil {
+				return nil, fmt.Errorf("history: %w", err)
+			}
+			kept := level[:0]
+			for _, f := range level {
+				if fetched[f.address] {
+					kept = append(kept, f)
+					continue
+				}
+				res.Paths = append(res.Paths, Path{
+					Hops: f.hops, Shares: f.shares,
+					Contribution: f.carried.Mul(decayPow(decay, len(f.shares))),
+					Decay:        decay,
+					Terminal:     Terminal{Address: f.address, Reason: "dead_end"},
+				})
+			}
+			level = kept
+			if len(level) == 0 {
+				break
+			}
+		}
 
 		// Expand every node at this level, collecting the neighbours first so
 		// the label lookup can be batched.

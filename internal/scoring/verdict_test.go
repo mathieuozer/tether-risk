@@ -10,7 +10,7 @@ import (
 func verdictRules() config.Verdict {
 	return config.Verdict{
 		RedExposure:      map[string]float64{"sanctions": 1, "frozen_funds": 5, "scam": 10},
-		ClearMinCoverage: 0.8, ConfidenceHigh: 0.9, ConfidenceMedium: 0.6, MaxPendingPct: 5,
+		ClearMinCoverage: 0.8, ConfidenceHigh: 0.9, ConfidenceMedium: 0.6, MaxPendingPct: 5, MaxUnnamedPct: 50,
 	}
 }
 
@@ -40,13 +40,16 @@ func TestVerdict(t *testing.T) {
 			VerdictHighRisk, "band_high", "high"},
 		{"exposure below the red line is a caution",
 			vresult("low", 0.70, map[string]float64{"unnamed_service": 66, "frozen_funds": 3.8}, true),
-			VerdictCaution, "exposure_minor", "medium"},
-		// TNwf8V…crmL: all value from large services, fully traced.
-		{"clean", vresult("low", 0.999, map[string]float64{"unnamed_service": 99.9}, true),
+			VerdictCaution, "exposure_minor", "low"},
+		{"clean", vresult("low", 0.999, map[string]float64{"exchange": 80, "unnamed_service": 19.9}, true),
 			VerdictClear, "clean", "high"},
-		{"unknown is not clean", vresult("low", 0.30, map[string]float64{"unnamed_service": 30}, true),
+		// TTrcHL…BPQp once its hub was labelled: every dollar ends at one
+		// unidentified service, which proves nothing about where it came from.
+		{"unidentified services are not clean", vresult("low", 1, map[string]float64{"unnamed_service": 100}, true),
+			VerdictCaution, "unidentified", "low"},
+		{"unknown is not clean", vresult("low", 0.30, map[string]float64{"exchange": 30}, true),
 			VerdictCaution, "low_coverage", "low"},
-		{"unfinished tracing is not clean", vresult("low", 0.95, map[string]float64{"unnamed_service": 95}, false),
+		{"unfinished tracing is not clean", vresult("low", 0.95, map[string]float64{"exchange": 95}, false),
 			VerdictCaution, "tracing_incomplete", "medium"},
 	} {
 		v := Decide(tc.r, rules)
@@ -68,7 +71,7 @@ func TestVerdict(t *testing.T) {
 	}
 
 	// Behaviour notes make a clean result a caution.
-	r = vresult("low", 0.95, map[string]float64{"unnamed_service": 95}, true)
+	r = vresult("low", 0.95, map[string]float64{"exchange": 95}, true)
 	r.Flags = []Flag{{Code: "pass_through"}}
 	if v := Decide(r, rules); v.Level != VerdictCaution || v.Reasons[0].Code != "behaviour" {
 		t.Errorf("pass-through: %+v", v)
@@ -77,7 +80,7 @@ func TestVerdict(t *testing.T) {
 
 // One unfetched address carrying a sliver of value does not withhold an answer.
 func TestVerdictIgnoresNegligiblePending(t *testing.T) {
-	r := vresult("low", 0.97, map[string]float64{"unnamed_service": 97}, true)
+	r := vresult("low", 0.97, map[string]float64{"exchange": 97}, true)
 	r.Depth = &DepthStatus{FrontierPending: 1}
 	r.Inbound.UnattributedReasons = []ReasonShare{{Reason: "dead_end", Pct: decimal.NewFromFloat(1.2)}}
 	if v := Decide(r, verdictRules()); v.Level != VerdictClear {

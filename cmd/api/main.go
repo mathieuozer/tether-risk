@@ -244,6 +244,9 @@ type flagResponse struct {
 	VolumeUSD float64 `json:"volume_usd,omitempty"`
 	Days      int     `json:"days,omitempty"`
 	AgeDays   int     `json:"age_days,omitempty"`
+	Count     int     `json:"count,omitempty"`
+	AmountUSD float64 `json:"amount_usd,omitempty"`
+	Minutes   int     `json:"minutes,omitempty"`
 }
 
 type activityResponse struct {
@@ -538,7 +541,8 @@ func toFlags(fs []scoring.Flag) []flagResponse {
 	out := make([]flagResponse, 0, len(fs))
 	for _, f := range fs {
 		out = append(out, flagResponse{Code: f.Code, InUSD: round(f.InUSD, 2), OutUSD: round(f.OutUSD, 2),
-			VolumeUSD: round(f.VolumeUSD, 2), Days: f.Days, AgeDays: f.AgeDays})
+			VolumeUSD: round(f.VolumeUSD, 2), Days: f.Days, AgeDays: f.AgeDays,
+			Count: f.Count, AmountUSD: round(f.AmountUSD, 2), Minutes: f.Minutes})
 	}
 	return out
 }

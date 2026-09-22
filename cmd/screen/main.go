@@ -306,7 +306,8 @@ func connectionsInput(res *scoring.Result) report.ConnectionsInput {
 	}
 	for _, f := range res.Flags {
 		in.Flags = append(in.Flags, report.ConnectionsFlag{Code: f.Code, InUSD: f.InUSD.InexactFloat64(),
-			OutUSD: f.OutUSD.InexactFloat64(), VolumeUSD: f.VolumeUSD.InexactFloat64(), Days: f.Days, AgeDays: f.AgeDays})
+			OutUSD: f.OutUSD.InexactFloat64(), VolumeUSD: f.VolumeUSD.InexactFloat64(), Days: f.Days, AgeDays: f.AgeDays,
+			Count: f.Count, AmountUSD: f.AmountUSD.InexactFloat64(), Minutes: f.Minutes})
 	}
 	if v := res.Verdict; v != nil {
 		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence}

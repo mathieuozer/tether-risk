@@ -2,6 +2,7 @@ package screen
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sort"
 	"time"
@@ -108,4 +109,90 @@ func (s *Service) profile(ctx context.Context, chainID string, res *scoring.Resu
 		}
 	}
 	return crows.Err()
+}
+
+// pgHistory tells the traversal which addresses have their own history
+// stored (docs/DECISIONS.md D30).
+type pgHistory struct{ pg *sql.DB }
+
+func (h pgHistory) Fetched(ctx context.Context, chainID string, addresses []string) (map[string]bool, error) {
+	out := make(map[string]bool, len(addresses))
+	if len(addresses) == 0 {
+		return out, nil
+	}
+	rows, err := h.pg.QueryContext(ctx,
+		`SELECT address FROM address_freshness WHERE chain = $1 AND address = ANY($2)`, chainID, addresses)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		out[a] = true
+	}
+	return out, rows.Err()
+}
+
+// outTransfers lists an address's outbound edges with what each recipient
+// has done since, for the splitting and parking notes (docs/DECISIONS.md D30).
+// The 500 largest recipients are enough: splitting and parking are about
+// where the money went, and the money is in the large edges.
+func (s *Service) outTransfers(ctx context.Context, chainID, address string) ([]scoring.OutTransfer, error) {
+	rows, err := s.ch.QueryContext(ctx, `
+		SELECT to_address, sum(total_usd_value) AS usd, sum(transfer_count), min(first_seen), max(last_seen)
+		FROM edges_current WHERE chain = ? AND from_address = ? AND to_address != ?
+		GROUP BY to_address ORDER BY usd DESC, to_address LIMIT 500`, chainID, address, address)
+	if err != nil {
+		return nil, fmt.Errorf("out transfers: %w", err)
+	}
+	var outs []scoring.OutTransfer
+	for rows.Next() {
+		var o scoring.OutTransfer
+		if err := rows.Scan(&o.To, &o.USD, &o.Transfers, &o.First, &o.Last); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		outs = append(outs, o)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil || len(outs) == 0 {
+		return outs, err
+	}
+	to := make([]string, len(outs))
+	for i, o := range outs {
+		to[i] = o.To
+	}
+	fetched, err := pgHistory{pg: s.pg}.Fetched(ctx, chainID, to)
+	if err != nil {
+		return nil, err
+	}
+	sent := map[string]decimal.Decimal{}
+	srows, err := s.ch.QueryContext(ctx, `
+		SELECT from_address, sum(total_usd_value) FROM edges_current
+		WHERE chain = ? AND from_address IN (?) GROUP BY from_address`, chainID, to)
+	if err != nil {
+		return nil, fmt.Errorf("recipients' outflow: %w", err)
+	}
+	for srows.Next() {
+		var a string
+		var v decimal.Decimal
+		if err := srows.Scan(&a, &v); err != nil {
+			srows.Close()
+			return nil, err
+		}
+		sent[a] = v
+	}
+	srows.Close()
+	for i := range outs {
+		outs[i].ToFetched = fetched[outs[i].To]
+		if v, ok := sent[outs[i].To]; ok {
+			outs[i].ToSentUSD = v
+		} else {
+			outs[i].ToSentUSD = decimal.Zero
+		}
+	}
+	return outs, srows.Err()
 }

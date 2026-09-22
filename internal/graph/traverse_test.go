@@ -477,3 +477,65 @@ func TestPricedDataIsNotFlagged(t *testing.T) {
 		t.Error("a fully priced traversal was flagged as a pricing gap")
 	}
 }
+
+// fakeHistory marks which addresses have their own history fetched.
+type fakeHistory map[string]bool
+
+func (h fakeHistory) Fetched(_ context.Context, _ string, addrs []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	for _, a := range addrs {
+		out[a] = h[a]
+	}
+	return out, nil
+}
+
+// The TTrcHL…BPQp bug (docs/DECISIONS.md D30). TMid's own history was never
+// fetched; the only inbound edges we know for it are address-poisoning dust
+// seen from the poisoners' side. Expanding it put 100% of its value in "dust",
+// which counts as attributed, and reported the address as well covered. An
+// unfetched address must end as unknown and be left for fetching.
+func TestUnfetchedAddressesAreNotExpandedFromFragments(t *testing.T) {
+	edges := newFakeEdges().
+		addEdge("TMid", "TOrigin", 100000, 3). // real money in, from TMid
+		addEdge("TPoison1", "TMid", 0.000001, 1).
+		addEdge("TPoison2", "TMid", 0.000001, 1)
+	lbls := newFakeLabels()
+
+	// Without history: the fragment is taken as the whole story.
+	before, err := New(edges, lbls, testConfig(t)).Traverse(context.Background(), "tron", "TOrigin", Inbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !before.Coverage().Equal(decimal.NewFromInt(1)) {
+		t.Fatalf("precondition: coverage without history = %s, want the inflated 1", before.Coverage())
+	}
+
+	// With history: TMid has not been fetched, so it is a dead end.
+	tr := New(edges, lbls, testConfig(t)).WithHistory(fakeHistory{"TOrigin": true})
+	res, err := tr.Traverse(context.Background(), "tron", "TOrigin", Inbound)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Coverage().IsZero() {
+		t.Errorf("coverage = %s, want 0: TMid's value is unknown, not dust", res.Coverage())
+	}
+	var deadEnd bool
+	for _, p := range res.Paths {
+		if p.Terminal.Category == "dust" {
+			t.Errorf("dust path through unfetched TMid: %+v", p)
+		}
+		if p.Terminal.Address == "TMid" && p.Terminal.Reason == "dead_end" {
+			deadEnd = true
+		}
+	}
+	if !deadEnd {
+		t.Error("TMid not recorded as a dead end, so it would never be queued for fetching")
+	}
+
+	// Once TMid is fetched, it is expanded as before.
+	res, _ = New(edges, lbls, testConfig(t)).WithHistory(fakeHistory{"TOrigin": true, "TMid": true}).
+		Traverse(context.Background(), "tron", "TOrigin", Inbound)
+	if !res.Coverage().Equal(decimal.NewFromInt(1)) {
+		t.Errorf("coverage with TMid fetched = %s, want 1", res.Coverage())
+	}
+}

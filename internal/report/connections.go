@@ -62,9 +62,9 @@ type ConnectionsVerdictReason struct {
 
 // ConnectionsFlag is one behaviour note.
 type ConnectionsFlag struct {
-	Code                     string
-	InUSD, OutUSD, VolumeUSD float64
-	Days, AgeDays            int
+	Code                                string
+	InUSD, OutUSD, VolumeUSD, AmountUSD float64
+	Days, AgeDays, Count, Minutes       int
 }
 
 // ConnectionsActivity is what the address itself did, before attribution.
@@ -259,7 +259,11 @@ func Connections(in ConnectionsInput) string {
 	}
 	writeFlags(&b, in.Flags, l)
 
-	b.WriteString(l.f("risk_level", l.band(in.Band), in.Score))
+	key := "risk_level"
+	if in.Verdict != nil {
+		key = "risk_level_verdict"
+	}
+	b.WriteString(l.f(key, l.band(in.Band), in.Score))
 	b.WriteString(l.f("coverage", l.pct(in.Coverage*100)))
 
 	if in.LowConfidence {
@@ -417,7 +421,7 @@ func writeEntries(b *strings.Builder, in ConnectionsInput, l loc) {
 			continue
 		}
 		fmt.Fprintf(b, "\n  %s\n", sd.title)
-		for i, e := range sd.d.Entries {
+		for i, e := range riskFirst(sd.d.Entries) {
 			if i >= 5 {
 				b.WriteString(l.f("and_more", len(sd.d.Entries)-5))
 				break
@@ -441,6 +445,29 @@ func writeEntries(b *strings.Builder, in ConnectionsInput, l loc) {
 	b.WriteString("\n")
 }
 
+// riskFirst orders entries so every risk connection comes before the rest,
+// each group largest first. Only five are shown, and a 3% frozen connection
+// used to sit behind five large services, out of sight, while the verdict
+// named it (docs/DECISIONS.md D30).
+func riskFirst(entries []ConnectionsEntry) []ConnectionsEntry {
+	isRisk := map[string]bool{}
+	for _, c := range riskChecks {
+		isRisk[c] = true
+	}
+	out := make([]ConnectionsEntry, 0, len(entries))
+	for _, e := range entries {
+		if isRisk[e.Category] {
+			out = append(out, e)
+		}
+	}
+	for _, e := range entries {
+		if !isRisk[e.Category] {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
 // riskChecks are the categories a reader looks for first. Each is reported
 // found or not found, never silently omitted.
 var riskChecks = []string{
@@ -456,7 +483,8 @@ func writeChecks(b *strings.Builder, in ConnectionsInput, shares []ConnectionsCa
 	// "Not found" in a low-coverage result is not a clean bill, so it gets a
 	// neutral mark rather than a tick.
 	clear := "✅"
-	if in.LowConfidence {
+	unseen := unidentifiedPct(in.Verdict)
+	if in.LowConfidence || unseen > 0 {
 		clear = "⚪"
 	}
 
@@ -472,7 +500,25 @@ func writeChecks(b *strings.Builder, in ConnectionsInput, shares []ConnectionsCa
 			b.WriteString(l.f("not_found", clear, l.category(c)))
 		}
 	}
-	b.WriteString(l.f("checks_cover", l.pct(in.Coverage*100)))
+	cover := l.f("checks_cover", l.pct(in.Coverage*100))
+	if unseen > 0 {
+		cover = strings.TrimSuffix(cover, "\n") + l.f("checks_unseen", l.pct(unseen))
+	}
+	b.WriteString(cover)
+}
+
+// unidentifiedPct is the share of traced value ending at unnamed services
+// when the verdict says it is too much to vouch for, else 0.
+func unidentifiedPct(v *ConnectionsVerdict) float64 {
+	if v == nil {
+		return 0
+	}
+	for _, r := range v.Reasons {
+		if r.Code == "unidentified" {
+			return r.Pct
+		}
+	}
+	return 0
 }
 
 // writeVerdict puts the answer first: the level, how far to trust it, and
@@ -482,13 +528,14 @@ func writeVerdict(b *strings.Builder, v *ConnectionsVerdict, l loc) {
 		return
 	}
 	b.WriteString(l.f("v_"+v.Level, l.f("conf_"+v.Confidence)))
+	b.WriteString(whyText(v, l))
 	for _, r := range v.Reasons {
 		switch r.Code {
 		case "own_listed":
 			b.WriteString(l.f("vr_own_listed", l.category(r.Category)))
 		case "exposure", "exposure_minor":
 			b.WriteString(l.f("vr_"+r.Code, l.pct(r.Pct), l.category(r.Category)))
-		case "low_coverage", "clean":
+		case "low_coverage", "unidentified", "clean":
 			b.WriteString(l.f("vr_"+r.Code, l.pct(r.Pct)))
 		case "behaviour":
 			b.WriteString(l.f("vr_behaviour", l.f("flagname_"+r.Flag)))
@@ -497,6 +544,43 @@ func writeVerdict(b *strings.Builder, v *ConnectionsVerdict, l loc) {
 		}
 	}
 	b.WriteString("\n")
+}
+
+// whyText is the verdict in plain words, one short paragraph, for a reader
+// who is not an analyst: what decided it, and what that means for them.
+func whyText(v *ConnectionsVerdict, l loc) string {
+	var parts []string
+	seen := map[string]bool{}
+	for _, r := range v.Reasons {
+		var p string
+		switch r.Code {
+		case "own_listed":
+			p = l.f("why_own_listed", l.category(r.Category))
+		case "exposure", "exposure_minor":
+			p = l.f("why_exposure", l.pct(r.Pct), l.category(r.Category))
+		case "low_coverage", "unidentified":
+			p = l.f("why_"+r.Code, l.pct(r.Pct))
+		case "behaviour":
+			p = l.f("why_" + r.Flag)
+		case "band_high", "band_medium", "tracing_incomplete":
+			p = l.f("why_" + r.Code)
+		}
+		if p != "" && !seen[p] {
+			seen[p] = true
+			parts = append(parts, p)
+		}
+		if len(parts) == 3 {
+			break
+		}
+	}
+	switch v.Level {
+	case "clear":
+		return l.f("why_clear")
+	case "high_risk":
+		return l.f("why_high_risk", strings.Join(parts, "; "))
+	default:
+		return l.f("why_caution", strings.Join(parts, "; "))
+	}
 }
 
 // writeFlags lists behaviour notes. They describe what the address did and
@@ -511,9 +595,17 @@ func writeFlags(b *strings.Builder, flags []ConnectionsFlag, l loc) {
 		case "pass_through":
 			b.WriteString(l.f("flag_pass_through", usd(f.InUSD), usd(f.OutUSD), f.Days))
 		case "high_volume_new":
-			b.WriteString(l.f("flag_high_volume_new", usd(f.VolumeUSD), f.AgeDays))
+			if f.AgeDays < 1 {
+				b.WriteString(l.f("flag_high_volume_new_today", usd(f.VolumeUSD)))
+			} else {
+				b.WriteString(l.f("flag_high_volume_new", usd(f.VolumeUSD), f.AgeDays))
+			}
 		case "new_address":
 			b.WriteString(l.f("flag_new_address", f.AgeDays))
+		case "round_split":
+			b.WriteString(l.f("flag_round_split", usd(f.AmountUSD), f.Count, f.Minutes))
+		case "parked_funds":
+			b.WriteString(l.f("flag_parked_funds", f.Count, usd(f.AmountUSD)))
 		}
 	}
 	b.WriteString("\n")

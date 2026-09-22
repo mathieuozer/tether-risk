@@ -182,6 +182,25 @@ func (s *Store) Upsert(ctx context.Context, snapshotID int64, in []Label) (Upser
 	return res, nil
 }
 
+// RetireAddresses closes, at this snapshot, the current labels of a source
+// on the given addresses.
+func (s *Store) RetireAddresses(ctx context.Context, snapshotID int64, source, chainID string, addrs []string) (int64, error) {
+	if len(addrs) == 0 {
+		return 0, nil
+	}
+	res, err := s.pg.ExecContext(ctx, `
+		UPDATE labels SET valid_to_snapshot = $1, last_updated = now()
+		WHERE source = $2 AND chain = $3 AND address = ANY($4) AND valid_to_snapshot IS NULL`,
+		snapshotID, source, chainID, addrs)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// DB is the store's database, for queries outside the label tables.
+func (s *Store) DB() *sql.DB { return s.pg }
+
 // Retire closes, at this snapshot, every current label of a source on a
 // chain whose address is not in keep. It is for sources that publish their
 // whole list each time, so an address that left the list stops being

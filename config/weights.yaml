@@ -174,6 +174,22 @@ behaviour:
     # A new address that has already moved at least this much, in and out
     # together, is noted as such rather than merely new.
     high_volume_usd: 1000000
+  # The same round amount sent, in single transfers, to several wallets
+  # within a short window: splitting (D30). TPJZrw…uBhM sent $1,000,000 to
+  # six wallets within three minutes.
+  round_split:
+    min_amount_usd: 10000
+    # A multiple of this, within a dollar, is round.
+    round_to_usd: 1000
+    min_recipients: 3
+    max_minutes: 60
+  # Wallets that received from the address and have sent nothing since,
+  # counted only when their own history is fetched, so "sent nothing" is
+  # known rather than assumed.
+  parked:
+    min_amount_usd: 10000
+    min_wallets: 2
+    min_total_usd: 50000
 
 # ---------------------------------------------------------------------------
 # Verdict (docs/DECISIONS.md D29): the answer to "is this wallet clean?" in
@@ -203,6 +219,11 @@ verdict:
   # dead ends is under this share of traced value, in percent. One pending
   # address carrying a trace of value should not withhold an answer.
   max_pending_pct: 5
+  # A clean verdict also needs most traced value to end somewhere named.
+  # When at least this share, in percent, ends at unidentified services,
+  # the answer is caution: the other side of those services is not visible,
+  # so their customers' funds cannot be vouched for (D30).
+  max_unnamed_pct: 50
   # Confidence: high at or above this coverage with tracing finished,
   # medium at or above the second, low below.
   confidence_high: 0.90
@@ -291,6 +312,28 @@ derived_service:
 
   # How much history to sample before judging. Costs one API call per page.
   sample_pages: 3
+
+  # Unlabelled candidates sampled per run, busiest first. About 1.5 API calls
+  # each; 2,000 is ~3,000 calls, a small share of the daily key budget. It was
+  # 200 and hard-coded, which left a backlog of 1,500 service-shaped addresses
+  # unlabelled (docs/DECISIONS.md D30).
+  max_candidates: 2000
+
+  # Addresses whose history is already fetched are judged from it instead of
+  # a 600-transfer sample (docs/DECISIONS.md D30). The sample only sees the
+  # latest transfers; THasRe…geRM had 1,430 counterparties over its history
+  # but few in its latest 600, and was rejected. A full history is the
+  # stronger evidence and costs no API call. The ratio keeps out an active
+  # wallet that trades repeatedly with the same few parties.
+  stored:
+    min_transfers: 400
+    min_counterparties: 250
+    min_counterparty_ratio: 0.2
+    # A service runs for months. A wallet that is broad but weeks old is more
+    # likely a transit hub, and labelling it a service would stop traversal
+    # at it and hide what is behind: TNiE8x…tR2R, the $54M hub of the
+    # TJBsbT…8Y5P network, was 18 days old when first labelled (D30).
+    min_active_days: 90
   page_size: 200
 
   # An address must exceed all three to qualify.

@@ -1275,20 +1275,24 @@
   function checksCard(r, shares) {
     var found = {};
     shares.forEach(function (s) { found[s.category] = s.pct; });
-    var clearIcon = r.low_confidence ? 'neutral' : 'ok';
+    var unseen = 0;
+    ((r.verdict && r.verdict.reasons) || []).forEach(function (x) { if (x.code === 'unidentified') unseen = x.pct || 0; });
+    var neutral = r.low_confidence || unseen > 0;
+    var clearIcon = neutral ? 'neutral' : 'ok';
     var rows = RISK_CHECKS.map(function (cat) {
       var pct = found[cat];
       if (pct > 0) {
         return '<li class="check found">' + icon('found') + '<span class="check-name">' + esc(catName(cat)) + '</span>' +
           '<span class="check-status">' + tt('found_share', { pct: fmtShare(pct) }) + '</span></li>';
       }
-      return '<li class="check ' + (r.low_confidence ? 'neutral' : 'clear') + '">' + icon(clearIcon) + '<span class="check-name">' + esc(catName(cat)) + '</span>' +
+      return '<li class="check ' + (neutral ? 'neutral' : 'clear') + '">' + icon(clearIcon) + '<span class="check-name">' + esc(catName(cat)) + '</span>' +
         '<span class="check-status">' + tt('not_found') + '</span></li>';
     }).join('');
     return '<section class="card" aria-labelledby="checks-title">' + '<div class="card-head"><div><h2 id="checks-title">' + tt('risk_checks') + '</h2></div></div>' +
       '<ul class="checks">' + rows + '</ul>' +
       '<p class="hint small card-foot">' + tt('checks_cover', { pct: fmtPct((r.coverage || 0) * 100) }) +
-      (r.low_confidence ? ' ' + tt('checks_lowconf') : '') + '</p></section>';
+      (r.low_confidence ? ' ' + tt('checks_lowconf') : '') +
+      (unseen > 0 ? ' ' + tt('checks_unseen', { pct: fmtPct(unseen) }) : '') + '</p></section>';
   }
 
   // The answer first: clean, caution or high risk, how far to trust it, and why.
@@ -1314,7 +1318,8 @@
       return '<li class="flag"><span class="flag-name">' + tt(FLAG_TEXT[f.code] + '_title') + '</span>' +
         '<span class="flag-text">' + tt(FLAG_TEXT[f.code], {
           inn: fmtUSD(f.in_usd || 0), out: fmtUSD(f.out_usd || 0), vol: fmtUSD(f.volume_usd || 0),
-          days: fmtInt(f.days || 0), age: fmtInt(f.age_days || 0)
+          days: fmtInt(f.days || 0), age: fmtInt(f.age_days || 0),
+          n: fmtInt(f.count || 0), amt: fmtUSD(f.amount_usd || 0), min: fmtInt(f.minutes || 0)
         }) + '</span></li>';
     }).join('');
     return '<section class="card" aria-labelledby="flags-title"><div class="card-head"><div><h2 id="flags-title">' +
@@ -1322,7 +1327,8 @@
       '<ul class="flags">' + rows + '</ul></section>';
   }
 
-  var FLAG_TEXT = { pass_through: 'flag_pass_through', high_volume_new: 'flag_high_volume_new', new_address: 'flag_new_address' };
+  var FLAG_TEXT = { pass_through: 'flag_pass_through', high_volume_new: 'flag_high_volume_new', new_address: 'flag_new_address',
+    round_split: 'flag_round_split', parked_funds: 'flag_parked_funds' };
 
   function entriesCard(r) {
     var inN = hasEntries(r.inbound) ? r.inbound.connections.length : 0;
@@ -1332,7 +1338,12 @@
     var dir = S.dir === 'outbound' ? 'outbound' : 'inbound';
     var d = r[dir];
     var vol = dir === 'inbound' ? act.in_usd : act.out_usd;
-    var list = (d && d.connections) || [];
+    // Risk connections first, so a small but decisive one is never hidden
+    // behind larger services (same order as the chat report).
+    var list = ((d && d.connections) || []).slice().sort(function (a, b) {
+      var ra = RISK_CHECKS.indexOf(a.category) >= 0 ? 0 : 1, rb = RISK_CHECKS.indexOf(b.category) >= 0 ? 0 : 1;
+      return ra !== rb ? ra - rb : (b.pct || 0) - (a.pct || 0);
+    });
     var all = S.entriesAll[dir];
     var shown = all ? list : list.slice(0, ENTRIES_SHOWN);
 

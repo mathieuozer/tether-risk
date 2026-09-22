@@ -38,6 +38,7 @@ func main() {
 		configDir = flag.String("config", "config", "configuration directory")
 		chainID   = flag.String("chain", "tron", "chain")
 		limit     = flag.Int("limit", 50, "maximum addresses per check")
+		rounds    = flag.Int("rounds", 0, "verdict: follow-up rounds, fetching and rescreening as the product does (0 = first answer only)")
 		compareIn = flag.String("compare-file", "testdata/external/scores.csv",
 			"CSV of externally-obtained scores: address,vendor,score,band")
 	)
@@ -51,6 +52,7 @@ func main() {
 		cmd = "all"
 	}
 
+	followRounds = *rounds
 	code, err := run(ctx, cmd, *configDir, *chainID, *limit, *compareIn)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "error:", err)
@@ -129,7 +131,7 @@ func run(ctx context.Context, cmd, configDir, chainID string, limit int, compare
 		results = append(results, r)
 
 	case "verdict":
-		r, err := checkVerdictBenchmark(ctx, svc, ch, pg, chainID, limit)
+		r, err := checkVerdictBenchmark(ctx, svc, cfg, ch, pg, chainID, limit)
 		if err != nil {
 			return 2, err
 		}

@@ -340,3 +340,28 @@ type fixedSampler struct{ s Sample }
 func (f *fixedSampler) Sample(context.Context, string, int, int) (Sample, error) {
 	return f.s, nil
 }
+
+func TestJudgeStoredServices(t *testing.T) {
+	cfg, err := config.Load(filepath.Join("..", "..", "config"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	judged, out := JudgeStoredServices([]StoredStats{
+		// THasRe…geRM as stored: $126.5M through 1,430 counterparties.
+		{Address: "THub", Transfers: 2958, Counterparties: 1430, ActiveDays: 365},
+		// TNiE8x…tR2R: broad, but 18 days old; a transit hub, not a service.
+		{Address: "TYoungHub", Transfers: 608, Counterparties: 407, ActiveDays: 18},
+		// An active trader: many transfers, few parties.
+		{Address: "TTrader", Transfers: 3000, Counterparties: 260, ActiveDays: 400},
+		// A small wallet.
+		{Address: "TSmall", Transfers: 120, Counterparties: 90, ActiveDays: 400},
+	}, cfg, "tron")
+	if len(out) != 1 || out[0].Address != "THub" || out[0].Category != "unnamed_service" {
+		t.Fatalf("labels = %+v", out)
+	}
+	for _, c := range judged {
+		if c.Address != "THub" && (c.Accepted || c.Rejected == "") {
+			t.Errorf("%s: %+v", c.Address, c)
+		}
+	}
+}

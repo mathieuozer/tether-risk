@@ -378,6 +378,65 @@ func ingestAbuse(ctx context.Context, url string,
 	return out, res, nil
 }
 
+// storedServiceStats splits candidates into those whose own history is
+// fetched, with their stored transfer and counterparty counts, and the rest.
+func storedServiceStats(ctx context.Context, ch, pg *sql.DB, chainID string, candidates []string) ([]labels.StoredStats, []string, error) {
+	truncated := map[string]bool{}
+	fetched := map[string]bool{}
+	rows, err := pg.QueryContext(ctx,
+		`SELECT address, truncated FROM address_freshness WHERE chain = $1 AND address = ANY($2)`, chainID, candidates)
+	if err != nil {
+		return nil, nil, err
+	}
+	for rows.Next() {
+		var a string
+		var t bool
+		if err := rows.Scan(&a, &t); err != nil {
+			rows.Close()
+			return nil, nil, err
+		}
+		fetched[a], truncated[a] = true, t
+	}
+	rows.Close()
+	var have, rest []string
+	for _, a := range candidates {
+		if fetched[a] {
+			have = append(have, a)
+		} else {
+			rest = append(rest, a)
+		}
+	}
+	var out []labels.StoredStats
+	for start := 0; start < len(have); start += 500 {
+		chunk := have[start:min(start+500, len(have))]
+		crows, err := ch.QueryContext(ctx, `
+			SELECT a, sum(n), uniqExact(cp), dateDiff('day', min(f), max(l)) FROM (
+				SELECT from_address AS a, to_address AS cp, transfer_count AS n, first_seen AS f, last_seen AS l
+				FROM edges_current WHERE chain = ? AND from_address IN (?)
+				UNION ALL
+				SELECT to_address, from_address, transfer_count, first_seen, last_seen
+				FROM edges_by_to_current WHERE chain = ? AND to_address IN (?))
+			GROUP BY a`, chainID, chunk, chainID, chunk)
+		if err != nil {
+			return nil, nil, err
+		}
+		for crows.Next() {
+			var s labels.StoredStats
+			var days int64
+			if err := crows.Scan(&s.Address, &s.Transfers, &s.Counterparties, &days); err != nil {
+				crows.Close()
+				return nil, nil, err
+			}
+			s.Truncated = truncated[s.Address]
+			s.ActiveDays = int(days)
+			out = append(out, s)
+		}
+		crows.Close()
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Address < out[j].Address })
+	return out, rest, nil
+}
+
 // ingestTetherBlacklist reads the USDT contract's blacklist events from the
 // start and folds them into the current list.
 func ingestTetherBlacklist(ctx context.Context, cfg *config.Config, log *slog.Logger) ([]labels.Label, error) {
@@ -445,47 +504,114 @@ func deriveServices(ctx context.Context, cfg *config.Config, st *labels.Store,
 
 	// Rank by distinct counterparties rather than by value: a service is
 	// defined by breadth, and a single large transfer says nothing about it.
+	//
+	// Addresses that already carry a label are skipped. They used to fill the
+	// top of the ranking every run, so the same known services were sampled
+	// again and again while new ones never reached the 200-candidate budget.
+	// THasRe…geRM, with 1,430 counterparties and $126M passed through, was
+	// never sampled, and screens traced through it into its other customers'
+	// exposure (docs/DECISIONS.md D30).
+	budget := cfg.Weights.DerivedService.MaxCandidates
+	if budget <= 0 {
+		budget = 200
+	}
 	rows, err := ch.QueryContext(ctx, `
 		SELECT addr, uniqExact(cp) AS counterparties
 		FROM (
 			SELECT from_address AS addr, to_address AS cp FROM edges_current WHERE chain = ?
 			UNION ALL
-			SELECT to_address AS addr, from_address AS cp FROM edges_current WHERE chain = ?
+			SELECT to_address AS addr, from_address AS cp FROM edges_by_to_current WHERE chain = ?
 		)
 		GROUP BY addr
-		HAVING counterparties >= 5
+		HAVING counterparties >= ?
 		ORDER BY counterparties DESC, addr ASC
-		LIMIT 200`, chainID, chainID)
+		LIMIT 5000`, chainID, chainID, cfg.Weights.DerivedService.MinCounterparties)
 	if err != nil {
 		return fmt.Errorf("select candidates: %w", err)
 	}
-	defer rows.Close()
-
-	var candidates []string
+	var ranked []string
 	for rows.Next() {
 		var addr string
 		var n uint64
 		if err := rows.Scan(&addr, &n); err != nil {
+			rows.Close()
 			return err
 		}
-		candidates = append(candidates, addr)
+		ranked = append(ranked, addr)
 	}
+	rows.Close()
 	if err := rows.Err(); err != nil {
 		return err
 	}
+	current, err := st.LatestSealedSnapshot(ctx)
+	if err != nil {
+		return err
+	}
+	known, err := st.ForAddresses(ctx, current, chainID, ranked)
+	if err != nil {
+		return err
+	}
+	var candidates []string
+	labelled := 0
+	for _, a := range ranked {
+		if len(known[a]) > 0 {
+			labelled++
+			continue
+		}
+		if len(candidates) < budget {
+			candidates = append(candidates, a)
+		}
+	}
+	log.Info("service candidates", "service_shaped", len(ranked), "already_labelled", labelled,
+		"sampled_now", len(candidates), "left_for_later", len(ranked)-labelled-len(candidates))
 
 	if len(candidates) == 0 {
 		fmt.Println("no candidates: ingest some addresses first")
 		return nil
 	}
-	log.Info("sampling candidates", "count", len(candidates), "chain", chainID)
-
-	key := os.Getenv("TRONGRID_API_KEY")
-	sampler := labels.NewTronSampler(chainCfg.URL, key, chainCfg.RequestRate(key != ""))
-	judged, derived, err := labels.DetectServices(ctx, sampler, cfg, chainID, candidates)
+	// Labels given from stored history are judged again every run: the rule
+	// can tighten and history grows, and a label that no longer holds must
+	// go rather than stop traversal forever (docs/DECISIONS.md D30).
+	existing, err := st.BySources(ctx, current, chainID, []string{"derived:service"})
 	if err != nil {
 		return err
 	}
+	var recheck []string
+	for _, l := range existing {
+		if h, _ := l.Evidence["heuristic"].(string); h == "high_volume_service_stored" {
+			recheck = append(recheck, l.Address)
+		}
+	}
+
+	// Addresses with their history fetched are judged from it; only the rest
+	// are sampled through the API (docs/DECISIONS.md D30).
+	stored, toSample, err := storedServiceStats(ctx, ch, st.DB(), chainID, append(candidates, recheck...))
+	if err != nil {
+		return err
+	}
+	storedJudged, storedLabels := labels.JudgeStoredServices(stored, cfg, chainID)
+	var withdraw []string
+	isRecheck := map[string]bool{}
+	for _, a := range recheck {
+		isRecheck[a] = true
+	}
+	for _, c := range storedJudged {
+		if isRecheck[c.Address] && !c.Accepted {
+			withdraw = append(withdraw, c.Address)
+		}
+	}
+	fmt.Printf("stored-history labels rechecked: %d, withdrawn %d\n", len(recheck), len(withdraw))
+	fmt.Printf("judged from stored history: %d, accepted %d\n", len(storedJudged), len(storedLabels))
+	log.Info("sampling candidates", "count", len(toSample), "chain", chainID)
+
+	key := os.Getenv("TRONGRID_API_KEY")
+	sampler := labels.NewTronSampler(chainCfg.URL, key, chainCfg.RequestRate(key != ""))
+	judged, derived, err := labels.DetectServices(ctx, sampler, cfg, chainID, toSample)
+	if err != nil {
+		return err
+	}
+	judged = append(judged, storedJudged...)
+	derived = append(derived, storedLabels...)
 
 	fmt.Printf("candidates sampled: %d\n", len(judged))
 	cost := sampler.Stats()
@@ -502,7 +628,7 @@ func deriveServices(ctx context.Context, cfg *config.Config, st *labels.Store,
 		}
 	}
 
-	if len(derived) == 0 {
+	if len(derived) == 0 && len(withdraw) == 0 {
 		return nil
 	}
 
@@ -512,6 +638,9 @@ func deriveServices(ctx context.Context, cfg *config.Config, st *labels.Store,
 	}
 	res, err := st.Upsert(ctx, snap, derived)
 	if err != nil {
+		return err
+	}
+	if _, err := st.RetireAddresses(ctx, snap, "derived:service", chainID, withdraw); err != nil {
 		return err
 	}
 	counts, err := st.SealSnapshot(ctx, snap)

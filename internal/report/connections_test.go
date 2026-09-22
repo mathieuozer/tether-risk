@@ -26,7 +26,7 @@ func TestConnectionsWeightsDirectionsByValue(t *testing.T) {
 		"Exchange - 90.0%",
 		"Unattributed (unknown, not clean) - 10.0%",
 		"⛓ Blockchain: Tron (TRX)",
-		"📈 Risk level: Low (5.0 / 100)",
+		"📈 Exposure score: Low (5.0 / 100)",
 		"🎯 Coverage: 50.0%",
 	} {
 		if !strings.Contains(out, want) {

@@ -54,3 +54,42 @@ func TestBehaviourFlags(t *testing.T) {
 		t.Error("new address missed")
 	}
 }
+
+func flowRules() config.Behaviour {
+	r := behaviourRules()
+	r.RoundSplit.MinAmountUSD, r.RoundSplit.RoundToUSD, r.RoundSplit.MinRecipients, r.RoundSplit.MaxMinutes = 10000, 1000, 3, 60
+	r.Parked.MinAmountUSD, r.Parked.MinWallets, r.Parked.MinTotalUSD = 10000, 2, 50000
+	return r
+}
+
+// TPJZrw…uBhM as measured: $1,000,000 to six fresh wallets within three
+// minutes, none of which has sent anything since.
+func TestFlowFlagsSplitAndParked(t *testing.T) {
+	at := time.Date(2026, 9, 21, 18, 53, 0, 0, time.UTC)
+	var outs []OutTransfer
+	for i := 0; i < 6; i++ {
+		outs = append(outs, OutTransfer{To: string(rune('A' + i)), USD: decimal.NewFromInt(1_000_000), Transfers: 1,
+			First: at.Add(time.Duration(i*30) * time.Second), ToFetched: true, ToSentUSD: decimal.Zero})
+	}
+	// A normal payment, and a round one to a wallet that did move it on.
+	outs = append(outs,
+		OutTransfer{To: "X", USD: decimal.NewFromFloat(203752.4), Transfers: 2, First: at, ToFetched: true, ToSentUSD: decimal.NewFromInt(5)},
+		OutTransfer{To: "Y", USD: decimal.NewFromInt(400000), Transfers: 1, First: at, ToFetched: true, ToSentUSD: decimal.NewFromInt(400000)})
+
+	got := codes(FlowFlags(outs, flowRules()))
+	if f, ok := got["round_split"]; !ok || f.Count != 6 || !f.AmountUSD.Equal(decimal.NewFromInt(1_000_000)) || f.Minutes > 3 {
+		t.Errorf("round split: %+v", got)
+	}
+	if f, ok := got["parked_funds"]; !ok || f.Count != 6 || !f.AmountUSD.Equal(decimal.NewFromInt(6_000_000)) {
+		t.Errorf("parked funds: %+v", got)
+	}
+
+	// Unfetched recipients are never assumed parked; ordinary amounts are not a split.
+	for i := range outs {
+		outs[i].ToFetched = false
+		outs[i].USD = decimal.NewFromFloat(123456.78)
+	}
+	if got := FlowFlags(outs, flowRules()); len(got) != 0 {
+		t.Errorf("flags on unfetched, non-round payments: %+v", got)
+	}
+}

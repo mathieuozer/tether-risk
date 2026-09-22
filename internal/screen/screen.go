@@ -202,7 +202,7 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 
 	edges := clickhouseEdges{ch: s.ch}
 	lookup := postgresLabels{store: s.store, resolver: s.resolver, snapshotID: snapshotID}
-	traverser := graph.New(edges, lookup, s.cfg)
+	traverser := graph.New(edges, lookup, s.cfg).WithHistory(pgHistory{pg: s.pg})
 
 	started := time.Now()
 
@@ -254,6 +254,11 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 	}
 	res.Activity = act
 	res.Flags = scoring.BehaviourFlags(act, time.Now(), s.cfg.Weights.Behaviour)
+	outs, err := s.outTransfers(ctx, chainID, address)
+	if err != nil {
+		return nil, err
+	}
+	res.Flags = append(res.Flags, scoring.FlowFlags(outs, s.cfg.Weights.Behaviour)...)
 
 	if err := s.profile(ctx, chainID, res); err != nil {
 		return nil, err

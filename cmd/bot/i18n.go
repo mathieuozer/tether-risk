@@ -323,6 +323,6 @@ Bu fatura %[6]d dakika geçerli. Ödeme onaylanır onaylanmaz, genellikle 2 daki
 	},
 
 	// --- details view headings ---
-	"d_band":     {"Risk band: %s\nScore: %.1f / 100\n", "Risk seviyesi: %s\nPuan: %.1f / 100\n"},
+	"d_band":     {"Exposure: %s\nExposure score: %.1f / 100\n", "Maruziyet: %s\nMaruziyet skoru: %.1f / 100\n"},
 	"d_coverage": {"Coverage: %.1f%%\n", "Kapsam: %%%.1f\n"},
 }

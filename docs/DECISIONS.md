@@ -1047,3 +1047,91 @@ needing written resale terms. Arkham and Nansen forbid redistribution.
 Chainalysis and TRM paid products are enterprise-priced. Buying any of them
 means changing SPEC.md §1's "zero licence spend"; that is the owner's
 decision.
+
+## D30 — bugs found by comparing with a competitor, and what fixed them
+
+**Date:** 2026-09-22 · **Status:** active · **Follows:** D29
+
+The owner pasted AMLBot's result for TTrcHL…BPQp (Exchange 87.5%, High-Risk
+Exchange 9%, Sanctions 1.6%) and asked for every divergence to be run down.
+Doing so found four faults in our own output. Each is fixed and pinned by a
+test.
+
+**1. Unfetched addresses were expanded from fragments.** Beyond the origin,
+the traversal expanded any address that had stored edges, including
+addresses whose own history was never fetched. Those are known only through
+transfers other addresses revealed. Our report said dust was 49% of value;
+the real cause was an intermediate wallet whose only known inbound edges
+were address-poisoning dust from look-alike addresses (…eRM). That wallet's
+whole share went to "dust", which counts as attributed, so coverage read
+94.6% and confidence high for an address mostly unknown. Traversal now takes
+a `HistorySource` and ends at unfetched addresses as dead ends. They count
+as unknown and are queued for fetching, so follow-ups deepen through them.
+`TestUnfetchedAddressesAreNotExpandedFromFragments` reproduces the old
+inflated coverage and pins the fix. With it, TTrcHL…BPQp's frozen exposure
+fell from 7.2% to 0.2% on the first rescreen. The 7.2% had been traced
+through unknown wallets.
+
+**2. Service detection sampled the same addresses every run.** Candidates
+were the 200 addresses with the most counterparties, labelled or not, so
+known services filled the budget each time. THasRe…geRM (1,430
+counterparties, $126.5M in and out) was never sampled. It supplies 99.86% of
+TTrcHL…BPQp's inflow, and without a label the traversal walked through it
+into its other customers, picking up their exposure as if it were the
+screened address's. Candidates now skip labelled addresses. The budget is
+config (`derived_service.max_candidates`, 2,000, about 3,000 API calls),
+because 1,734 service-shaped addresses were waiting and 200 a day would
+take over a week.
+
+**3. A decisive risk connection could be hidden.** The report listed the
+five largest connections, and a 3% frozen connection sat behind five large
+services while the verdict named it. Risk connections are now listed first,
+in chat, app and PDF.
+
+**4. Sanctions exposure versus AMLBot's 1.6%.** Searching four hops each way
+found OFAC addresses (Alireza DERAKHSHAN, GRINEX, Arash Estaki ALIVAND,
+ZEDCEX, ANSARALLAH), all reached through the hub above. Their value-weighted
+shares are 0.018% and 0.0014%, so "under 0.1%" is our honest answer.
+AMLBot's 1.6% is not a value flow that can be reproduced from the chain. It
+most likely comes from how AMLBot groups entities. The divergence is
+recorded, not closed.
+
+**5. The sample missed slow hubs, and the fix over-reached.** Even when
+sampled, THasRe…geRM was rejected: its latest 600 transfers had few distinct
+counterparties. Candidates whose full history is stored are now judged from
+that history (400 transfers, 250 counterparties, 0.2 counterparties per
+transfer). The first run accepted 1,609 with 7 API calls, including a hub
+active for only 18 days. A 90-day minimum between first and last transfer now
+separates a lasting service from a burst, and every run rechecks these labels
+and withdraws those that fail: 246 were withdrawn, leaving 1,527.
+
+**6. "Clean" rested on services nobody had named.** Once THasRe…geRM was
+labelled, TTrcHL…BPQp came back clean with high confidence and 100%
+coverage. All of its value ended at that one unidentified hub, and the hub's
+own value ends at other unidentified hubs. Terminal labels are right for a
+named exchange, whose customers are its problem. For an unnamed service they
+hide the other side. The verdict now says caution, with low confidence, when
+at least `verdict.max_unnamed_pct` (50%) of traced value ends at unnamed
+services. Risk checks then show a neutral mark and say what they could not
+see. AMLBot rates the address medium; we now say caution.
+
+Two presentation faults went with it. The score line read "Risk level: Low"
+under a caution verdict. It measures only value linked to risk lists, so it is
+now called the exposure score and points to the verdict. Confidence had meant
+"how completely traced", which read as "how sure" on a caution about the
+unknown.
+
+**Measuring the final answer.** Unfetched addresses now count as unknown, so
+first answers show lower coverage (deposit-set mean 80% → 63.5%) until the
+follow-up fetches them. `validate verdict -rounds N` screens with
+prefetching, waits for the worker, and rescreens, measuring the answer a
+customer gets after following up.
+
+**Also added,** from a case the owner asked about (TPJZrw…uBhM: $7M from one
+hub, split into six $1,000,000 transfers to fresh wallets within three
+minutes, none of which has moved since):
+
+- two behaviour notes, *round split* and *parked funds*, both caution
+  reasons, thresholds in `behaviour`;
+- a plain-language paragraph under every verdict saying why, in the
+  reader's language.

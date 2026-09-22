@@ -223,7 +223,7 @@ func TestNewUserGetsTrialAndScreens(t *testing.T) {
 	if !contains(msgs, "free 7-day trial has started") {
 		t.Errorf("no trial notice in %q", msgs)
 	}
-	if !contains(msgs, "Screening "+addrA) || !contains(msgs, "Risk level: Low") {
+	if !contains(msgs, "Screening "+addrA) || !contains(msgs, "Exposure score: Low") {
 		t.Errorf("no screen result in %q", msgs)
 	}
 	used, _ := h.b.store.Used(context.Background(), 1, h.clock)

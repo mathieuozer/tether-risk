@@ -51,6 +51,9 @@ type screenResponse struct {
 		VolumeUSD float64 `json:"volume_usd"`
 		Days      int     `json:"days"`
 		AgeDays   int     `json:"age_days"`
+		Count     int     `json:"count"`
+		AmountUSD float64 `json:"amount_usd"`
+		Minutes   int     `json:"minutes"`
 	} `json:"flags"`
 
 	OwnLabel *struct {
@@ -228,7 +231,7 @@ func summary(r *screenResponse, lang string, followUp bool) string {
 	}
 	for _, f := range r.Flags {
 		in.Flags = append(in.Flags, report.ConnectionsFlag{Code: f.Code, InUSD: f.InUSD, OutUSD: f.OutUSD,
-			VolumeUSD: f.VolumeUSD, Days: f.Days, AgeDays: f.AgeDays})
+			VolumeUSD: f.VolumeUSD, Days: f.Days, AgeDays: f.AgeDays, Count: f.Count, AmountUSD: f.AmountUSD, Minutes: f.Minutes})
 	}
 	if v := r.Verdict; v != nil {
 		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence}

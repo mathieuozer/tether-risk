@@ -84,11 +84,12 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
 	pdf.SetFillColor(r, g, b)
 	pdf.SetTextColor(255, 255, 255)
 	pdf.SetFont("Helvetica", "B", 14)
-	pdf.CellFormat(55, 14, strings.ToUpper(res.Band), "", 0, "C", true, 0, "")
+	// Labelled as exposure so it is not read against the verdict above it.
+	pdf.CellFormat(55, 14, "EXPOSURE "+strings.ToUpper(res.Band), "", 0, "C", true, 0, "")
 
 	pdf.SetTextColor(0, 0, 0)
 	pdf.SetFont("Helvetica", "B", 13)
-	pdf.CellFormat(60, 14, "Score "+res.Score.StringFixed(1)+" / 100", "", 0, "C", false, 0, "")
+	pdf.CellFormat(60, 14, "Exposure score "+res.Score.StringFixed(1)+" / 100", "", 0, "C", false, 0, "")
 
 	coveragePct := res.Coverage.Mul(decimal.NewFromInt(100))
 	if res.LowConfidence {
@@ -328,7 +329,7 @@ func verdictReasonText(l loc, r scoring.VerdictReason) string {
 		s = l.f("vr_own_listed", l.category(r.Category))
 	case "exposure", "exposure_minor":
 		s = l.f("vr_"+r.Code, l.pct(r.Pct), l.category(r.Category))
-	case "low_coverage", "clean":
+	case "low_coverage", "unidentified", "clean":
 		s = l.f("vr_"+r.Code, l.pct(r.Pct))
 	case "behaviour":
 		s = l.f("vr_behaviour", l.f("flagname_"+r.Flag))

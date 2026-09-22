@@ -182,3 +182,70 @@ func AcceptedCount(candidates []ServiceCandidate) int {
 	}
 	return n
 }
+
+// StoredStats is an address's activity as stored, for addresses whose own
+// history has been fetched.
+type StoredStats struct {
+	Address        string
+	Transfers      uint64
+	Counterparties uint64
+	Truncated      bool
+	ActiveDays     int // first to last stored transfer
+}
+
+// JudgeStoredServices decides service shape from stored history rather than
+// a sample (docs/DECISIONS.md D30). Pure, so the rule is tested without a
+// database or network.
+func JudgeStoredServices(stats []StoredStats, cfg *config.Config, chainID string) ([]ServiceCandidate, []Label) {
+	rules := cfg.Weights.DerivedService
+	r := rules.Stored
+	var judged []ServiceCandidate
+	var out []Label
+	for _, s := range stats {
+		c := ServiceCandidate{Address: s.Address, Sample: Sample{Transfers: int(s.Transfers), Counterparties: int(s.Counterparties), MorePages: s.Truncated}}
+		ratio := 0.0
+		if s.Transfers > 0 {
+			ratio = float64(s.Counterparties) / float64(s.Transfers)
+		}
+		switch {
+		case int(s.Transfers) < r.MinTransfers:
+			c.Rejected = fmt.Sprintf("%d stored transfers, need %d", s.Transfers, r.MinTransfers)
+		case int(s.Counterparties) < r.MinCounterparties:
+			c.Rejected = fmt.Sprintf("%d distinct counterparties, need %d", s.Counterparties, r.MinCounterparties)
+		case ratio < r.MinCounterpartyRatio:
+			c.Rejected = fmt.Sprintf("%.2f counterparties per transfer, need %.2f", ratio, r.MinCounterpartyRatio)
+		case s.ActiveDays < r.MinActiveDays:
+			c.Rejected = fmt.Sprintf("active %d days, need %d: broad but young is a transit hub more often than a service",
+				s.ActiveDays, r.MinActiveDays)
+		default:
+			c.Accepted = true
+		}
+		judged = append(judged, c)
+		if !c.Accepted {
+			continue
+		}
+		out = append(out, Label{
+			Chain: chainID, Address: s.Address,
+			Entity:     "Unidentified high-volume service",
+			Category:   "unnamed_service",
+			Confidence: rules.Confidence,
+			Source:     "derived:service",
+			Evidence: map[string]any{
+				"heuristic":               "high_volume_service_stored",
+				"stored_transfers":        s.Transfers,
+				"distinct_counterparties": s.Counterparties,
+				"counterparty_ratio":      fmt.Sprintf("%.3f", ratio),
+				"history_truncated":       s.Truncated,
+				"active_days":             s.ActiveDays,
+				"thresholds": map[string]any{
+					"min_transfers":          r.MinTransfers,
+					"min_counterparties":     r.MinCounterparties,
+					"min_counterparty_ratio": r.MinCounterpartyRatio,
+				},
+				"note": "Judged from the address's fetched history. Behavioural evidence that this address " +
+					"is a service; it does not identify which one.",
+			},
+		})
+	}
+	return judged, out
+}

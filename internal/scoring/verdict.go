@@ -22,10 +22,10 @@ type Verdict struct {
 // its own language.
 type VerdictReason struct {
 	// Code: own_listed, band_high, exposure, band_medium, exposure_minor,
-	// low_coverage, tracing_incomplete, behaviour, clean.
+	// low_coverage, unidentified, tracing_incomplete, behaviour, clean.
 	Code     string
 	Category string  // for own_listed, exposure, exposure_minor
-	Pct      float64 // exposure share, or coverage for low_coverage
+	Pct      float64 // exposure share, coverage for low_coverage, unnamed share for unidentified
 	Flag     string  // for behaviour
 }
 
@@ -111,16 +111,28 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 	if coverage < rules.ClearMinCoverage {
 		caution = append(caution, VerdictReason{Code: "low_coverage", Pct: coverage * 100})
 	}
+	// Value that ends at a service nobody has named is traced, not vouched
+	// for: the service's other customers stay out of view.
+	unseen := false
+	if u := shares["unnamed_service"]; rules.MaxUnnamedPct > 0 && u >= rules.MaxUnnamedPct {
+		caution = append(caution, VerdictReason{Code: "unidentified", Pct: u})
+		unseen = true
+	}
 	if !done {
 		caution = append(caution, VerdictReason{Code: "tracing_incomplete"})
 	}
 	for _, f := range r.Flags {
-		if f.Code == "pass_through" || f.Code == "high_volume_new" {
+		if f.Code == "pass_through" || f.Code == "high_volume_new" || f.Code == "round_split" || f.Code == "parked_funds" {
 			caution = append(caution, VerdictReason{Code: "behaviour", Flag: f.Code})
 		}
 	}
 
 	v := Verdict{Confidence: confidence(coverage, done, rules)}
+	// Coverage says the value was traced, not that the answer is known: when
+	// most of it ends at services nobody has named, the answer is uncertain.
+	if unseen {
+		v.Confidence = "low"
+	}
 	switch {
 	case len(red) > 0:
 		v.Level, v.Reasons = VerdictHighRisk, append(red, caution...)
