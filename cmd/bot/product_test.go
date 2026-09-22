@@ -431,13 +431,47 @@ func verbKinds(s string) string {
 
 func TestMessageCatalogueIsComplete(t *testing.T) {
 	for key, m := range messages {
-		if m[0] == "" || m[1] == "" {
-			t.Errorf("%q is missing a language", key)
-			continue
+		for i, name := range []string{"English", "Turkish", "Russian"} {
+			if m[i] == "" {
+				t.Errorf("%q has no %s", key, name)
+			} else if verbKinds(m[0]) != verbKinds(m[i]) {
+				t.Errorf("%q: English verbs %q, %s %q", key, verbKinds(m[0]), name, verbKinds(m[i]))
+			}
 		}
-		if verbKinds(m[0]) != verbKinds(m[1]) {
-			t.Errorf("%q: English verbs %q, Turkish %q", key, verbKinds(m[0]), verbKinds(m[1]))
+	}
+	for _, lang := range []string{langTR, langRU} {
+		if len(publicCommands[lang]) != len(publicCommands[langEN]) {
+			t.Errorf("%s command menu has %d entries, English %d", lang, len(publicCommands[lang]), len(publicCommands[langEN]))
 		}
+	}
+}
+
+func TestNormLang(t *testing.T) {
+	for _, c := range []struct{ chosen, client, want string }{
+		{"", "ru", langRU}, {"", "uk", langRU}, {"", "be", langRU}, {"", "kk", langRU}, {"", "uz", langRU},
+		{"", "ky", langRU}, {"", "tg", langRU}, {"", "ru-RU", langRU}, {"", "tr", langTR}, {"", "en-GB", langEN},
+		{"", "de", langEN}, {"", "", langEN}, {"en", "ru", langEN}, {"ru", "tr", langRU},
+	} {
+		if got := normLang(c.chosen, c.client); got != c.want {
+			t.Errorf("normLang(%q, %q) = %q, want %q", c.chosen, c.client, got, c.want)
+		}
+	}
+}
+
+func TestRussianUserIsAnsweredInRussian(t *testing.T) {
+	h := newHarness(t)
+	h.b.dispatch(context.Background(), update{Message: &message{
+		From: &tgUser{ID: 91, FirstName: "Олег", LanguageCode: "kk"},
+		Chat: tgChat{ID: 91, Type: "private"}, Text: addrA}})
+	msgs := h.tg.sent(91)
+	if !contains(msgs, "Бесплатный пробный период начался") || !contains(msgs, "Связи адреса") {
+		t.Fatalf("messages: %q", msgs)
+	}
+	h.tg.reset()
+	h.b.dispatch(context.Background(), update{Message: &message{
+		From: &tgUser{ID: 91, LanguageCode: "kk"}, Chat: tgChat{ID: 91, Type: "private"}, Text: "/terms"}})
+	if !contains(h.tg.sent(91), "УСЛОВИЯ") {
+		t.Errorf("terms: %q", h.tg.sent(91))
 	}
 }
 

@@ -94,12 +94,19 @@
   }
   function tt(key, vars) { return esc(t(key, vars)); }
   // Plural: key_one / key_other, with {n} set to the formatted count.
+  // Russian adds key_few for 2-4 (not 12-14); its _other is the form after 5.
   function tn(key, n, vars) {
     var v = Object.assign({ n: fmtInt(n) }, vars || {});
-    return t(key + (n === 1 ? '_one' : '_other'), v);
+    var form = n === 1 ? '_one' : '_other';
+    if (S.lang === 'ru') {
+      var n10 = n % 10, n100 = n % 100;
+      if (n10 === 1 && n100 !== 11) form = '_one';
+      else if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) form = '_few';
+    }
+    return t(key + form, v);
   }
 
-  function loc() { return S.lang === 'tr' ? 'tr-TR' : 'en-US'; }
+  function loc() { return { tr: 'tr-TR', ru: 'ru-RU' }[S.lang] || 'en-US'; }
 
   function fmtNum(v, digits) {
     return new Intl.NumberFormat(loc(), { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v);
@@ -492,14 +499,20 @@
   function setMe(me) {
     S.me = me;
     var l = me.user && me.user.lang;
-    if (l === 'en' || l === 'tr') S.lang = l;
+    if (LANGS.indexOf(l) !== -1) S.lang = l;
     document.documentElement.lang = S.lang;
   }
+
+  var LANGS = ['en', 'tr', 'ru'];
+  // Telegram language codes answered in Russian, as the bot does.
+  var RU_CLIENTS = ['ru', 'uk', 'be', 'kk', 'uz', 'ky', 'tg'];
 
   function initialLang() {
     var u = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
     var code = (u && u.language_code) || (MOCK ? (qs.get('lang') || navigator.language || '') : '');
-    return /^tr/i.test(code) ? 'tr' : 'en';
+    code = code.toLowerCase().split(/[-_]/)[0];
+    if (code === 'tr') return 'tr';
+    return RU_CLIENTS.indexOf(code) !== -1 ? 'ru' : 'en';
   }
 
   function boot() {
@@ -1697,7 +1710,7 @@
     return '<section class="section" aria-labelledby="set-title"><div class="section-head"><h2 id="set-title">' + tt('settings') + '</h2></div>' +
       '<div class="card settings">' +
       '<div class="setting"><span class="setting-label">' + icon('globe') + '<span id="lang-label">' + tt('language') + '</span></span>' +
-      '<div class="seg small" role="group" aria-labelledby="lang-label">' + langBtn('en', 'English') + langBtn('tr', 'Türkçe') + '</div></div>' +
+      '<div class="seg small" role="group" aria-labelledby="lang-label">' + langBtn('en', 'English') + langBtn('tr', 'Türkçe') + langBtn('ru', 'Русский') + '</div></div>' +
       (me.support ? '<button type="button" class="setting link" data-act="support"><span class="setting-label">' + icon('help') + tt('support') + '</span>' +
         '<span class="hint">' + esc(me.support) + icon('right') + '</span></button>' : '') +
       '<div class="setting"><span class="setting-label">' + icon('doc') + '<span>' + tt('terms') + '</span></span><span class="hint small">' + tt('terms_hint') + '</span></div>' +
@@ -1889,7 +1902,7 @@
       admin: admin,
       plan: plan,
       access: plan ? { plan: { id: plan.id, name: plan.name }, until: iso(now + 30 * 86400000), source: 'stars', renews: true } : null,
-      lang: qs.get('lang') === 'tr' || qs.get('lang') === 'en' ? qs.get('lang') : null,
+      lang: LANGS.indexOf(qs.get('lang')) !== -1 ? qs.get('lang') : null,
       screens: plan ? 3 : 0,
       resets: midnight.toISOString(),
       history: [

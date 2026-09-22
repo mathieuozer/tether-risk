@@ -35,7 +35,7 @@ func main() {
 		pdfOut    = flag.String("pdf", "", "also write a PDF report to this path")
 		fetch     = flag.Bool("fetch", true,
 			"fetch the address and queue its counterparties before scoring; false scores stored data only")
-		lang   = flag.String("lang", "en", "summary language: en or tr")
+		lang   = flag.String("lang", "en", "summary and PDF verdict language: en, tr or ru")
 		format = flag.String("format", "detailed",
 			"output format: detailed (per-direction breakdown) or summary (combined connections list)")
 	)
@@ -109,7 +109,7 @@ func run(ctx context.Context, configDir, chainID, address, pdfOut, format, lang 
 			return err
 		}
 		defer f.Close()
-		if err := report.Render(f, res, time.Now()); err != nil {
+		if err := report.Render(f, res, time.Now(), lang); err != nil {
 			return fmt.Errorf("render report: %w", err)
 		}
 		fmt.Printf("report written to %s\n\n", pdfOut)

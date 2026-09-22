@@ -116,7 +116,7 @@ type appUser struct {
 	ID        int64
 	FirstName string
 	Username  string
-	Lang      string // resolved: en or tr
+	Lang      string // resolved: en, tr or ru
 	Channel   string // app or api
 }
 
@@ -583,7 +583,7 @@ func (b *bot) apiLang(w http.ResponseWriter, r *http.Request, u appUser) {
 		writeErr(w, err, u.Lang)
 		return
 	}
-	if req.Lang != langEN && req.Lang != langTR {
+	if req.Lang != langEN && req.Lang != langTR && req.Lang != langRU {
 		writeErr(w, refuse("bad_request", http.StatusBadRequest), u.Lang)
 		return
 	}

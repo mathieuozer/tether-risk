@@ -24,7 +24,7 @@ var publicCommands = map[string][]botCommand{
 		{"details", "Full breakdown: /details <address> (Pro)"},
 		{"pdf", "One-page PDF report: /pdf <address> (Pro)"},
 		{"cancel", "Stop automatic renewal"},
-		{"language", "English / Türkçe"},
+		{"language", "English / Türkçe / Русский"},
 		{"help", "How to use this bot"},
 		{"terms", "Terms of service"},
 		{"support", "Contact support"},
@@ -39,11 +39,26 @@ var publicCommands = map[string][]botCommand{
 		{"details", "Tam döküm: /details <adres> (Pro)"},
 		{"pdf", "Tek sayfa PDF rapor: /pdf <adres> (Pro)"},
 		{"cancel", "Otomatik yenilemeyi durdur"},
-		{"language", "English / Türkçe"},
+		{"language", "English / Türkçe / Русский"},
 		{"help", "Bot nasıl kullanılır"},
 		{"terms", "Kullanım koşulları"},
 		{"support", "Destek"},
 		{"paysupport", "Ödeme desteği"},
+	},
+	langRU: {
+		{"app", "Открыть приложение"},
+		{"plans", "Тарифы и цены, подписка"},
+		{"status", "Ваш тариф, продление и лимит на сегодня"},
+		{"watches", "Адреса на мониторинге изменений риска"},
+		{"history", "Ваши последние проверки"},
+		{"details", "Полная разбивка: /details <адрес> (Pro)"},
+		{"pdf", "PDF-отчёт на одну страницу: /pdf <адрес> (Pro)"},
+		{"cancel", "Отключить автопродление"},
+		{"language", "English / Türkçe / Русский"},
+		{"help", "Как пользоваться ботом"},
+		{"terms", "Условия использования"},
+		{"support", "Связаться с поддержкой"},
+		{"paysupport", "Помощь с оплатой"},
 	},
 }
 
@@ -140,7 +155,7 @@ func (b *bot) message(ctx context.Context, m *message) {
 		b.openApp(ctx, c)
 	case "/language", "/lang", "/dil":
 		b.sayWith(ctx, c.chat, t(c.lang, "lang_pick"), &keyboard{InlineKeyboard: [][]button{{
-			{Text: "English", CallbackData: "lang:en"}, {Text: "Türkçe", CallbackData: "lang:tr"},
+			{Text: "English", CallbackData: "lang:en"}, {Text: "Türkçe", CallbackData: "lang:tr"}, {Text: "Русский", CallbackData: "lang:ru"},
 		}}})
 	case "/plans", "/subscribe", "/upgrade":
 		b.plans(ctx, c)
@@ -456,10 +471,12 @@ func (b *bot) historyCommand(ctx context.Context, c chatCtx) {
 }
 
 func bandWord(lang, band string) string {
-	if lang == langTR {
-		if w, ok := map[string]string{"low": "Düşük", "medium": "Orta", "high": "Yüksek"}[band]; ok {
-			return w
-		}
+	words := map[string]map[string]string{
+		langTR: {"low": "Düşük", "medium": "Orta", "high": "Yüksek"},
+		langRU: {"low": "Низкий", "medium": "Средний", "high": "Высокий"},
+	}[lang]
+	if w, ok := words[band]; ok {
+		return w
 	}
 	if band == "" {
 		return band
@@ -469,8 +486,11 @@ func bandWord(lang, band string) string {
 
 func limitText(lang string, n int) string {
 	if n < 0 {
-		if lang == langTR {
+		switch lang {
+		case langTR:
 			return "sınırsız"
+		case langRU:
+			return "без ограничений"
 		}
 		return "unlimited"
 	}
@@ -479,8 +499,11 @@ func limitText(lang string, n int) string {
 
 func humanInterval(lang string, d time.Duration) string {
 	h := int(d.Hours())
-	if lang == langTR {
+	switch lang {
+	case langTR:
 		return fmt.Sprintf("%d saatte", h)
+	case langRU:
+		return fmt.Sprintf("%d ч", h)
 	}
 	return fmt.Sprintf("%d hours", h)
 }

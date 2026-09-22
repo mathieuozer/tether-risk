@@ -181,7 +181,7 @@ func newHarness(t *testing.T) *harness {
 		store:     billing.NewStore(pg, cfg),
 		admins:    map[int64]bool{adminID: true},
 		support:   "@support",
-		terms:     map[string]string{langEN: "TERMS @support", langTR: "KOŞULLAR @support"},
+		terms:     map[string]string{langEN: "TERMS @support", langTR: "KOŞULLAR @support", langRU: "УСЛОВИЯ @support"},
 		usdtAddr:  payAddr,
 		tron:      tron.NewClient(tron.Options{BaseURL: tronSrv.URL, RequestsPerSecond: 1000}),
 		screening: make(chan struct{}, 2),

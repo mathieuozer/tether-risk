@@ -11,6 +11,7 @@
 package report
 
 import (
+	_ "embed"
 	"fmt"
 	"io"
 	"strings"
@@ -26,9 +27,29 @@ const disclaimer = "This report is automated triage and pre-screening built on o
 	"used as the sole basis for any decision about a person or account. Every figure is " +
 	"reconstructible from the stored path set identified by the run reference below."
 
-// Render writes a one-page PDF report for a screening result.
-func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
+// The PDF core fonts cover only Western European text, so a Cyrillic or
+// Turkish letter, in the verdict or in an entity name, would print as a wrong
+// glyph. Noto Sans covers Latin, Cyrillic and Greek; it is under the SIL Open
+// Font License 1.1 (fonts/OFL.txt). Only the glyphs a report uses are embedded.
+const sans = "NotoSans"
+
+var (
+	//go:embed fonts/NotoSans-Regular.ttf
+	fontRegular []byte
+	//go:embed fonts/NotoSans-Bold.ttf
+	fontBold []byte
+	//go:embed fonts/NotoSans-Italic.ttf
+	fontItalic []byte
+)
+
+// Render writes a one-page PDF report for a screening result. The verdict is
+// written in lang ("en", "tr" or "ru"); the analyst detail below it is
+// English.
+func Render(w io.Writer, res *scoring.Result, generatedAt time.Time, lang string) error {
 	pdf := fpdf.New("P", "mm", "A4", "")
+	pdf.AddUTF8FontFromBytes(sans, "", fontRegular)
+	pdf.AddUTF8FontFromBytes(sans, "B", fontBold)
+	pdf.AddUTF8FontFromBytes(sans, "I", fontItalic)
 	pdf.SetMargins(15, 15, 15)
 	pdf.SetAutoPageBreak(true, 15)
 	pdf.AddPage()
@@ -36,11 +57,11 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
 	const width = 180
 
 	// --- header ---
-	pdf.SetFont("Helvetica", "B", 16)
+	pdf.SetFont(sans, "B", 16)
 	pdf.Cell(width, 8, "Address Risk Screening")
 	pdf.Ln(9)
 
-	pdf.SetFont("Helvetica", "", 9)
+	pdf.SetFont(sans, "", 9)
 	pdf.SetTextColor(90, 90, 90)
 	pdf.Cell(width, 5, "Triage report - not a regulated AML determination")
 	pdf.Ln(8)
@@ -53,7 +74,7 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
 	pdf.SetFont("Courier", "", 10)
 	pdf.Cell(width, 5, res.Address)
 	pdf.Ln(5)
-	pdf.SetFont("Helvetica", "", 9)
+	pdf.SetFont(sans, "", 9)
 	pdf.SetTextColor(90, 90, 90)
 	pdf.Cell(width, 5, "Chain: "+res.Chain)
 	pdf.Ln(8)
@@ -64,20 +85,12 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
 		vr, vg, vb := verdictColour(v.Level)
 		pdf.SetFillColor(vr, vg, vb)
 		pdf.SetTextColor(255, 255, 255)
-		pdf.SetFont("Helvetica", "B", 13)
-		l := newLoc("en")
-		title := "NOT RISKY"
-		if v.Level == scoring.VerdictHighRisk {
-			title = "RISKY"
-		}
-		head := fmt.Sprintf("  %s  -  confidence %d%%", title, v.ConfidencePct)
-		if v.Insufficient {
-			head += "  -  not enough data"
-		}
-		pdf.CellFormat(width, 11, head, "", 0, "L", true, 0, "")
+		pdf.SetFont(sans, "B", 13)
+		l := newLoc(lang)
+		pdf.CellFormat(width, 11, "  "+pdfVerdictHead(v, l), "", 0, "L", true, 0, "")
 		pdf.Ln(13)
 		pdf.SetTextColor(0, 0, 0)
-		pdf.SetFont("Helvetica", "", 9.5)
+		pdf.SetFont(sans, "", 9.5)
 		cv := &ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Insufficient: v.Insufficient}
 		for _, r := range v.Reasons {
 			cv.Reasons = append(cv.Reasons, ConnectionsVerdictReason{Code: r.Code, Category: r.Category, Flag: r.Flag, Address: r.Address, Pct: r.Pct})
@@ -92,12 +105,12 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
 	r, g, b := bandColour(res.Band)
 	pdf.SetFillColor(r, g, b)
 	pdf.SetTextColor(255, 255, 255)
-	pdf.SetFont("Helvetica", "B", 14)
+	pdf.SetFont(sans, "B", 14)
 	// Labelled as exposure so it is not read against the verdict above it.
 	pdf.CellFormat(55, 14, "EXPOSURE "+strings.ToUpper(res.Band), "", 0, "C", true, 0, "")
 
 	pdf.SetTextColor(0, 0, 0)
-	pdf.SetFont("Helvetica", "B", 13)
+	pdf.SetFont(sans, "B", 13)
 	pdf.CellFormat(60, 14, "Exposure score "+res.Score.StringFixed(1)+" / 100", "", 0, "C", false, 0, "")
 
 	coveragePct := res.Coverage.Mul(decimal.NewFromInt(100))
@@ -158,7 +171,7 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
 	pdf.Ln(2)
 	line(pdf, width)
 	pdf.Ln(3)
-	pdf.SetFont("Helvetica", "", 8)
+	pdf.SetFont(sans, "", 8)
 	pdf.SetTextColor(90, 90, 90)
 	pdf.Cell(width, 4, fmt.Sprintf(
 		"Generated %s   |   Label snapshot %d   |   Config version %s",
@@ -169,20 +182,35 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
 	pdf.Ln(6)
 
 	// --- disclaimer ---
-	pdf.SetFont("Helvetica", "I", 7.5)
+	pdf.SetFont(sans, "I", 7.5)
 	pdf.MultiCell(width, 3.4, disclaimer, "", "L", false)
 
 	return pdf.Output(w)
 }
 
+// pdfVerdictHead is the chat headline without its emoji, which the font
+// does not have: "RISKY · confidence 92%", "НЕТ РИСКА · уверенность 7% ·
+// недостаточно данных".
+func pdfVerdictHead(v *scoring.Verdict, l loc) string {
+	level := v.Level
+	if level != "clear" && level != scoring.VerdictHighRisk {
+		level = "caution"
+	}
+	_, head, _ := strings.Cut(strings.TrimSuffix(l.f("v_"+level, v.ConfidencePct), "\n"), " ")
+	if v.Insufficient {
+		head += strings.TrimSuffix(l.f("v_insufficient"), "\n")
+	}
+	return head
+}
+
 func direction(pdf *fpdf.Fpdf, width float64, title string, d *scoring.DirectionResult) {
 	pdf.Ln(2)
-	pdf.SetFont("Helvetica", "B", 10)
+	pdf.SetFont(sans, "B", 10)
 	pdf.Cell(width, 6, title)
 	pdf.Ln(6)
 
 	if d == nil || (len(d.Categories) == 0 && d.UnattributedPct.IsZero()) {
-		pdf.SetFont("Helvetica", "I", 9)
+		pdf.SetFont(sans, "I", 9)
 		pdf.SetTextColor(120, 120, 120)
 		pdf.Cell(width, 5, "No traced value in this direction.")
 		pdf.Ln(6)
@@ -190,7 +218,7 @@ func direction(pdf *fpdf.Fpdf, width float64, title string, d *scoring.Direction
 		return
 	}
 
-	pdf.SetFont("Helvetica", "B", 8)
+	pdf.SetFont(sans, "B", 8)
 	pdf.SetFillColor(240, 240, 240)
 	pdf.CellFormat(70, 5, " Category", "", 0, "L", true, 0, "")
 	pdf.CellFormat(28, 5, "Share", "", 0, "R", true, 0, "")
@@ -198,7 +226,7 @@ func direction(pdf *fpdf.Fpdf, width float64, title string, d *scoring.Direction
 	pdf.CellFormat(54, 5, "Contribution to score", "", 0, "R", true, 0, "")
 	pdf.Ln(5)
 
-	pdf.SetFont("Helvetica", "", 8)
+	pdf.SetFont(sans, "", 8)
 	for _, c := range d.Categories {
 		pdf.CellFormat(70, 4.6, " "+c.Category, "", 0, "L", false, 0, "")
 		pdf.CellFormat(28, 4.6, c.Pct.StringFixed(2)+"%", "", 0, "R", false, 0, "")
@@ -211,7 +239,7 @@ func direction(pdf *fpdf.Fpdf, width float64, title string, d *scoring.Direction
 	// in a footnote would let a reader skim the categories and take them for
 	// the whole picture.
 	if d.UnattributedPct.IsPositive() {
-		pdf.SetFont("Helvetica", "B", 8)
+		pdf.SetFont(sans, "B", 8)
 		pdf.SetTextColor(180, 60, 0)
 		pdf.CellFormat(70, 4.6, " unattributed", "", 0, "L", false, 0, "")
 		pdf.CellFormat(28, 4.6, d.UnattributedPct.StringFixed(2)+"%", "", 0, "R", false, 0, "")
@@ -230,7 +258,7 @@ func direction(pdf *fpdf.Fpdf, width float64, title string, d *scoring.Direction
 		notes = append(notes, "hop limit reached; value beyond it is unknown")
 	}
 	if len(notes) > 0 {
-		pdf.SetFont("Helvetica", "I", 7.5)
+		pdf.SetFont(sans, "I", 7.5)
 		pdf.SetTextColor(120, 120, 120)
 		pdf.Cell(width, 4, " Note: "+strings.Join(notes, "; "))
 		pdf.Ln(5)
@@ -269,12 +297,12 @@ func paths(pdf *fpdf.Fpdf, width float64, res *scoring.Result) {
 	}
 
 	pdf.Ln(2)
-	pdf.SetFont("Helvetica", "B", 10)
+	pdf.SetFont(sans, "B", 10)
 	pdf.Cell(width, 6, "TOP CONTRIBUTING PATHS")
 	pdf.Ln(6)
 
 	if len(entries) == 0 {
-		pdf.SetFont("Helvetica", "I", 9)
+		pdf.SetFont(sans, "I", 9)
 		pdf.SetTextColor(120, 120, 120)
 		pdf.MultiCell(width, 4.5,
 			"No path reached an identified counterparty. This is a coverage gap, not "+
@@ -284,7 +312,7 @@ func paths(pdf *fpdf.Fpdf, width float64, res *scoring.Result) {
 		return
 	}
 
-	pdf.SetFont("Helvetica", "", 8)
+	pdf.SetFont(sans, "", 8)
 	for _, e := range entries {
 		pdf.CellFormat(12, 4.6, " "+e.dir, "", 0, "L", false, 0, "")
 		pdf.CellFormat(width-12, 4.6, e.text, "", 0, "L", false, 0, "")
@@ -297,10 +325,10 @@ func warning(pdf *fpdf.Fpdf, width float64, title, body string) {
 	pdf.SetDrawColor(220, 130, 40)
 	startY := pdf.GetY()
 
-	pdf.SetFont("Helvetica", "B", 9)
+	pdf.SetFont(sans, "B", 9)
 	pdf.SetTextColor(150, 60, 0)
 	pdf.MultiCell(width, 5, "  "+title, "", "L", true)
-	pdf.SetFont("Helvetica", "", 8)
+	pdf.SetFont(sans, "", 8)
 	pdf.SetTextColor(60, 60, 60)
 	pdf.MultiCell(width, 4, "  "+body, "", "L", true)
 
