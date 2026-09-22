@@ -1321,8 +1321,117 @@ embeds Noto Sans (regular, bold, italic) under the SIL Open Font License
 used are embedded. `TestPDFFontsCoverEveryLanguage` reads the font's cmap
 and fails if any letter in the three catalogues has no glyph. The PDF's
 verdict block is written in the requested language. The analyst detail
-below it stays English, as it was for Turkish. The HTTP API takes no
-language, so its PDF is English. The CLI passes `-lang`.
+below it stays English, as it was for Turkish. The CLI passes `-lang`;
+`/v1/report` takes `lang` since D34, and the bot passes the user's.
 
 **Open:** `config/terms.ru.txt` is a translation awaiting legal review; the
 English text governs.
+
+---
+
+## D34 — Tether freezes: what the data supports, checking a payment, UK and EU lists
+
+**Date:** 2026-09-22 · **Status:** active · **Follows:** D29, D32, D33
+
+The owner asked how to get ahead of competitors in an international market
+(Russia and the CIS, the EU, the US, the UAE). A payer's question is not
+"what is this address" but "may I take or send this money". Three answers
+to it were built, and one idea was measured and dropped.
+
+**Freeze prediction is not supported, so it is not sold.** The idea was to
+put a percentage on "Tether will freeze this wallet within 30 days". The
+first step was to measure it. `validate freeze` takes 800 wallets Tether
+froze between 2025-01-01 and 90 days ago, and stores only the USDT
+transfers from the 30 days before each freeze: a page or two instead of
+the whole history (`USDTWindowCursor`). The blacklist gives every
+address's freeze time, so each counterparty's outcome is known without its
+own history. The control is the same measure around 800 ordinary fetched
+wallets, each paired with one sampled freeze time. Services are left out.
+
+| Counterparties of a frozen wallet | n | frozen within 7 d | 30 d | 90 d |
+|---|---|---|---|---|
+| all | 22,804 | 0.64% | 0.70% | 0.75% |
+| received ≥ $1k from it, last transfer < 7 d before | 2,664 | 3.00% | 3.08% | 3.15% |
+| exchanged ≥ $10k | 5,827 | 2.01% | 2.18% | 2.37% |
+| exchanged < $1k | 14,391 | 0.06% | 0.07% | 0.07% |
+| control: ordinary wallets' counterparties | 2,583 | 0.04% | 0.12% | 0.19% |
+
+The strongest group is about 25 times the control. The risk is almost all
+in the first days, though: Tether freezes in clusters. For the strongest
+group still unfrozen 3 days after the first freeze, the chance of a freeze
+in the next 30 days is 0.27%, and 0.08% after 7 days, which is the
+control's level. A 30-day percentage would be true for three days and
+misleading afterwards, so it is not shown. What the data supports is speed:
+
+- **A note, for three days.** A screened wallet that received at least
+  $1,000 from a wallet Tether froze in the last three days, within the week
+  before that freeze, gets a `frozen_contact` note. The note gives the
+  measured 3.1% against 0.12%. Like the poisoning-target note (D32), it
+  changes neither the verdict nor the confidence: exposure to frozen funds
+  already counts through `frozen_funds` (D29). Thresholds are in
+  `weights.yaml` under `behaviour.frozen_contact`.
+- **The blacklist every ten minutes.** `labeler tether` (`make
+  tether-install`) reads the blacklist alone into its own snapshot in
+  35 s. It then makes every watch with direct flow to or from a newly frozen
+  address due, and the bot's monitor, which ticks every five minutes,
+  rescreens it. A watcher hears of a freeze within minutes rather than at
+  the next six-hourly check. The refresh skips a run while another labeler
+  run holds an open snapshot. Sealing a later snapshot while an earlier one
+  is still being written would change what the sealed one resolves to
+  (SPEC.md §2).
+
+**Checking a payment before it is sent.** `POST /v1/presend` (bot:
+`/send <recipient>` or `/send <your wallet> <recipient>`) screens the
+recipient. Given the paying wallet, it also looks for a real counterparty
+of that wallet (at least $100, the D32 bar) with the recipient's first and
+last four characters. A match is a poisoning copy even when no label has
+caught the poisoner yet. The decision is "do not send" when the recipient is
+risky or is a copy. A first payment is said, not counted against. Tried
+on two stored poisonings: the copy was stopped and named the address it
+imitates ($150,000 and $10,000 of real history); the real address passed.
+
+**Inline mode.** "@bot T…" in any chat offers a check. Telegram wants an
+inline answer within seconds, and a screen can take a minute. So the result
+sent is a placeholder, and on `chosen_inline_result` the screen runs as the
+sender's screen, through the gate like any other, and the placeholder is
+edited into the verdict. It needs inline mode and inline feedback enabled
+with @BotFather (`/setinline`, `/setinlinefeedback`). A result carries a
+keyboard, because without one Telegram does not report the message id
+needed to edit it.
+
+**UK and EU sanctions.** A research pass over international sources (dated
+2026-09-22):
+
+- **UK Sanctions List (FCDO):** allowed under the Open Government Licence
+  v3.0. Addresses sit in free text. 49 TRON addresses: XINBI (40), AYASH
+  (4), EXMO (3), Byex (2). The EXMO and Byex ones are absent from OFAC.
+- **EU consolidated list:** configured since D14 but never ingested. Its URL
+  had been answering 403, and the labeler only logged "not yet
+  implemented". It needs the public `token` its own page uses. 3 TRON
+  addresses, for Garantex and Grinex. Garantex's is absent from OFAC.
+
+One parser (`ParseFreeTextSanctions`) reads both. It takes every
+address-shaped token in a designation and keeps a TRON one only if its
+base58check checksum holds. An EVM address is labelled on both Ethereum
+and BSC, because its key controls it on both. Screening Garantex's EU
+address answers risky at 99%, "Garantex (eu)". EXMO's UK address first
+resolved to its Tether freeze. The cause was the running API's old
+configuration, in which `uk` was unranked, not a code fault. A restart
+resolved it to "EXMO EXCHANGE LIMITED (uk)". The API must be restarted
+after any configuration change.
+
+**Not used, and why:**
+
+- **Israel NBCTF seizure orders:** 583 TRON addresses, 576 absent from
+  OFAC, mostly Hamas, IRGC and Hezbollah USDT. The Ministry of Defense
+  terms forbid redistribution without written consent, and the index sits
+  behind bot protection. The single most valuable open list for TRON;
+  written consent is the owner's step.
+- **Exchange reserve lists:** Gate, Bitget, KuCoin, MEXC and Bybit publish
+  them only on their own sites, under terms that forbid the use (D19, D31).
+  None of their GitHub repositories holds a TRON address.
+- **OpenSanctions:** CC BY-NC.
+
+**Measured in my own code on the way:** the first run fetched each frozen
+wallet's whole history and managed 17 wallets in ten minutes; fetching only
+the window finished 800 in about 25 minutes.

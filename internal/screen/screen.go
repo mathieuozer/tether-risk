@@ -274,6 +274,11 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 	if f, ok := s.poisoningTarget(ctx, chainID, address, snapshotID); ok {
 		res.Flags = append(res.Flags, f)
 	}
+	if f, ok, err := s.frozenContactFlag(ctx, chainID, address, snapshotID, time.Now()); err != nil {
+		return nil, err
+	} else if ok {
+		res.Flags = append(res.Flags, f)
+	}
 
 	if err := s.profile(ctx, chainID, res); err != nil {
 		return nil, err

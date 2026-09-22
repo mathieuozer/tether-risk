@@ -140,6 +140,8 @@ type screenRequest struct {
 	Chain     string `json:"chain"`
 	Address   string `json:"address"`
 	Direction string `json:"direction,omitempty"`
+	// Lang is the PDF report's language: en (default), tr or ru.
+	Lang string `json:"lang,omitempty"`
 }
 
 type screenResponse struct {
@@ -361,7 +363,7 @@ type errorResponse struct {
 // ---------------------------------------------------------------------------
 
 func (s *server) handleScreen(w http.ResponseWriter, r *http.Request) {
-	res, ok := s.screen(w, r)
+	res, _, ok := s.screen(w, r)
 	if !ok {
 		return
 	}
@@ -371,12 +373,17 @@ func (s *server) handleScreen(w http.ResponseWriter, r *http.Request) {
 // handleReport screens like handleScreen and returns the one-page PDF report
 // (SPEC.md §8) instead of JSON.
 func (s *server) handleReport(w http.ResponseWriter, r *http.Request) {
-	res, ok := s.screen(w, r)
+	res, req, ok := s.screen(w, r)
 	if !ok {
 		return
 	}
+	lang := "en"
+	switch req.Lang {
+	case "tr", "ru":
+		lang = req.Lang
+	}
 	var buf bytes.Buffer
-	if err := report.Render(&buf, res, time.Now().UTC(), "en"); err != nil {
+	if err := report.Render(&buf, res, time.Now().UTC(), lang); err != nil {
 		s.log.Error("render report failed", "address", res.Address, "error", err)
 		writeError(w, http.StatusInternalServerError, "report_failed", err.Error())
 		return
@@ -389,18 +396,18 @@ func (s *server) handleReport(w http.ResponseWriter, r *http.Request) {
 
 // screen decodes a screen request and runs it. On failure it has already
 // written the error response and returns false.
-func (s *server) screen(w http.ResponseWriter, r *http.Request) (*scoring.Result, bool) {
+func (s *server) screen(w http.ResponseWriter, r *http.Request) (*scoring.Result, screenRequest, bool) {
 	var req screenRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
-		return nil, false
+		return nil, req, false
 	}
 	if req.Chain == "" {
 		req.Chain = "tron"
 	}
 	if strings.TrimSpace(req.Address) == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "address is required")
-		return nil, false
+		return nil, req, false
 	}
 
 	res, err := s.svc.Screen(r.Context(), req.Chain, strings.TrimSpace(req.Address))
@@ -409,14 +416,14 @@ func (s *server) screen(w http.ResponseWriter, r *http.Request) (*scoring.Result
 		// not a generic failure: an empty result would read as "no activity".
 		if strings.HasPrefix(err.Error(), "chain_unavailable") {
 			writeError(w, http.StatusServiceUnavailable, "chain_unavailable", err.Error())
-			return nil, false
+			return nil, req, false
 		}
 		s.log.Error("screen failed", "address", req.Address, "error", err)
 		writeError(w, http.StatusInternalServerError, "screen_failed", err.Error())
-		return nil, false
+		return nil, req, false
 	}
 
-	return res, true
+	return res, req, true
 }
 
 func (s *server) handleCached(w http.ResponseWriter, r *http.Request) {

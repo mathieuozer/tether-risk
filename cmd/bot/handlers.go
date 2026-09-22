@@ -17,6 +17,7 @@ import (
 var publicCommands = map[string][]botCommand{
 	langEN: {
 		{"app", "Open the app"},
+		{"send", "Check a payment before sending: /send <recipient>"},
 		{"plans", "Plans and prices, subscribe"},
 		{"status", "Your plan, renewal and today's usage"},
 		{"watches", "Addresses you watch for risk changes"},
@@ -32,6 +33,7 @@ var publicCommands = map[string][]botCommand{
 	},
 	langTR: {
 		{"app", "Uygulamayı aç"},
+		{"send", "Ödemeyi göndermeden kontrol et: /send <alıcı>"},
 		{"plans", "Planlar ve fiyatlar, abonelik"},
 		{"status", "Planınız, yenileme ve bugünkü kullanım"},
 		{"watches", "Risk değişimi için izlediğiniz adresler"},
@@ -47,6 +49,7 @@ var publicCommands = map[string][]botCommand{
 	},
 	langRU: {
 		{"app", "Открыть приложение"},
+		{"send", "Проверить платёж перед отправкой: /send <получатель>"},
 		{"plans", "Тарифы и цены, подписка"},
 		{"status", "Ваш тариф, продление и лимит на сегодня"},
 		{"watches", "Адреса на мониторинге изменений риска"},
@@ -68,6 +71,10 @@ func (b *bot) dispatch(ctx context.Context, u update) {
 		b.preCheckout(ctx, u.PreCheckoutQuery)
 	case u.CallbackQuery != nil:
 		b.callback(ctx, u.CallbackQuery)
+	case u.InlineQuery != nil:
+		b.inlineQuery(ctx, u.InlineQuery)
+	case u.ChosenInlineResult != nil:
+		b.chosenInline(ctx, u.ChosenInlineResult)
 	case u.Message != nil:
 		b.message(ctx, u.Message)
 	}
@@ -171,6 +178,8 @@ func (b *bot) message(ctx context.Context, m *message) {
 		b.paySupport(ctx, c)
 	case "/details":
 		b.screenCommand(ctx, c, arg, kindDetails, "/details")
+	case "/send", "/check":
+		b.sendCommand(ctx, c, arg)
 	case "/pdf":
 		b.screenCommand(ctx, c, arg, kindPDF, "/pdf")
 	case "/watch":
@@ -257,7 +266,7 @@ func (b *bot) screenCommand(ctx context.Context, c chatCtx, arg string, kind scr
 		return
 	}
 	// Say something as soon as the screen starts: it can take a minute.
-	out, err := b.gate(ctx, screenRequest{UserID: c.user.ID, Text: arg, Kind: kind, Channel: chanBot,
+	out, err := b.gate(ctx, screenRequest{UserID: c.user.ID, Text: arg, Kind: kind, Channel: chanBot, Lang: c.lang,
 		Started: func(_, address string) { b.say(ctx, c.chat, t(c.lang, "screening", address)) }})
 	if err != nil {
 		b.refusal(ctx, c, err)

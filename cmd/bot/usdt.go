@@ -109,8 +109,8 @@ func (b *bot) handlePayment(ctx context.Context, m tron.Movement, open []billing
 }
 
 // report asks the API for the one-page PDF report.
-func (b *bot) report(ctx context.Context, chain, address string) ([]byte, error) {
-	body, err := json.Marshal(map[string]string{"chain": chain, "address": address})
+func (b *bot) report(ctx context.Context, chain, address, lang string) ([]byte, error) {
+	body, err := json.Marshal(map[string]string{"chain": chain, "address": address, "lang": lang})
 	if err != nil {
 		return nil, err
 	}

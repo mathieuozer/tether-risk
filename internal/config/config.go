@@ -175,6 +175,13 @@ type Behaviour struct {
 		MinWallets   int     `yaml:"min_wallets"`
 		MinTotalUSD  float64 `yaml:"min_total_usd"`
 	} `yaml:"parked"`
+	FrozenContact struct {
+		// MinReceivedUSD received from the frozen wallet within WindowDays
+		// before its freeze, which was at most MaxDaysSince days ago.
+		MinReceivedUSD float64 `yaml:"min_received_usd"`
+		WindowDays     int     `yaml:"window_days"`
+		MaxDaysSince   int     `yaml:"max_days_since"`
+	} `yaml:"frozen_contact"`
 }
 
 // DerivedPoisoning configures address-poisoning detection

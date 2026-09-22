@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/mozer/tether-risk/internal/billing"
@@ -21,14 +22,16 @@ const (
 	kindSummary screenKind = iota
 	kindDetails
 	kindPDF
+	kindPreSend // the recipient of a payment, checked against the payer (D34)
 )
 
 // Channels, as recorded in screen_history.
 const (
-	chanBot   = "bot"
-	chanApp   = "app"
-	chanAPI   = "api"
-	chanBatch = "batch"
+	chanBot    = "bot"
+	chanApp    = "app"
+	chanAPI    = "api"
+	chanBatch  = "batch"
+	chanInline = "inline" // an inline result sent into another chat (D34)
 )
 
 // gateError is a refusal every channel can render: the chat in words, the
@@ -99,6 +102,10 @@ type screenRequest struct {
 	Chain   string // explicit chain, from the app or API; may be empty
 	Kind    screenKind
 	Channel string
+	// From is the paying wallet of a kindPreSend check; optional.
+	From string
+	// Lang is the language of a kindPDF report.
+	Lang string
 	// Held means the caller already holds this user's busy slot (a batch).
 	Held bool
 	// Started, if set, is called once every check has passed and the screen
@@ -113,7 +120,8 @@ type screenOutcome struct {
 	Result         *screenResponse
 	Raw            []byte // the API's JSON, for the app and API channels
 	PDF            []byte
-	Used, Limit    int // today's screens after this one; Limit -1 is unlimited
+	PreSend        *preSendResponse // kindPreSend only; Result is its recipient
+	Used, Limit    int              // today's screens after this one; Limit -1 is unlimited
 }
 
 // gate runs a screen for a customer, or refuses with a *gateError.
@@ -169,9 +177,15 @@ func (b *bot) gate(ctx context.Context, r screenRequest) (*screenOutcome, error)
 		r.Started(chain, address)
 	}
 	out := &screenOutcome{Chain: chain, Address: address, Used: used, Limit: acc.DailyScreens}
-	if r.Kind == kindPDF {
-		out.PDF, err = b.report(ctx, chain, address)
-	} else {
+	switch r.Kind {
+	case kindPDF:
+		out.PDF, err = b.report(ctx, chain, address, r.Lang)
+	case kindPreSend:
+		out.PreSend, err = b.preSend(ctx, chain, strings.TrimSpace(r.From), address)
+		if err == nil {
+			out.Result = &out.PreSend.Recipient
+		}
+	default:
 		out.Result, out.Raw, err = b.screen(ctx, chain, address)
 	}
 	if err != nil {

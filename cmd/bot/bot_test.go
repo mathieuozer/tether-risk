@@ -21,6 +21,7 @@ import (
 
 const (
 	addrA   = "TNwf8VBNCkg7Y1pgyzbHdWdekkamoqcrmL"
+	addrB   = "TA1hsikRfsgGiW9nEBpT4tEXEySTNYLr2d"
 	payAddr = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"
 	adminID = 1000
 )
@@ -160,6 +161,13 @@ func newHarness(t *testing.T) *harness {
 			out[k] = v
 		}
 		h.mu.Unlock()
+		if r.URL.Path == "/v1/presend" {
+			// A recipient that imitates addrB, which the payer really pays.
+			out["address"] = req["to"]
+			json.NewEncoder(w).Encode(map[string]any{"decision": "do_not_send", "lookalike_of": addrB,
+				"lookalike_usd": 150000.0, "first_payment": true, "sender_known": req["from"] != "", "recipient": out})
+			return
+		}
 		json.NewEncoder(w).Encode(out)
 	}))
 	t.Cleanup(apiSrv.Close)
@@ -449,5 +457,65 @@ func TestSplitMessageKeepsEverything(t *testing.T) {
 	}
 	if strings.Count(strings.Join(parts, "\n"), "line of text") != 1000 {
 		t.Error("lines lost in splitting")
+	}
+}
+
+func TestSendChecksRecipientAgainstPayer(t *testing.T) {
+	h := newHarness(t)
+	h.text(8, "/start")
+	h.tg.reset()
+	h.text(8, "/send "+addrB+" "+addrA)
+	got := h.tg.sent(8)
+	if !contains(got, "DO NOT SEND") || !contains(got, "address poisoning") || !contains(got, "$150.0k") {
+		t.Errorf("look-alike not reported: %q", got)
+	}
+	h.tg.reset()
+	h.text(8, "/send")
+	if !contains(h.tg.sent(8), "Usage: /send") {
+		t.Errorf("no usage for a bare /send: %q", h.tg.sent(8))
+	}
+	h.tg.reset()
+	h.text(8, "/send nonsense "+addrA)
+	if contains(h.tg.sent(8), "DO NOT SEND") {
+		t.Errorf("screened with an invalid payer: %q", h.tg.sent(8))
+	}
+}
+
+func TestInlineCheckEditsPlaceholderIntoVerdict(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.setResult(map[string]any{"score": 90.0, "band": "high", "coverage": 0.9,
+		"verdict": map[string]any{"level": "high_risk", "confidence": "high", "confidence_pct": 99,
+			"reasons": []map[string]any{{"code": "own_listed", "category": "sanctions"}}}})
+
+	h.b.dispatch(ctx, update{InlineQuery: &inlineQuery{ID: "iq1", From: tgUser{ID: 9}, Query: " " + addrA + " "}})
+	c, ok := h.tg.last("answerInlineQuery")
+	res, _ := c.Params["results"].([]any)
+	if !ok || len(res) != 1 || res[0].(map[string]any)["id"] != "s:tron:"+addrA {
+		t.Fatalf("inline answer: %+v", c.Params)
+	}
+	if res[0].(map[string]any)["reply_markup"] == nil {
+		t.Error("an inline result without a keyboard never reports the message id needed to edit it")
+	}
+
+	// Without a plan the placeholder says so, and no screen runs.
+	h.b.dispatch(ctx, update{ChosenInlineResult: &chosenInlineResult{ResultID: "s:tron:" + addrA, From: tgUser{ID: 9}, InlineMessageID: "m1"}})
+	c, _ = h.tg.last("editMessageText")
+	if c.Params["inline_message_id"] != "m1" || !strings.Contains(c.Params["text"].(string), "needs a subscription") {
+		t.Errorf("unsubscribed inline check: %+v", c.Params)
+	}
+
+	h.text(9, "/start") // trial
+	h.b.dispatch(ctx, update{ChosenInlineResult: &chosenInlineResult{ResultID: "s:tron:" + addrA, From: tgUser{ID: 9}, InlineMessageID: "m2"}})
+	c, _ = h.tg.last("editMessageText")
+	if txt, _ := c.Params["text"].(string); c.Params["inline_message_id"] != "m2" || !strings.Contains(txt, "RISKY") || !strings.Contains(txt, addrA) {
+		t.Errorf("inline verdict: %+v", c.Params)
+	}
+
+	// Not an address: nothing offered.
+	h.b.dispatch(ctx, update{InlineQuery: &inlineQuery{ID: "iq2", From: tgUser{ID: 9}, Query: "hello"}})
+	c, _ = h.tg.last("answerInlineQuery")
+	if res, _ := c.Params["results"].([]any); len(res) != 0 {
+		t.Errorf("offered a check for a non-address: %+v", c.Params)
 	}
 }

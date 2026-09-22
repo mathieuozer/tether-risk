@@ -149,11 +149,29 @@ type preCheckoutQuery struct {
 	InvoicePayload string `json:"invoice_payload"`
 }
 
+type inlineQuery struct {
+	ID    string `json:"id"`
+	From  tgUser `json:"from"`
+	Query string `json:"query"`
+}
+
+// chosenInlineResult arrives once the user sends an inline result, if
+// inline feedback is enabled with @BotFather. InlineMessageID is set only
+// when the result carries a keyboard, which is why ours always does.
+type chosenInlineResult struct {
+	ResultID        string `json:"result_id"`
+	From            tgUser `json:"from"`
+	Query           string `json:"query"`
+	InlineMessageID string `json:"inline_message_id"`
+}
+
 type update struct {
-	UpdateID         int64             `json:"update_id"`
-	Message          *message          `json:"message"`
-	CallbackQuery    *callbackQuery    `json:"callback_query"`
-	PreCheckoutQuery *preCheckoutQuery `json:"pre_checkout_query"`
+	UpdateID           int64               `json:"update_id"`
+	Message            *message            `json:"message"`
+	CallbackQuery      *callbackQuery      `json:"callback_query"`
+	PreCheckoutQuery   *preCheckoutQuery   `json:"pre_checkout_query"`
+	InlineQuery        *inlineQuery        `json:"inline_query"`
+	ChosenInlineResult *chosenInlineResult `json:"chosen_inline_result"`
 }
 
 type button struct {
@@ -185,7 +203,7 @@ func (t *telegram) getUpdates(ctx context.Context, offset int64) ([]update, erro
 		"timeout": 30,
 		// Stated explicitly so payments keep arriving even if Telegram's
 		// default ever changes.
-		"allowed_updates": []string{"message", "callback_query", "pre_checkout_query"},
+		"allowed_updates": []string{"message", "callback_query", "pre_checkout_query", "inline_query", "chosen_inline_result"},
 	}, &out)
 	return out, err
 }
@@ -345,4 +363,34 @@ func (t *telegram) sendDocument(ctx context.Context, chatID int64, filename stri
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
 	return t.do(req, "sendDocument", nil)
+}
+
+// inlineArticle is an InlineQueryResultArticle whose message is plain text.
+type inlineArticle struct {
+	Type        string         `json:"type"`
+	ID          string         `json:"id"`
+	Title       string         `json:"title"`
+	Description string         `json:"description,omitempty"`
+	Content     map[string]any `json:"input_message_content"`
+	ReplyMarkup *keyboard      `json:"reply_markup,omitempty"`
+}
+
+func (t *telegram) answerInlineQuery(ctx context.Context, id string, results []inlineArticle) error {
+	// Personal and uncached: the answer depends on the asker's plan.
+	return t.call(ctx, "answerInlineQuery", map[string]any{
+		"inline_query_id": id, "results": results, "cache_time": 0, "is_personal": true}, nil)
+}
+
+func (t *telegram) editInlineText(ctx context.Context, inlineMessageID, text string, kb *keyboard) error {
+	params := map[string]any{"inline_message_id": inlineMessageID, "text": text}
+	if kb != nil {
+		params["reply_markup"] = kb
+	}
+	return t.call(ctx, "editMessageText", params, nil)
+}
+
+func (t *telegram) getMe(ctx context.Context) (tgUser, error) {
+	var u tgUser
+	err := t.call(ctx, "getMe", map[string]any{}, &u)
+	return u, err
 }

@@ -1345,7 +1345,8 @@
   }
 
   var FLAG_TEXT = { pass_through: 'flag_pass_through', high_volume_new: 'flag_high_volume_new', new_address: 'flag_new_address',
-    round_split: 'flag_round_split', parked_funds: 'flag_parked_funds', poisoning_target: 'flag_poisoning_target' };
+    round_split: 'flag_round_split', parked_funds: 'flag_parked_funds', poisoning_target: 'flag_poisoning_target',
+    frozen_contact: 'flag_frozen_contact' };
 
   function entriesCard(r) {
     var inN = hasEntries(r.inbound) ? r.inbound.connections.length : 0;

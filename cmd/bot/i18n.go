@@ -99,6 +99,7 @@ var messages = map[string][3]string{
 Send an address and you get a summary of its connections: where its funds came from and went, and the risk categories they touch.
 
 /app                 open the app
+/send <recipient>    check a payment before sending it
 /details <address>   full breakdown with paths (Pro)
 /pdf <address>       one-page PDF report (Pro)
 /watch <address>     alert me when its risk changes
@@ -119,6 +120,7 @@ Always read the coverage figure alongside the score. Low coverage means most tra
 Bir adres gönderin; bağlantılarının özetini alın: fonları nereden geldi, nereye gitti ve hangi risk kategorilerine dokunuyor.
 
 /app                 uygulamayı aç
+/send <alıcı>        ödemeyi göndermeden önce kontrol et
 /details <adres>     yollarla birlikte tam döküm (Pro)
 /pdf <adres>         tek sayfalık PDF rapor (Pro)
 /watch <adres>       riski değişince beni uyar
@@ -139,6 +141,7 @@ Puanı her zaman kapsam oranıyla birlikte okuyun. Düşük kapsam, izlenen değ
 Отправьте адрес — и получите сводку по его связям: откуда пришли средства, куда ушли и с какими категориями риска они связаны.
 
 /app                 открыть приложение
+/send <получатель>   проверить платёж перед отправкой
 /details <адрес>     полная разбивка с путями (Pro)
 /pdf <адрес>         PDF-отчёт на одну страницу (Pro)
 /watch <адрес>       сообщить, если риск изменится
@@ -187,6 +190,65 @@ Puanı her zaman kapsam oranıyla birlikte okuyun. Düşük kapsam, izlenen değ
 		"You have used all %d screens for today. The count resets at 00:00 UTC.\n\nNeed more? Upgrade:",
 		"Bugünkü %d taramanın hepsini kullandınız. Sayaç 00:00 UTC'de sıfırlanır.\n\nDaha fazlası mı lazım? Planı yükseltin:",
 		"Дневной лимит проверок исчерпан (%d). Счётчик обнуляется в 00:00 UTC.\n\nНужно больше? Повысьте тариф:",
+	},
+	// --- inline mode (D34) ---
+	"inline_title":    {"Check %s", "%s adresini kontrol et", "Проверить %s"},
+	"inline_desc":     {"Risk check, sent into this chat", "Risk kontrolü, bu sohbete gönderilir", "Проверка риска, отправляется в этот чат"},
+	"inline_checking": {"🔍 Checking %s...", "🔍 %s kontrol ediliyor...", "🔍 Проверяю %s..."},
+	"inline_address":  {"🔵 %s", "🔵 %s", "🔵 %s"},
+	"inline_btn":      {"Full report in the bot", "Tam rapor botta", "Полный отчёт в боте"},
+	"inline_footer": {
+		"Automated pre-screening on open data, not a regulated AML determination.",
+		"Açık verilere dayalı otomatik ön tarama; düzenlenmiş bir AML kararı değildir.",
+		"Автоматическая предварительная проверка по открытым данным, не регулируемое AML-заключение.",
+	},
+	"inline_no_plan": {
+		"This check needs a subscription. Open the bot to start a free trial.",
+		"Bu kontrol için abonelik gerekir. Ücretsiz deneme için botu açın.",
+		"Для проверки нужна подписка. Откройте бот, чтобы начать бесплатный пробный период.",
+	},
+	"inline_limit": {
+		"Today's screens are used up. Open the bot to see plans.",
+		"Bugünkü tarama hakkınız doldu. Planlar için botu açın.",
+		"Проверки на сегодня закончились. Откройте бот, чтобы посмотреть тарифы.",
+	},
+	"inline_failed": {
+		"The check could not be completed. Try again in the bot.",
+		"Kontrol tamamlanamadı. Botta tekrar deneyin.",
+		"Проверку не удалось завершить. Попробуйте ещё раз в боте.",
+	},
+	// --- /send: checking a payment before it is sent (D34) ---
+	"send_usage": {
+		"Usage: /send <recipient>, or /send <your wallet> <recipient> to also check that the recipient is not a copy of an address you really pay.",
+		"Kullanım: /send <alıcı> ya da /send <cüzdanınız> <alıcı>; ikincisi alıcının gerçekten ödeme yaptığınız bir adresin taklidi olmadığını da kontrol eder.",
+		"Использование: /send <получатель> или /send <ваш кошелёк> <получатель> — во втором случае проверяется ещё и то, что получатель не копия адреса, которому вы действительно платите.",
+	},
+	"send_no":  {"⛔ DO NOT SEND", "⛔ GÖNDERMEYİN", "⛔ НЕ ОТПРАВЛЯЙТЕ"},
+	"send_yes": {"✅ YOU MAY SEND: no warning signs found", "✅ GÖNDEREBİLİRSİNİZ: uyarı işareti bulunmadı", "✅ МОЖНО ОТПРАВЛЯТЬ: тревожных признаков не найдено"},
+	"send_lookalike": {
+		"   This address is a copy of %s, which your wallet really transacts with (%s). It is address poisoning: take the address from the recipient directly, never from your transaction history.\n",
+		"   Bu adres, cüzdanınızın gerçekten işlem yaptığı %s adresinin taklidi (%s). Bu adres zehirlemedir: adresi işlem geçmişinizden değil, doğrudan alıcıdan alın.\n",
+		"   Этот адрес — копия %s, с которым ваш кошелёк действительно работает (%s). Это отравление адреса: берите адрес напрямую у получателя, а не из истории операций.\n",
+	},
+	"send_risky": {
+		"   The recipient is risky; the reasons are below.\n",
+		"   Alıcı riskli; nedenleri aşağıda.\n",
+		"   Получатель рискованный; причины ниже.\n",
+	},
+	"send_no_sender": {
+		"   Tip: /send <your wallet> <recipient> also checks that the recipient is not a look-alike of an address you pay.\n",
+		"   İpucu: /send <cüzdanınız> <alıcı> alıcının ödeme yaptığınız bir adresin taklidi olmadığını da kontrol eder.\n",
+		"   Совет: /send <ваш кошелёк> <получатель> проверяет ещё и то, что получатель не двойник адреса, которому вы платите.\n",
+	},
+	"send_first": {
+		"   You have never paid this address before. Confirm it with the recipient through another channel before a large payment.\n",
+		"   Bu adrese daha önce hiç ödeme yapmadınız. Büyük bir ödemeden önce adresi alıcıyla başka bir kanaldan teyit edin.\n",
+		"   Вы ещё ни разу не платили на этот адрес. Перед крупным платежом подтвердите его у получателя по другому каналу.\n",
+	},
+	"send_paid_before": {
+		"   Your wallet has paid this address before (%s).\n",
+		"   Cüzdanınız bu adrese daha önce ödeme yaptı (%s).\n",
+		"   Ваш кошелёк уже платил на этот адрес (%s).\n",
 	},
 	"screening": {"Screening %s...", "%s taranıyor...", "Проверяю %s..."},
 	"screen_failed": {

@@ -52,11 +52,48 @@ sources:
     status: allowed
     confidence: 1.0
     schedule: daily
-    url: "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content"
+    # The token is the public one the EU's own download page uses; without it
+    # the endpoint answers 403. Until 2026-09-22 it was configured without,
+    # and the list was never ingested at all (docs/DECISIONS.md D34).
+    url: "https://webgate.ec.europa.eu/fsd/fsf/public/files/xmlFullSanctionsList_1_1/content?token=dG9rZW4tMjAxNw"
     format: xml
     licence: "EU public data, reuse permitted (Decision 2011/833/EU)"
     redistribution: permitted
-    checked: 2026-09-20
+    checked: 2026-09-22
+    notes: >
+      Addresses sit in free-text <remark> elements ("TRX: TA1hsi…"), read by
+      the same parser as the UK list. 3 TRON addresses on 2026-09-22, for
+      Garantex and Grinex; Garantex's is absent from OFAC.
+
+  - id: uk
+    name: "UK Sanctions List (FCDO)"
+    status: allowed
+    confidence: 1.0
+    schedule: daily
+    url: "https://sanctionslist.fcdo.gov.uk/docs/UK-Sanctions-List.xml"
+    format: xml
+    licence: "Open Government Licence v3.0: \"exploit the Information commercially\" with attribution"
+    redistribution: permitted
+    checked: 2026-09-22
+    notes: >
+      Replaced OFSI's consolidated list on 2026-01-28. Addresses sit in a
+      designation's free-text <OtherInformation>. 49 TRON addresses on
+      2026-09-22: XINBI (40), AYASH (4), EXMO (3) and Byex (2); the EXMO and
+      Byex ones are absent from OFAC. Attribution: "Contains public sector
+      information licensed under the Open Government Licence v3.0."
+
+  - id: nbctf
+    name: "Israel NBCTF administrative seizure orders"
+    status: blocked
+    confidence: 1.0
+    checked: 2026-09-22
+    blocked_reason: >
+      583 TRON addresses in seizure-order annexes, 576 absent from OFAC. The
+      Ministry of Defense site terms: the user "may not copy, redistribute,
+      retransmit or publish protected material, without the prior written
+      consent of the office", and the index sits behind bot protection.
+      Only written consent from NBCTF would change this (docs/DECISIONS.md
+      D34).
 
   # -------------------------------------------------------------------------
   # Block explorers. SPEC.md §6.2 asks for these at confidence 0.9 and then

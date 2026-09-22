@@ -391,7 +391,7 @@ func (b *bot) apiAppReport(w http.ResponseWriter, r *http.Request, u appUser) {
 		return
 	}
 	out, err := b.gate(r.Context(), screenRequest{UserID: u.ID, Text: req.Address, Chain: req.Chain,
-		Kind: kindPDF, Channel: u.Channel})
+		Kind: kindPDF, Channel: u.Channel, Lang: u.Lang})
 	if err != nil {
 		writeErr(w, err, u.Lang)
 		return
@@ -622,7 +622,7 @@ func (b *bot) apiPublicReport(w http.ResponseWriter, r *http.Request, u appUser)
 		return
 	}
 	out, err := b.gate(r.Context(), screenRequest{UserID: u.ID, Text: req.Address, Chain: req.Chain,
-		Kind: kindPDF, Channel: chanAPI})
+		Kind: kindPDF, Channel: chanAPI, Lang: u.Lang})
 	if err != nil {
 		writeErr(w, err, u.Lang)
 		return

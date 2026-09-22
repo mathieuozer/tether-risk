@@ -220,6 +220,43 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 		total = add(total, res)
 	}
 
+	// --- UK and EU sanctions (docs/DECISIONS.md D34) ---
+	// Addresses OFAC lacks, for Russian exchanges among others. A failure is
+	// logged loudly and the previous snapshot's labels stand; OFAC above is
+	// the list whose failure fails the run.
+	for _, list := range []struct {
+		id     string
+		format labels.FreeTextFormat
+	}{{"uk", labels.FormatUK}, {"eu", labels.FormatEU}} {
+		src, ok := cfg.Source(list.id)
+		if !ok || !src.Ingestible() {
+			continue
+		}
+		batch, fres, err := ingestFreeTextSanctions(ctx, src.URL, list.format, list.id, src.Confidence)
+		if err != nil {
+			log.Error("sanctions list failed; the previous snapshot's labels stand", "source", list.id, "error", err)
+			continue
+		}
+		res, err := st.Upsert(ctx, snapshotID, batch)
+		if err != nil {
+			return err
+		}
+		for _, chainID := range sortedKeys(fres.ByChain) {
+			keep := map[string]bool{}
+			for _, l := range batch {
+				if l.Chain == chainID {
+					keep[l.Address] = true
+				}
+			}
+			if _, err := st.Retire(ctx, snapshotID, list.id, chainID, keep); err != nil {
+				return err
+			}
+		}
+		log.Info("sanctions list ingested", "source", list.id, "designations", fres.Designations,
+			"with_addresses", fres.WithAddress, "labels", len(batch), "inserted", res.Inserted)
+		total = add(total, res)
+	}
+
 	// --- Tether's USDT blacklist (docs/DECISIONS.md D29) ---
 	// First-party and authoritative, but not a sanctions list: a failure is
 	// logged and the run continues, and the previous snapshot's list stands.
@@ -264,13 +301,13 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 	// Named explicitly rather than passed over in silence: a source that is
 	// configured as permitted but contributes nothing is a coverage gap, and
 	// SPEC.md §7 is emphatic that gaps are shown rather than hidden.
-	for _, id := range []string{"un", "eu"} {
+	for _, id := range []string{"un"} {
 		if src, ok := cfg.Source(id); ok && src.Ingestible() {
 			log.Warn("source permitted but not yet implemented; it contributes no labels "+
 				"and its absence reduces coverage", "source", id)
 		}
 	}
-	for _, id := range []string{"etherscan", "bscscan", "tronscan", "chainabuse", "dune", "binance_por", "okx_por"} {
+	for _, id := range []string{"etherscan", "bscscan", "tronscan", "chainabuse", "dune", "binance_por", "okx_por", "nbctf"} {
 		if src, ok := cfg.Source(id); ok && !src.Ingestible() {
 			log.Info("source deliberately not ingested",
 				"source", id, "status", src.Status)
@@ -1025,4 +1062,29 @@ func tetherRefresh(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labe
 	k, _ := n.RowsAffected()
 	log.Info("watches touching a newly frozen address made due", "addresses", len(hit), "watches", k)
 	return nil
+}
+
+func ingestFreeTextSanctions(ctx context.Context, url string, format labels.FreeTextFormat, sourceID string,
+	confidence float64) ([]labels.Label, *labels.FreeTextResult, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	resp, err := (&http.Client{Timeout: 5 * time.Minute}).Do(req)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, nil, fmt.Errorf("status %d", resp.StatusCode)
+	}
+	res, out, err := labels.ParseFreeTextSanctions(ctx, resp.Body, format, sourceID, confidence)
+	if err != nil {
+		return nil, nil, err
+	}
+	// A list that parses to nothing has changed shape, not emptied.
+	if res.Designations == 0 {
+		return nil, nil, fmt.Errorf("no designations read; the list's layout may have changed")
+	}
+	return out, res, nil
 }

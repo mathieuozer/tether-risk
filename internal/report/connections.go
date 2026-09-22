@@ -67,7 +67,7 @@ type ConnectionsFlag struct {
 	Code                                string
 	InUSD, OutUSD, VolumeUSD, AmountUSD float64
 	Days, AgeDays, Count, Minutes       int
-	Address                             string // poisoning_target: an imitated address
+	Address                             string // poisoning_target: an imitated address; frozen_contact: the frozen wallet
 }
 
 // ConnectionsActivity is what the address itself did, before attribution.
@@ -617,6 +617,8 @@ func writeFlags(b *strings.Builder, flags []ConnectionsFlag, l loc) {
 			b.WriteString(l.f("flag_parked_funds", f.Count, usd(f.AmountUSD)))
 		case "poisoning_target":
 			b.WriteString(l.f("flag_poisoning_target", f.Count, shortAddress(f.Address)))
+		case "frozen_contact":
+			b.WriteString(l.f("flag_frozen_contact", shortAddress(f.Address), usd(f.AmountUSD), f.Count))
 		}
 	}
 	b.WriteString("\n")
@@ -773,4 +775,12 @@ func writeDepth(b *strings.Builder, d *ConnectionsDepth, l loc) {
 		b.WriteString(l.f("most_active", d.Counterparties, d.TotalCounterparties))
 	}
 	b.WriteString("\n")
+}
+
+// VerdictBlock is the verdict headline and its why lines alone, for places
+// with room for nothing else, such as a message sent inline into a group.
+func VerdictBlock(v *ConnectionsVerdict, lang string) string {
+	var b strings.Builder
+	writeVerdict(&b, v, newLoc(lang))
+	return b.String()
 }

@@ -238,13 +238,7 @@ func summary(r *screenResponse, lang string, followUp bool) string {
 		in.Flags = append(in.Flags, report.ConnectionsFlag{Code: f.Code, InUSD: f.InUSD, OutUSD: f.OutUSD,
 			VolumeUSD: f.VolumeUSD, Days: f.Days, AgeDays: f.AgeDays, Count: f.Count, AmountUSD: f.AmountUSD, Minutes: f.Minutes, Address: f.Address})
 	}
-	if v := r.Verdict; v != nil {
-		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Insufficient: v.InsufficientData}
-		for _, x := range v.Reasons {
-			cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: x.Code, Category: x.Category, Flag: x.Flag, Address: x.Address, Pct: x.Pct})
-		}
-		in.Verdict = cv
-	}
+	in.Verdict = connectionsVerdict(r)
 	if r.OwnLabel != nil {
 		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: r.OwnLabel.Entity, Category: r.OwnLabel.Category, Imitates: r.OwnLabel.Imitates}
 	}
@@ -334,4 +328,16 @@ func writeDirection(b *strings.Builder, title string, d *direction) {
 		}
 		fmt.Fprintf(b, "    - %s\n", p.Explanation)
 	}
+}
+
+func connectionsVerdict(r *screenResponse) *report.ConnectionsVerdict {
+	v := r.Verdict
+	if v == nil {
+		return nil
+	}
+	cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Insufficient: v.InsufficientData}
+	for _, x := range v.Reasons {
+		cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: x.Code, Category: x.Category, Flag: x.Flag, Address: x.Address, Pct: x.Pct})
+	}
+	return cv
 }

@@ -104,6 +104,7 @@ labels:
     - ofac
     - un
     - eu
+    - uk
     - tether_blacklist
     - curated
     - htx_por
@@ -197,6 +198,15 @@ behaviour:
     min_amount_usd: 10000
     min_wallets: 2
     min_total_usd: 50000
+  # A wallet Tether froze in the last few days paid this one shortly before
+  # the freeze (D34). Measured over 800 freezes (cmd/validate freeze): 3.1%
+  # of wallets that received at least $1,000 in the week before were frozen
+  # too, nearly all within three days; 0.12% of ordinary wallets' contacts.
+  # After three days the rate is back near the baseline, so the note stops.
+  frozen_contact:
+    min_received_usd: 1000
+    window_days: 7
+    max_days_since: 3
 
 # ---------------------------------------------------------------------------
 # Verdict (docs/DECISIONS.md D29): the answer to "is this wallet clean?" in

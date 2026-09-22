@@ -159,6 +159,12 @@ func run(apiURL, chainID, configDir, tgBase string, concurrency int, log *slog.L
 		log.Warn("BILLING_USDT_ADDRESS is not set: USDT payments are disabled, Stars only")
 	}
 
+	if me, err := b.tg.getMe(ctx); err != nil {
+		log.Warn("could not read the bot's username; inline results carry no link to it", "error", err)
+	} else {
+		b.username = me.Username
+	}
+
 	for lang, cmds := range publicCommands {
 		codes := []string{lang}
 		switch lang {
@@ -245,6 +251,7 @@ type bot struct {
 
 	chains      []chainInfo
 	appURL      string        // public Mini App URL; "" when not exposed
+	username    string        // the bot's @username, for links from inline results
 	monitorWake chan struct{} // nudges the monitor to check new watches now
 	root        context.Context
 	wg          sync.WaitGroup // background work: batches, watchers, server
