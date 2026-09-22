@@ -26,10 +26,11 @@ import (
 func NewAdapter(chainID string, cfg config.ChainSource, log *slog.Logger) (chain.Adapter, error) {
 	switch chainID {
 	case "tron":
+		key := os.Getenv("TRONGRID_API_KEY") // optional; no secrets in the repo
 		return tron.NewAdapter(tron.NewClient(tron.Options{
 			BaseURL:           cfg.URL,
-			APIKey:            os.Getenv("TRONGRID_API_KEY"), // optional; no secrets in the repo
-			RequestsPerSecond: float64(cfg.RateLimitPerSec),
+			APIKey:            key,
+			RequestsPerSecond: cfg.RequestRate(key != ""),
 			Logger:            log,
 		})), nil
 

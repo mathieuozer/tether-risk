@@ -426,7 +426,8 @@ func deriveServices(ctx context.Context, cfg *config.Config, st *labels.Store,
 	}
 	log.Info("sampling candidates", "count", len(candidates), "chain", chainID)
 
-	sampler := labels.NewTronSampler(chainCfg.URL, os.Getenv("TRONGRID_API_KEY"), float64(chainCfg.RateLimitPerSec))
+	key := os.Getenv("TRONGRID_API_KEY")
+	sampler := labels.NewTronSampler(chainCfg.URL, key, chainCfg.RequestRate(key != ""))
 	judged, derived, err := labels.DetectServices(ctx, sampler, cfg, chainID, candidates)
 	if err != nil {
 		return err

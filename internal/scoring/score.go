@@ -141,11 +141,19 @@ type DepthStatus struct {
 	// TotalCounterparties is every distinct counterparty, which can exceed
 	// the enqueue cap.
 	TotalCounterparties int
+
+	// Frontier is where traversal stopped at an address with no stored
+	// history beyond it. FrontierQueued of FrontierPending such addresses
+	// were queued this time, most unattributed value first; FrontierEnded
+	// were already fetched, so the trail genuinely ends there.
+	FrontierPending int
+	FrontierQueued  int
+	FrontierEnded   int
 }
 
 // Complete reports whether every queued counterparty has been traced.
 func (d *DepthStatus) Complete() bool {
-	return d == nil || (!d.StillFetching && d.Traced >= d.Counterparties)
+	return d == nil || (!d.StillFetching && d.Traced >= d.Counterparties && d.FrontierPending == 0)
 }
 
 // OwnLabel is a label on the queried address itself.

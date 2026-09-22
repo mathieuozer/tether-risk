@@ -56,6 +56,8 @@ type ConnectionsAsset struct {
 
 // ConnectionsDepth says whether tracing had finished when this was scored.
 type ConnectionsDepth struct {
+	FrontierPending     int // dead ends not yet fetched
+	FrontierQueued      int // of those, queued by this screen
 	FetchError          string
 	StillFetching       bool
 	HistoryTruncated    bool
@@ -426,7 +428,7 @@ func combineReasons(dirs ...*ConnectionsDirection) []ConnectionsReason {
 func reasonText(r string) string {
 	switch r {
 	case "dead_end":
-		return "not traced further yet (counterparty history not ingested)"
+		return "trail stops (no stored history beyond this point)"
 	case "hop_limit":
 		return "beyond the hop limit"
 	case "fanout_cap":
@@ -495,7 +497,18 @@ func writeDepth(b *strings.Builder, d *ConnectionsDepth) {
 		b.WriteString("ℹ️ This address has more history than the per-address fetch limit " +
 			"(10,000 transfers); activity figures cover the most recent part.\n\n")
 	}
+	if d.FrontierPending > 0 {
+		queued := fmt.Sprintf("%d", d.FrontierQueued)
+		if d.FrontierQueued < d.FrontierPending {
+			queued = fmt.Sprintf("%d of %d", d.FrontierQueued, d.FrontierPending)
+		}
+		fmt.Fprintf(b, "🔭 Tracing further: %s addresses where the trail stops are queued. "+
+			"Screen again later for a deeper result.\n", queued)
+	}
 	if d.Counterparties == 0 {
+		if d.FrontierPending > 0 {
+			b.WriteString("\n")
+		}
 		return
 	}
 	if d.Traced < d.Counterparties {

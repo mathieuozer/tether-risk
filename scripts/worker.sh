@@ -24,5 +24,14 @@ if ! docker info >/dev/null 2>&1; then
 fi
 docker compose up -d --wait >/dev/null 2>&1 || exit 1
 
+# One worker without a key: D17 measured that a pool only multiplied 429s.
+# With a key the budget is 8/s, and each request is ~1 s of latency, so a
+# single stream would use an eighth of it; three share it without contention.
+WORKERS=1
+if [ -n "${TRONGRID_API_KEY:-}" ]; then
+	WORKERS=3
+fi
+
 go build -o bin/ ./cmd/ingest || exit 1
-exec bin/ingest -chain tron -workers 1 worker
+echo "$(date '+%F %T') starting $WORKERS worker(s)"
+exec bin/ingest -chain tron -workers "$WORKERS" worker

@@ -237,6 +237,8 @@ type screenResponse struct {
 	Depth *struct {
 		FetchError          string `json:"fetch_error"`
 		StillFetching       bool   `json:"still_fetching"`
+		FrontierPending     int    `json:"frontier_pending"`
+		FrontierQueued      int    `json:"frontier_queued"`
 		HistoryTruncated    bool   `json:"history_truncated"`
 		Counterparties      int    `json:"counterparties"`
 		Traced              int    `json:"traced"`
@@ -374,6 +376,7 @@ func summary(r *screenResponse) string {
 	if d := r.Depth; d != nil {
 		in.Depth = &report.ConnectionsDepth{
 			FetchError: d.FetchError, StillFetching: d.StillFetching, HistoryTruncated: d.HistoryTruncated,
+			FrontierPending: d.FrontierPending, FrontierQueued: d.FrontierQueued,
 			Counterparties: d.Counterparties,
 			Traced:         d.Traced, TotalCounterparties: d.TotalCounterparties,
 		}

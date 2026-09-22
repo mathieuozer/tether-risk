@@ -677,6 +677,50 @@ throttling this IP harder than D17 measured that morning. The pacing change
 spends 25% fewer requests for the same result. The remedy for the slowness
 is `TRONGRID_API_KEY` in `.env`, which the worker and the daily run now load.
 
+---
+
+## D23 — deepen where the trail stops, not everywhere
+
+**Date:** 2026-09-21 · **Status:** active · **Revisits:** D17 for keyed use
+
+With the address and all 100 of its queued counterparties fetched,
+`TAythDdKTZeNq6VnQ7o9cEvWRQGgRpPiKX` still had 84.8% of traced value
+unattributed. All of it stopped at dead ends: addresses two or more hops out
+with no stored history. Going blindly to depth 2 would be about 10,000
+fetches. The traversal already knows exactly where value stopped: 122
+addresses on the first screen.
+
+**Decision:** after scoring, a screen queues the unfetched dead-end addresses
+carrying the most unattributed value, up to 100 per screen. Each rescreen
+reaches one ring further, bounded by `max_hops`, so the cost follows how far
+the trail actually runs rather than how wide it fans out. Dead ends that have
+already been fetched are genuine ends and are not queued again. The result
+reports how many are queued, and the unattributed reason now reads "trail
+stops", because "not ingested" is false for a fetched dead end.
+
+Measured on that address, rescreening after each ring drained:
+
+| Ring | Coverage | Score | Queue drained in |
+|---|---|---|---|
+| start | 15.2% | 5.0 | – |
+| 1 | 37.0% | 10.1 | 184 s |
+| 2 | 59.5% | 11.7 | 226 s |
+| 3 | 79.9% | 12.5 | 173 s |
+| 4 | **94.6%** | 13.8 | 121 s |
+
+The remaining 5.4% is beyond the hop limit, which is configured, not unknown.
+The commercial screener put 75.8% of this address in "Exchange" plus "Unnamed
+service". We put 84.1% in unnamed service. The flows now match, and the
+difference is naming, which is D19's problem.
+
+**Keyed ingestion (revisits D17).** D17 kept one worker because, without a
+key, a pool only multiplied 429s. With `TRONGRID_API_KEY` the chain uses
+`rate_limit_per_sec_with_key` (8, under the free plan's 15 QPS, because the
+worker pool, screening and the sampler share the key), and `worker.sh` runs
+three workers. Each request is about a second of latency, so one stream would
+use an eighth of the budget. The four rings above drained 100 addresses in
+2–4 minutes each, work that took hours without the key.
+
 ## D24 — a failed fetch job waits before it is retried
 
 **Date:** 2026-09-21 · **Status:** active

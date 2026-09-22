@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/mozer/tether-risk/internal/config"
@@ -130,6 +131,11 @@ const prefetchDepth = 1
 // number of counterparties a fetch queues, most active first.
 const enqueueCap = 100
 
+// frontierCap bounds how many dead ends one screen queues. Each rescreen then
+// reaches one ring further, up to the traversal's hop limit, so cost grows
+// with how far the trail actually goes rather than with fan-out.
+const frontierCap = 100
+
 // WithPrefetch makes Screen fetch unknown or stale addresses on a chain
 // before scoring. A chain without one scores only what is already stored.
 func (s *Service) WithPrefetch(chainID string, p Prefetcher) *Service {
@@ -250,6 +256,11 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 
 	if err := s.depthStatus(ctx, chainID, address, depth); err != nil {
 		return nil, err
+	}
+	if p, ok := s.prefetch[chainID]; ok {
+		if err := s.deepen(ctx, chainID, address, p, depth, inboundTr, outboundTr); err != nil {
+			return nil, err
+		}
 	}
 	res.Depth = depth
 
@@ -430,6 +441,81 @@ func (s *Service) depthStatus(ctx context.Context, chainID, address string, d *s
 		`SELECT count(*) FROM address_freshness WHERE chain = $1 AND address = ANY($2)`,
 		chainID, queued).Scan(&d.Traced); err != nil {
 		return fmt.Errorf("depth status: %w", err)
+	}
+	return nil
+}
+
+// deepen queues the addresses where traversal ran out of stored history.
+//
+// Fetching every counterparty of every counterparty is fan-out squared, about
+// 10,000 addresses at depth 2. The traversal already knows the handful where
+// value actually stopped, so those are fetched instead, largest unattributed
+// share first. On TAythDdK… that was 122 addresses holding 84.8% of traced
+// value (docs/DECISIONS.md D23).
+func (s *Service) deepen(ctx context.Context, chainID, address string, p Prefetcher,
+	d *scoring.DepthStatus, results ...*graph.Result) error {
+
+	weight := map[string]decimal.Decimal{}
+	for _, tr := range results {
+		if tr == nil || !tr.TotalTraced.IsPositive() {
+			continue
+		}
+		for _, path := range tr.Paths {
+			t := path.Terminal
+			if t.Reason != "dead_end" || t.Address == "" || t.Address == address {
+				continue
+			}
+			// Normalised per direction, so the two directions rank on the
+			// same scale.
+			weight[t.Address] = weight[t.Address].Add(path.Contribution.Div(tr.TotalTraced))
+		}
+	}
+	if len(weight) == 0 {
+		return nil
+	}
+
+	addrs := make([]string, 0, len(weight))
+	for a := range weight {
+		addrs = append(addrs, a)
+	}
+	sort.Slice(addrs, func(i, j int) bool {
+		if !weight[addrs[i]].Equal(weight[addrs[j]]) {
+			return weight[addrs[i]].GreaterThan(weight[addrs[j]])
+		}
+		return addrs[i] < addrs[j] // docs/DECISIONS.md D6
+	})
+
+	fetched := map[string]bool{}
+	rows, err := s.pg.QueryContext(ctx,
+		`SELECT address FROM address_freshness WHERE chain = $1 AND address = ANY($2)`, chainID, addrs)
+	if err != nil {
+		return fmt.Errorf("frontier: %w", err)
+	}
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			rows.Close()
+			return fmt.Errorf("frontier: %w", err)
+		}
+		fetched[a] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	for _, a := range addrs {
+		if fetched[a] {
+			d.FrontierEnded++
+			continue
+		}
+		d.FrontierPending++
+		if d.FrontierQueued < frontierCap {
+			if err := p.Queue(ctx, a, 0); err != nil {
+				return fmt.Errorf("frontier: %w", err)
+			}
+			d.FrontierQueued++
+		}
 	}
 	return nil
 }

@@ -162,6 +162,10 @@ func print(res *scoring.Result) {
 		if d.HistoryTruncated {
 			fmt.Println("History:    truncated at the per-address fetch limit; activity covers the most recent part")
 		}
+		if d.FrontierPending > 0 {
+			fmt.Printf("Frontier:   %d addresses where the trail stops are queued (%d pending, %d genuine ends)\n",
+				d.FrontierQueued, d.FrontierPending, d.FrontierEnded)
+		}
 		if d.Counterparties > 0 {
 			state := "complete"
 			if d.Traced < d.Counterparties {
@@ -274,6 +278,7 @@ func connectionsInput(res *scoring.Result) report.ConnectionsInput {
 	if d := res.Depth; d != nil {
 		in.Depth = &report.ConnectionsDepth{
 			FetchError: d.FetchError, StillFetching: d.StillFetching, HistoryTruncated: d.HistoryTruncated,
+			FrontierPending: d.FrontierPending, FrontierQueued: d.FrontierQueued,
 			Counterparties: d.Counterparties,
 			Traced:         d.Traced, TotalCounterparties: d.TotalCounterparties,
 		}

@@ -220,6 +220,9 @@ type depthResponse struct {
 	Fetched             bool   `json:"fetched"`
 	FetchError          string `json:"fetch_error,omitempty"`
 	StillFetching       bool   `json:"still_fetching"`
+	FrontierPending     int    `json:"frontier_pending"`
+	FrontierQueued      int    `json:"frontier_queued"`
+	FrontierEnded       int    `json:"frontier_ended"`
 	HistoryTruncated    bool   `json:"history_truncated"`
 	Counterparties      int    `json:"counterparties"`
 	Traced              int    `json:"traced"`
@@ -437,6 +440,7 @@ func toDepth(d *scoring.DepthStatus) *depthResponse {
 	return &depthResponse{
 		Fetched: d.Fetched, FetchError: d.FetchError,
 		StillFetching: d.StillFetching, HistoryTruncated: d.HistoryTruncated,
+		FrontierPending: d.FrontierPending, FrontierQueued: d.FrontierQueued, FrontierEnded: d.FrontierEnded,
 		Counterparties: d.Counterparties, Traced: d.Traced,
 		TotalCounterparties: d.TotalCounterparties, Complete: d.Complete(),
 	}

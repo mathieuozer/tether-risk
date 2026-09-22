@@ -171,15 +171,27 @@ type LabelSource struct {
 func (s LabelSource) Ingestible() bool { return s.Status == StatusAllowed }
 
 type ChainSource struct {
-	ID                string       `yaml:"id"`
-	Status            SourceStatus `yaml:"status"`
-	Adapter           string       `yaml:"adapter"`
-	URL               string       `yaml:"url"`
-	Auth              string       `yaml:"auth"`
-	RateLimitPerSec   int          `yaml:"rate_limit_per_sec"`
-	Checked           string       `yaml:"checked"`
-	UnavailableReason string       `yaml:"unavailable_reason"`
-	Notes             string       `yaml:"notes"`
+	ID              string       `yaml:"id"`
+	Status          SourceStatus `yaml:"status"`
+	Adapter         string       `yaml:"adapter"`
+	URL             string       `yaml:"url"`
+	Auth            string       `yaml:"auth"`
+	RateLimitPerSec int          `yaml:"rate_limit_per_sec"`
+	// RateLimitPerSecWithKey applies when the chain's API key is set. Zero
+	// means the key buys nothing and RateLimitPerSec applies either way.
+	RateLimitPerSecWithKey int    `yaml:"rate_limit_per_sec_with_key"`
+	Checked                string `yaml:"checked"`
+	UnavailableReason      string `yaml:"unavailable_reason"`
+	Notes                  string `yaml:"notes"`
+}
+
+// RequestRate is the request budget to pace at, given whether an API key is
+// configured.
+func (c ChainSource) RequestRate(hasKey bool) float64 {
+	if hasKey && c.RateLimitPerSecWithKey > 0 {
+		return float64(c.RateLimitPerSecWithKey)
+	}
+	return float64(c.RateLimitPerSec)
 }
 
 // Available reports whether the chain has a live data path.

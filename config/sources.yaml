@@ -291,7 +291,14 @@ chains:
     # to 30 seconds — so the aggressive setting made ingestion slower, not
     # faster, and abandoned three addresses outright.
     rate_limit_per_sec: 3
-    checked: 2026-09-20
+    # With TRONGRID_API_KEY the free plan allows 15 QPS and 100,000 requests a
+    # day per key; exceeding it blocks access for 30 seconds. The key is shared
+    # by the worker pool, on-demand screening and the service sampler (which
+    # takes half), so this stays well below 15. Measured 2026-09-21 with the
+    # key: 10 of 10 requests succeeded, and sampling cost 0.86 s per address
+    # with no 429s, against about 8 s and 60-80% throttled without it.
+    rate_limit_per_sec_with_key: 8
+    checked: 2026-09-21
     notes: "Free tier is sufficient for demand-driven per-address ingestion."
 
   - id: ethereum

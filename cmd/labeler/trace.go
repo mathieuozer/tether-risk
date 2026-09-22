@@ -26,10 +26,11 @@ func traceTx(ctx context.Context, cfg *config.Config, chainID, txID, fromExchang
 	if !ok {
 		return fmt.Errorf("chain %s is not declared in sources.yaml", chainID)
 	}
+	key := os.Getenv("TRONGRID_API_KEY")
 	client := tron.NewClient(tron.Options{
 		BaseURL:           chainCfg.URL,
-		APIKey:            os.Getenv("TRONGRID_API_KEY"),
-		RequestsPerSecond: float64(chainCfg.RateLimitPerSec),
+		APIKey:            key,
+		RequestsPerSecond: chainCfg.RequestRate(key != ""),
 		Logger:            log,
 	})
 

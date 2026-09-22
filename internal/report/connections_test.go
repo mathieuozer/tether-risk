@@ -124,7 +124,7 @@ func TestConnectionsDetailSections(t *testing.T) {
 		"Active: 2026-08-02 → 2026-09-19",
 		"Assets: USDT $9.63M · TRX $853",
 		"Unrecognised tokens: 12 transfers of 5 tokens",
-		"◦ not traced further yet (counterparty history not ingested) - 50.0%",
+		"◦ trail stops (no stored history beyond this point) - 50.0%",
 		"◦ beyond the hop limit - 20.0%",
 		"1. HTX (proof-of-reserves wallet) (TQrY8t…4STm)",
 		"10.0% ≈ $481.3k · direct",
@@ -176,5 +176,15 @@ func TestConnectionsReportsPartialHistory(t *testing.T) {
 		if !strings.Contains(out, want) {
 			t.Errorf("missing %q in:\n%s", want, out)
 		}
+	}
+}
+
+func TestConnectionsReportsFrontier(t *testing.T) {
+	out := Connections(ConnectionsInput{
+		Address: "TAddr", Chain: "tron", Band: "low",
+		Depth: &ConnectionsDepth{FrontierPending: 122, FrontierQueued: 100},
+	})
+	if !strings.Contains(out, "Tracing further: 100 of 122 addresses where the trail stops are queued") {
+		t.Errorf("frontier progress missing:\n%s", out)
 	}
 }
