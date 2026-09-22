@@ -1435,3 +1435,13 @@ after any configuration change.
 **Measured in my own code on the way:** the first run fetched each frozen
 wallet's whole history and managed 17 wallets in ten minutes; fetching only
 the window finished 800 in about 25 minutes.
+
+**The API key's daily quota ran out.** After the backtest, every blacklist
+read failed with 429 even at two requests a second. The response body said
+why: "Exceed the user daily usage (100000), the maximum query frequency is
+1 time per second". TronGrid's free key allows 100,000 requests a day, and
+the backtest and the worker's 14,000-job queue spent them. The client used
+to drop that body and log a bare "429", which hid the cause; it now keeps
+it. For paying customers one free key is not enough: a paid TronGrid plan
+or our own node is a go-live requirement. `validate freeze` costs about
+one request per sampled wallet plus pages.

@@ -178,6 +178,12 @@ func (c *Client) doOnce(ctx context.Context, url string) ([]byte, bool, error) {
 			case <-time.After(wait):
 			}
 		}
+		// The body says which limit: a burst, or the key's daily quota, after
+		// which every request is held to one a second until the day ends.
+		// The two need different fixes, so the reason is kept.
+		if len(body) > 0 {
+			return nil, true, fmt.Errorf("trongrid rate limited (429): %s", truncate(body, 200))
+		}
 		return nil, true, fmt.Errorf("trongrid rate limited (429)")
 
 	case resp.StatusCode >= 500:

@@ -261,7 +261,7 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 	// First-party and authoritative, but not a sanctions list: a failure is
 	// logged and the run continues, and the previous snapshot's list stands.
 	if src, ok := cfg.Source("tether_blacklist"); ok && src.Ingestible() {
-		res, _, err := refreshTether(ctx, cfg, st, snapshotID, log)
+		res, _, err := refreshTether(ctx, cfg, st, snapshotID, 0, log)
 		if err != nil {
 			return err
 		}
@@ -467,14 +467,19 @@ func storedServiceStats(ctx context.Context, ch, pg *sql.DB, chainID string, can
 
 // ingestTetherBlacklist reads the USDT contract's blacklist events from the
 // start and folds them into the current list.
-func ingestTetherBlacklist(ctx context.Context, cfg *config.Config, log *slog.Logger) ([]labels.Label, error) {
+func ingestTetherBlacklist(ctx context.Context, cfg *config.Config, rps float64, log *slog.Logger) ([]labels.Label, error) {
 	chainCfg, ok := cfg.Chain("tron")
 	if !ok {
 		return nil, fmt.Errorf("tron is not declared in sources.yaml")
 	}
 	key := os.Getenv("TRONGRID_API_KEY")
+	if rps <= 0 {
+		rps = chainCfg.RequestRate(key != "")
+	}
+	// Patient retries: the worker shares the key, and TronGrid throttles in
+	// bursts that outlast the default six attempts.
 	client := tron.NewClient(tron.Options{BaseURL: chainCfg.URL, APIKey: key,
-		RequestsPerSecond: chainCfg.RequestRate(key != ""), Logger: log})
+		RequestsPerSecond: rps, MaxRetries: 12, Logger: log})
 	src, _ := cfg.Source("tether_blacklist")
 
 	events := map[string][]tron.ContractEvent{}
@@ -941,8 +946,8 @@ func sortedKeys[V any](m map[string]V) []string {
 // previous list stands: the blacklist is authoritative but not a sanctions
 // list, so its absence is not worth failing a run over.
 func refreshTether(ctx context.Context, cfg *config.Config, st *labels.Store, snapshotID int64,
-	log *slog.Logger) (labels.UpsertResult, []string, error) {
-	batch, err := ingestTetherBlacklist(ctx, cfg, log)
+	rps float64, log *slog.Logger) (labels.UpsertResult, []string, error) {
+	batch, err := ingestTetherBlacklist(ctx, cfg, rps, log)
 	if err != nil {
 		log.Error("tether blacklist failed; the previous list stands", "error", err)
 		return labels.UpsertResult{}, nil, nil
@@ -997,7 +1002,10 @@ func tetherRefresh(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labe
 	if err != nil {
 		return err
 	}
-	_, fresh, err := refreshTether(ctx, cfg, st, snapshotID, log)
+	// Two requests a second: the read takes about 25 s, and leaves the
+	// worker, which shares the API key's 15 a second, its full rate. At the
+	// worker's own rate the two together were throttled.
+	_, fresh, err := refreshTether(ctx, cfg, st, snapshotID, 2, log)
 	if err != nil {
 		return err
 	}
