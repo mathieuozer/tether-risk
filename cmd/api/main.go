@@ -1,6 +1,7 @@
 // Command api serves the screening HTTP API.
 //
 //	POST /v1/screen                    { chain, address, direction? } -> full result
+//	POST /v1/report                    { chain, address } -> one-page PDF
 //	GET  /v1/address/:chain/:address   cached result
 //	GET  /v1/health
 //
@@ -9,6 +10,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -25,6 +27,7 @@ import (
 
 	"github.com/mozer/tether-risk/internal/config"
 	"github.com/mozer/tether-risk/internal/ingest"
+	"github.com/mozer/tether-risk/internal/report"
 	"github.com/mozer/tether-risk/internal/scoring"
 	"github.com/mozer/tether-risk/internal/screen"
 	"github.com/mozer/tether-risk/internal/store"
@@ -99,6 +102,7 @@ func run(ctx context.Context, addr, configDir string, fetch bool, log *slog.Logg
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/screen", srv.handleScreen)
+	mux.HandleFunc("POST /v1/report", srv.handleReport)
 	mux.HandleFunc("GET /v1/address/{chain}/{address}", srv.handleCached)
 	mux.HandleFunc("GET /v1/health", srv.handleHealth)
 
@@ -304,17 +308,46 @@ type errorResponse struct {
 // ---------------------------------------------------------------------------
 
 func (s *server) handleScreen(w http.ResponseWriter, r *http.Request) {
+	res, ok := s.screen(w, r)
+	if !ok {
+		return
+	}
+	writeJSON(w, http.StatusOK, toResponse(res))
+}
+
+// handleReport screens like handleScreen and returns the one-page PDF report
+// (SPEC.md §8) instead of JSON.
+func (s *server) handleReport(w http.ResponseWriter, r *http.Request) {
+	res, ok := s.screen(w, r)
+	if !ok {
+		return
+	}
+	var buf bytes.Buffer
+	if err := report.Render(&buf, res, time.Now().UTC()); err != nil {
+		s.log.Error("render report failed", "address", res.Address, "error", err)
+		writeError(w, http.StatusInternalServerError, "report_failed", err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-%s.pdf"`, res.Chain, res.Address))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(buf.Bytes())
+}
+
+// screen decodes a screen request and runs it. On failure it has already
+// written the error response and returns false.
+func (s *server) screen(w http.ResponseWriter, r *http.Request) (*scoring.Result, bool) {
 	var req screenRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
-		return
+		return nil, false
 	}
 	if req.Chain == "" {
 		req.Chain = "tron"
 	}
 	if strings.TrimSpace(req.Address) == "" {
 		writeError(w, http.StatusBadRequest, "invalid_request", "address is required")
-		return
+		return nil, false
 	}
 
 	res, err := s.svc.Screen(r.Context(), req.Chain, strings.TrimSpace(req.Address))
@@ -323,14 +356,14 @@ func (s *server) handleScreen(w http.ResponseWriter, r *http.Request) {
 		// not a generic failure: an empty result would read as "no activity".
 		if strings.HasPrefix(err.Error(), "chain_unavailable") {
 			writeError(w, http.StatusServiceUnavailable, "chain_unavailable", err.Error())
-			return
+			return nil, false
 		}
 		s.log.Error("screen failed", "address", req.Address, "error", err)
 		writeError(w, http.StatusInternalServerError, "screen_failed", err.Error())
-		return
+		return nil, false
 	}
 
-	writeJSON(w, http.StatusOK, toResponse(res))
+	return res, true
 }
 
 func (s *server) handleCached(w http.ResponseWriter, r *http.Request) {

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# api.sh: the screening API, kept alive by launchd (make api-install).
+# bot.sh: the Telegram bot, kept alive by launchd (make bot-install).
+#
+# Needs TELEGRAM_BOT_TOKEN, TELEGRAM_ADMIN_IDS and BILLING_SUPPORT_CONTACT in
+# .env, and optionally BILLING_USDT_ADDRESS (docs/DECISIONS.md D26).
 #
 # Exits when the stack is unreachable. launchd restarts it after
 # ThrottleInterval, so it recovers on its own once Docker is back.
@@ -23,10 +26,11 @@ if ! docker info >/dev/null 2>&1; then
 fi
 docker compose up -d --wait >/dev/null 2>&1 || exit 1
 
-# Localhost only: the API has no authentication, and the bot is what
-# customers reach. Set API_ADDR=:8099 to expose it deliberately.
 ADDR="${API_ADDR:-127.0.0.1:8099}"
+# ":8099" listens on every interface; the bot reaches it on loopback.
+case "$ADDR" in :*) ADDR="127.0.0.1$ADDR" ;; esac
+API="http://$ADDR"
 
-go build -o bin/ ./cmd/api || exit 1
-echo "$(date '+%F %T') starting api on $ADDR"
-exec bin/api -addr "$ADDR"
+go build -o bin/ ./cmd/bot || exit 1
+echo "$(date '+%F %T') starting bot against $API"
+exec bin/bot -api "$API"

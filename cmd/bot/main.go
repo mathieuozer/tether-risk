@@ -1,492 +1,238 @@
-// Command bot is a Telegram front end for the screening API.
+// Command bot is the Telegram front end for the screening API, sold as a
+// monthly subscription (docs/DECISIONS.md D26).
 //
 // SPEC.md §8: "Address in, formatted breakdown out. Mirror the API exactly;
-// the bot holds no logic of its own."
+// the bot holds no logic of its own." That still holds for screening: this
+// binary speaks HTTP to the API and formats the response, and makes no
+// judgement about an address. What it adds is access: who may screen, how
+// often, and how they pay. That lives in internal/billing.
 //
-// That is taken literally. This binary speaks HTTP to the API and formats the
-// response. It performs no traversal, applies no thresholds, and makes no
-// judgement about a band. If the bot and the API ever disagreed about an
-// address, the bot would be wrong by construction — so it is built so that
-// cannot happen.
+// Configuration, all from the environment (.env):
+//
+//	TELEGRAM_BOT_TOKEN       required, from @BotFather
+//	TELEGRAM_ADMIN_IDS       comma-separated Telegram user ids with admin rights
+//	BILLING_SUPPORT_CONTACT  where customers get help, e.g. @yourname or an email
+//	BILLING_USDT_ADDRESS     TRON address receiving USDT; unset disables USDT
+//	TRONGRID_API_KEY         used to watch the USDT address
 package main
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
-	"github.com/mozer/tether-risk/internal/report"
+	"github.com/mozer/tether-risk/internal/billing"
+	"github.com/mozer/tether-risk/internal/chain/tron"
+	"github.com/mozer/tether-risk/internal/config"
+	"github.com/mozer/tether-risk/internal/store"
 )
 
 func main() {
 	var (
-		apiURL  = flag.String("api", "http://localhost:8080", "screening API base URL")
-		chainID = flag.String("chain", "tron", "default chain")
-		poll    = flag.Duration("poll", 2*time.Second, "long-poll interval")
+		apiURL      = flag.String("api", "http://127.0.0.1:8099", "screening API base URL")
+		chainID     = flag.String("chain", "tron", "default chain")
+		configDir   = flag.String("config", "config", "configuration directory")
+		concurrency = flag.Int("concurrency", 4, "screens run at the same time")
+		tgBase      = flag.String("telegram", "https://api.telegram.org", "Telegram Bot API base URL")
 	)
 	flag.Parse()
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
-
-	// SPEC.md §2: no secrets in the repo, configuration via environment.
-	token := os.Getenv("TELEGRAM_BOT_TOKEN")
-	if token == "" {
-		log.Error("TELEGRAM_BOT_TOKEN is not set")
-		os.Exit(1)
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	b := &bot{
-		token:   token,
-		apiURL:  strings.TrimRight(*apiURL, "/"),
-		chainID: *chainID,
-		http:    &http.Client{Timeout: 3 * time.Minute},
-		log:     log,
-	}
-
-	log.Info("bot starting", "api", b.apiURL, "chain", b.chainID)
-	if err := b.run(ctx, *poll); err != nil && ctx.Err() == nil {
+	if err := run(*apiURL, *chainID, *configDir, *tgBase, *concurrency, log); err != nil && !errors.Is(err, context.Canceled) {
 		log.Error("bot failed", "error", err)
 		os.Exit(1)
 	}
 }
 
+func run(apiURL, chainID, configDir, tgBase string, concurrency int, log *slog.Logger) error {
+	// SPEC.md §2: no secrets in the repo, configuration via environment.
+	token := os.Getenv("TELEGRAM_BOT_TOKEN")
+	if token == "" {
+		return errors.New("TELEGRAM_BOT_TOKEN is not set")
+	}
+	admins, err := parseIDs(os.Getenv("TELEGRAM_ADMIN_IDS"))
+	if err != nil {
+		return fmt.Errorf("TELEGRAM_ADMIN_IDS: %w", err)
+	}
+	if len(admins) == 0 {
+		log.Warn("TELEGRAM_ADMIN_IDS is empty: nobody can grant access, see stats or refund")
+	}
+	support := strings.TrimSpace(os.Getenv("BILLING_SUPPORT_CONTACT"))
+	if support == "" {
+		// Telegram requires bots taking payments to offer support.
+		return errors.New("BILLING_SUPPORT_CONTACT is not set; Telegram requires a support contact for paid bots")
+	}
+
+	bcfg, err := billing.Load(configDir)
+	if err != nil {
+		return err
+	}
+	terms, err := os.ReadFile(filepath.Join(configDir, "terms.txt"))
+	if err != nil {
+		return fmt.Errorf("read terms: %w", err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	pg, err := store.OpenPostgres(ctx)
+	if err != nil {
+		return err
+	}
+	defer pg.Close()
+	if err := pg.QueryRowContext(ctx, `SELECT 1 FROM bot_users LIMIT 1`).Err(); err != nil &&
+		strings.Contains(err.Error(), "does not exist") {
+		return errors.New("billing tables missing; run `make migrate`")
+	}
+
+	b := &bot{
+		tg:        newTelegram(tgBase, token),
+		apiURL:    strings.TrimRight(apiURL, "/"),
+		chainID:   chainID,
+		http:      &http.Client{Timeout: 3 * time.Minute},
+		log:       log,
+		billing:   bcfg,
+		store:     billing.NewStore(pg, bcfg),
+		admins:    admins,
+		support:   support,
+		terms:     strings.ReplaceAll(string(terms), "{support}", support),
+		usdtAddr:  strings.TrimSpace(os.Getenv("BILLING_USDT_ADDRESS")),
+		screening: make(chan struct{}, max(concurrency, 1)),
+		busy:      map[int64]bool{},
+		links:     map[string]string{},
+		now:       time.Now,
+	}
+
+	if b.usdtAddr != "" {
+		if !tron.IsValid(b.usdtAddr) {
+			return fmt.Errorf("BILLING_USDT_ADDRESS %q is not a valid TRON address", b.usdtAddr)
+		}
+		cfg, err := config.Load(configDir)
+		if err != nil {
+			return err
+		}
+		chainCfg, ok := cfg.Chain("tron")
+		if !ok {
+			return errors.New("tron is not declared in sources.yaml")
+		}
+		key := os.Getenv("TRONGRID_API_KEY")
+		// The watcher needs one request per poll; it takes a small slice of
+		// the budget the ingest worker shares.
+		b.tron = tron.NewClient(tron.Options{BaseURL: chainCfg.URL, APIKey: key, RequestsPerSecond: 1, Logger: log})
+	} else {
+		log.Warn("BILLING_USDT_ADDRESS is not set: USDT payments are disabled, Stars only")
+	}
+
+	if err := b.tg.setMyCommands(ctx, publicCommands); err != nil {
+		log.Warn("could not register the command menu", "error", err)
+	}
+
+	log.Info("bot starting", "api", b.apiURL, "chain", chainID, "admins", len(admins),
+		"usdt", b.usdtAddr != "", "plans", len(bcfg.Plans))
+
+	var wg sync.WaitGroup
+	if b.tron != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			b.watchUSDT(ctx)
+		}()
+	}
+	err = b.poll(ctx, &wg)
+	wg.Wait()
+	return err
+}
+
+// bot holds everything a handler needs.
 type bot struct {
-	token   string
+	tg      *telegram
 	apiURL  string
 	chainID string
 	http    *http.Client
 	log     *slog.Logger
-	offset  int64
+
+	billing  *billing.Config
+	store    *billing.Store
+	admins   map[int64]bool
+	support  string
+	terms    string
+	usdtAddr string
+	tron     *tron.Client
+
+	// screening bounds concurrent screens: each holds an API request open
+	// for up to minutes.
+	screening chan struct{}
+
+	mu    sync.Mutex
+	busy  map[int64]bool    // users with a screen in flight
+	links map[string]string // plan -> cached Stars invoice link
+
+	now func() time.Time
 }
 
-func (b *bot) run(ctx context.Context, poll time.Duration) error {
+// poll reads updates and handles each on its own goroutine. Handling them in
+// turn would let one slow screen hold up every other user, and Telegram
+// allows only 10 seconds to answer a pre-checkout query.
+func (b *bot) poll(ctx context.Context, wg *sync.WaitGroup) error {
+	var offset int64
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return ctx.Err()
-		default:
 		}
-
-		updates, err := b.getUpdates(ctx)
+		updates, err := b.tg.getUpdates(ctx, offset)
 		if err != nil {
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			var apiErr *apiError
+			if errors.As(err, &apiErr) && apiErr.Code == http.StatusUnauthorized {
+				return fmt.Errorf("telegram rejected the bot token: %w", err)
+			}
 			b.log.Warn("get updates failed", "error", err)
-			time.Sleep(poll)
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(3 * time.Second):
+			}
 			continue
 		}
-
 		for _, u := range updates {
-			if u.UpdateID >= b.offset {
-				b.offset = u.UpdateID + 1
+			if u.UpdateID >= offset {
+				offset = u.UpdateID + 1
 			}
-			if u.Message == nil || strings.TrimSpace(u.Message.Text) == "" {
-				continue
-			}
-			b.handle(ctx, u.Message)
+			wg.Add(1)
+			go func(u update) {
+				defer wg.Done()
+				defer func() {
+					if r := recover(); r != nil {
+						b.log.Error("handler panicked", "update", u.UpdateID, "panic", r)
+					}
+				}()
+				b.dispatch(ctx, u)
+			}(u)
 		}
 	}
 }
 
-type update struct {
-	UpdateID int64 `json:"update_id"`
-	Message  *struct {
-		Text string `json:"text"`
-		Chat struct {
-			ID int64 `json:"id"`
-		} `json:"chat"`
-	} `json:"message"`
-}
-
-func (b *bot) getUpdates(ctx context.Context) ([]update, error) {
-	u := fmt.Sprintf("%s/bot%s/getUpdates?timeout=30&offset=%d",
-		"https://api.telegram.org", b.token, b.offset)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := b.http.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	var payload struct {
-		OK     bool     `json:"ok"`
-		Result []update `json:"result"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
-		return nil, err
-	}
-	if !payload.OK {
-		return nil, fmt.Errorf("telegram returned not-ok")
-	}
-	return payload.Result, nil
-}
-
-func (b *bot) handle(ctx context.Context, msg *struct {
-	Text string `json:"text"`
-	Chat struct {
-		ID int64 `json:"id"`
-	} `json:"chat"`
-}) {
-	text := strings.TrimSpace(msg.Text)
-
-	switch {
-	case text == "/start", text == "/help":
-		b.send(ctx, msg.Chat.ID, helpText)
-		return
-	case strings.HasPrefix(text, "/details"):
-		fields := strings.Fields(text)
-		if len(fields) < 2 {
-			b.send(ctx, msg.Chat.ID, "Usage: /details <address>")
-			return
+func parseIDs(s string) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	for _, f := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ' ' }) {
+		id, err := strconv.ParseInt(f, 10, 64)
+		if err != nil || id <= 0 {
+			return nil, fmt.Errorf("%q is not a Telegram user id", f)
 		}
-		b.reply(ctx, msg.Chat.ID, fields[1], format)
-		return
-	case strings.HasPrefix(text, "/"):
-		b.send(ctx, msg.Chat.ID, "Unknown command. Send an address, or /help.")
-		return
+		out[id] = true
 	}
-
-	b.reply(ctx, msg.Chat.ID, strings.Fields(text)[0], summary)
-}
-
-// reply screens an address and sends the result in the given format.
-func (b *bot) reply(ctx context.Context, chatID int64, address string, render func(*screenResponse) string) {
-	b.send(ctx, chatID, "Screening "+address+"...")
-
-	res, err := b.screen(ctx, address)
-	if err != nil {
-		b.log.Warn("screen failed", "address", address, "error", err)
-		b.send(ctx, chatID, "Could not screen that address.\n\n"+err.Error())
-		return
-	}
-	b.send(ctx, chatID, render(res))
-}
-
-const helpText = `Address risk screening.
-
-Send a blockchain address and I will return a summary of its connections.
-Send /details <address> for the full per-direction breakdown with paths.
-
-This is automated triage and pre-screening built on open data. It is not a
-regulated AML determination and must not be used as one.
-
-Always read the coverage figure alongside the score. Low coverage means most
-traced value could not be attributed to a known entity — unknown, not clean.`
-
-// screenResponse mirrors the API's response. Deliberately a separate decode
-// rather than an import: the bot consumes the API as any other client would,
-// so a breaking change to the response shows up here as a decode failure
-// rather than being papered over by shared types.
-type screenResponse struct {
-	Address string  `json:"address"`
-	Chain   string  `json:"chain"`
-	Score   float64 `json:"score"`
-	Band    string  `json:"band"`
-
-	Coverage      float64 `json:"coverage"`
-	LowConfidence bool    `json:"low_confidence"`
-
-	SanctionsOverride bool `json:"sanctions_override"`
-	BandCappedByAbuse bool `json:"band_capped_by_abuse_rule"`
-
-	Inbound  *direction `json:"inbound"`
-	Outbound *direction `json:"outbound"`
-
-	OwnLabel *struct {
-		Entity   string `json:"entity"`
-		Category string `json:"category"`
-	} `json:"own_label"`
-
-	Activity *struct {
-		InUSD             float64 `json:"in_usd"`
-		OutUSD            float64 `json:"out_usd"`
-		InTransfers       uint64  `json:"in_transfers"`
-		OutTransfers      uint64  `json:"out_transfers"`
-		InCounterparties  uint64  `json:"in_counterparties"`
-		OutCounterparties uint64  `json:"out_counterparties"`
-		FirstSeen         string  `json:"first_seen"`
-		LastSeen          string  `json:"last_seen"`
-		Assets            []struct {
-			Asset  string  `json:"asset"`
-			InUSD  float64 `json:"in_usd"`
-			OutUSD float64 `json:"out_usd"`
-		} `json:"assets"`
-		UnpricedTransfers uint64 `json:"unpriced_transfers"`
-		UnpricedTokens    uint64 `json:"unpriced_tokens"`
-	} `json:"activity"`
-
-	Depth *struct {
-		FetchError          string `json:"fetch_error"`
-		StillFetching       bool   `json:"still_fetching"`
-		FrontierPending     int    `json:"frontier_pending"`
-		FrontierQueued      int    `json:"frontier_queued"`
-		HistoryTruncated    bool   `json:"history_truncated"`
-		Counterparties      int    `json:"counterparties"`
-		Traced              int    `json:"traced"`
-		TotalCounterparties int    `json:"total_counterparties"`
-	} `json:"depth"`
-
-	LabelSnapshotID int64  `json:"label_snapshot_id"`
-	ConfigVersion   string `json:"config_version"`
-	Disclaimer      string `json:"disclaimer"`
-
-	Error  string `json:"error"`
-	Detail string `json:"detail"`
-}
-
-type direction struct {
-	Score           float64 `json:"score"`
-	Coverage        float64 `json:"coverage"`
-	UnattributedPct float64 `json:"unattributed_pct"`
-	TotalTraced     float64 `json:"total_traced"`
-	Categories      []struct {
-		Category string  `json:"category"`
-		Pct      float64 `json:"pct"`
-	} `json:"categories"`
-	TopPaths []struct {
-		Explanation string `json:"explanation"`
-	} `json:"top_paths"`
-	Connections []struct {
-		Address  string  `json:"address"`
-		Entity   string  `json:"entity"`
-		Category string  `json:"category"`
-		Pct      float64 `json:"pct"`
-		MinHops  int     `json:"min_hops"`
-		Profile  *struct {
-			VolumeUSD      float64  `json:"volume_usd"`
-			Transfers      uint64   `json:"transfers"`
-			Counterparties uint64   `json:"counterparties"`
-			FirstSeen      string   `json:"first_seen"`
-			LastSeen       string   `json:"last_seen"`
-			Assets         []string `json:"assets"`
-			Partial        bool     `json:"partial"`
-		} `json:"profile"`
-	} `json:"connections"`
-	UnattributedReasons []struct {
-		Reason string  `json:"reason"`
-		Pct    float64 `json:"pct"`
-	} `json:"unattributed_reasons"`
-	Traversal struct {
-		FanoutCapped    bool `json:"fanout_capped"`
-		HopLimitReached bool `json:"hop_limit_reached"`
-	} `json:"traversal"`
-}
-
-func (b *bot) screen(ctx context.Context, address string) (*screenResponse, error) {
-	body, err := json.Marshal(map[string]string{"chain": b.chainID, "address": address})
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.apiURL+"/v1/screen", bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := b.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("screening service unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if err != nil {
-		return nil, err
-	}
-
-	var out screenResponse
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("unexpected response from the screening service: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		if out.Detail != "" {
-			return nil, fmt.Errorf("%s", out.Detail)
-		}
-		return nil, fmt.Errorf("screening failed (%d)", resp.StatusCode)
-	}
-	return &out, nil
-}
-
-func format(r *screenResponse) string {
-	var b strings.Builder
-
-	fmt.Fprintf(&b, "Address: %s\nChain: %s\n\n", r.Address, r.Chain)
-	fmt.Fprintf(&b, "Risk band: %s\nScore: %.1f / 100\n", strings.ToUpper(r.Band), r.Score)
-
-	// Coverage is never separated from the score. A score without it is not
-	// actionable, and in a chat window a reader will take whatever is on the
-	// line above.
-	fmt.Fprintf(&b, "Coverage: %.1f%%\n", r.Coverage*100)
-
-	if l := r.OwnLabel; l != nil {
-		fmt.Fprintf(&b, "\n*** THIS ADDRESS IS DIRECTLY LISTED ***\n%s (%s)\n", l.Entity, l.Category)
-	}
-	if r.SanctionsOverride {
-		b.WriteString("\n*** DIRECT SANCTIONS MATCH ***\n" +
-			"This address is on a sanctions list. The band is High regardless of score.\n")
-	}
-	if r.LowConfidence {
-		fmt.Fprintf(&b, "\n*** LOW CONFIDENCE ***\n"+
-			"Only %.1f%% of traced value reached a known entity. The remaining %.1f%%\n"+
-			"is unknown, not clean.\n", r.Coverage*100, 100-r.Coverage*100)
-	}
-	if r.BandCappedByAbuse {
-		b.WriteString("\nBand capped: the only evidence is unverified abuse reports.\n")
-	}
-
-	writeDirection(&b, "Inbound (where funds came from)", r.Inbound)
-	writeDirection(&b, "Outbound (where funds went)", r.Outbound)
-
-	fmt.Fprintf(&b, "\nLabel snapshot %d | config %s\n", r.LabelSnapshotID, r.ConfigVersion)
-	if r.Disclaimer != "" {
-		fmt.Fprintf(&b, "\n%s", r.Disclaimer)
-	}
-	return b.String()
-}
-
-// summary renders the compact connections list.
-func summary(r *screenResponse) string {
-	in := report.ConnectionsInput{
-		Address:           r.Address,
-		Chain:             r.Chain,
-		Score:             r.Score,
-		Band:              r.Band,
-		Coverage:          r.Coverage,
-		LowConfidence:     r.LowConfidence,
-		SanctionsOverride: r.SanctionsOverride,
-		BandCappedByAbuse: r.BandCappedByAbuse,
-		Inbound:           summaryDirection(r.Inbound),
-		Outbound:          summaryDirection(r.Outbound),
-		Disclaimer:        r.Disclaimer,
-	}
-	if r.OwnLabel != nil {
-		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: r.OwnLabel.Entity, Category: r.OwnLabel.Category}
-	}
-	if d := r.Depth; d != nil {
-		in.Depth = &report.ConnectionsDepth{
-			FetchError: d.FetchError, StillFetching: d.StillFetching, HistoryTruncated: d.HistoryTruncated,
-			FrontierPending: d.FrontierPending, FrontierQueued: d.FrontierQueued,
-			Counterparties: d.Counterparties,
-			Traced:         d.Traced, TotalCounterparties: d.TotalCounterparties,
-		}
-	}
-	if a := r.Activity; a != nil {
-		act := &report.ConnectionsActivity{
-			InUSD: a.InUSD, OutUSD: a.OutUSD,
-			InTransfers: a.InTransfers, OutTransfers: a.OutTransfers,
-			InCounterparties: a.InCounterparties, OutCounterparties: a.OutCounterparties,
-			FirstSeen: a.FirstSeen, LastSeen: a.LastSeen,
-			UnpricedTransfers: a.UnpricedTransfers, UnpricedTokens: a.UnpricedTokens,
-		}
-		for _, as := range a.Assets {
-			act.Assets = append(act.Assets, report.ConnectionsAsset{Asset: as.Asset, USD: as.InUSD + as.OutUSD})
-		}
-		in.Activity = act
-	}
-	return report.Connections(in)
-}
-
-func summaryDirection(d *direction) *report.ConnectionsDirection {
-	if d == nil {
-		return nil
-	}
-	out := &report.ConnectionsDirection{
-		TracedWeight:    d.TotalTraced,
-		UnattributedPct: d.UnattributedPct,
-		FanoutCapped:    d.Traversal.FanoutCapped,
-		HopLimitReached: d.Traversal.HopLimitReached,
-	}
-	for _, c := range d.Categories {
-		out.Categories = append(out.Categories, report.ConnectionsCategory{Category: c.Category, Pct: c.Pct})
-	}
-	for _, c := range d.Connections {
-		e := report.ConnectionsEntry{
-			Address: c.Address, Entity: c.Entity, Category: c.Category, Pct: c.Pct, MinHops: c.MinHops,
-		}
-		if p := c.Profile; p != nil {
-			e.Profile = &report.ConnectionsProfile{
-				VolumeUSD: p.VolumeUSD, Transfers: p.Transfers, Counterparties: p.Counterparties,
-				FirstSeen: p.FirstSeen, LastSeen: p.LastSeen, Assets: p.Assets, Partial: p.Partial,
-			}
-		}
-		out.Entries = append(out.Entries, e)
-	}
-	for _, rs := range d.UnattributedReasons {
-		out.Reasons = append(out.Reasons, report.ConnectionsReason{Reason: rs.Reason, Pct: rs.Pct})
-	}
-	return out
-}
-
-func writeDirection(b *strings.Builder, title string, d *direction) {
-	if d == nil {
-		return
-	}
-	fmt.Fprintf(b, "\n%s\n", title)
-
-	if len(d.Categories) == 0 && d.UnattributedPct == 0 {
-		b.WriteString("  no traced value\n")
-		return
-	}
-	for _, c := range d.Categories {
-		fmt.Fprintf(b, "  %-20s %6.2f%%\n", c.Category, c.Pct)
-	}
-	if d.UnattributedPct > 0 {
-		fmt.Fprintf(b, "  %-20s %6.2f%%  (unknown)\n", "unattributed", d.UnattributedPct)
-	}
-	if d.Traversal.FanoutCapped {
-		b.WriteString("  note: truncated at the neighbour cap\n")
-	}
-	if d.Traversal.HopLimitReached {
-		b.WriteString("  note: hop limit reached\n")
-	}
-	for i, p := range d.TopPaths {
-		if i == 0 {
-			b.WriteString("  top paths:\n")
-		}
-		if i >= 3 {
-			break
-		}
-		fmt.Fprintf(b, "    - %s\n", p.Explanation)
-	}
-}
-
-func (b *bot) send(ctx context.Context, chatID int64, text string) {
-	form := url.Values{}
-	form.Set("chat_id", fmt.Sprint(chatID))
-	form.Set("text", text)
-
-	u := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", b.token)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, strings.NewReader(form.Encode()))
-	if err != nil {
-		return
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := b.http.Do(req)
-	if err != nil {
-		b.log.Warn("send failed", "error", err)
-		return
-	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	return out, nil
 }

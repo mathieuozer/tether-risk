@@ -1,0 +1,29 @@
+TERMS OF SERVICE
+
+TEMPLATE: have this reviewed by a lawyer for the jurisdictions you sell in before accepting payments. {support} is replaced with BILLING_SUPPORT_CONTACT.
+
+1. The service
+This bot screens blockchain addresses using open data and reports which kinds of entities their funds are connected to. It is automated triage and pre-screening. It is not a regulated anti-money-laundering determination, not legal, financial or compliance advice, and must not be relied on as the sole basis for any decision. Results show a coverage figure: value that could not be attributed is unknown, not clean.
+
+2. No guarantee
+Results depend on public data that can be incomplete, out of date or wrong. The service is provided as is, without warranty of accuracy, completeness or availability. We may change how screening works at any time.
+
+3. Plans and billing
+Plans, prices and daily limits are shown under /plans. Telegram Stars subscriptions renew every 30 days until cancelled with /cancel or in Telegram's settings; cancelling stops future charges, and access continues to the end of the paid period. USDT payments buy one period and do not renew. Daily limits reset at 00:00 UTC.
+
+4. Refunds
+Stars payments may be refunded at our discretion through Telegram, for example if the service was unavailable for a substantial part of a paid period; a refund ends the period it paid for. USDT payments are not refundable, except where a payment was received but not applied because of an error on our side. A USDT payment sent to the wrong network, with the wrong amount or after its invoice expired may not be recoverable; contact support.
+
+5. Acceptable use
+Do not resell access, share an account, automate requests beyond your plan, or use the service for any unlawful purpose. We may suspend access that breaches these terms, without refund of the current period.
+
+6. Data
+We store your Telegram user id, username, the addresses you screen, your payments and your daily usage, to provide the service and to answer support requests. We do not sell this data.
+
+7. Liability
+To the extent permitted by law, our total liability is limited to the amount you paid in the 30 days before the claim.
+
+8. Changes
+We may change these terms or the plans. Changes to prices apply from your next renewal.
+
+Support and payment questions: {support}  (or /support and /paysupport)

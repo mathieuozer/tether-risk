@@ -148,7 +148,7 @@ API_LABEL := com.tether-risk.api
 API_PLIST := $(HOME)/Library/LaunchAgents/$(API_LABEL).plist
 
 .PHONY: api-install
-api-install: ## Run the API permanently on API_ADDR (default :8099), restarting it if it stops
+api-install: ## Run the API permanently on API_ADDR (default 127.0.0.1:8099), restarting it if it stops
 	@mkdir -p $(HOME)/Library/LaunchAgents .data/logs
 	@printf '%s\n' \
 		'<?xml version="1.0" encoding="UTF-8"?>' \
@@ -174,6 +174,43 @@ api-uninstall: ## Stop and remove the permanent API
 	@launchctl bootout gui/$$(id -u)/$(API_LABEL) 2>/dev/null || true
 	@rm -f $(API_PLIST)
 	@echo "api removed"
+
+# ---------------------------------------------------------------------------
+# Telegram bot (scripts/bot.sh), kept alive by launchd
+# ---------------------------------------------------------------------------
+
+BOT_LABEL := com.tether-risk.bot
+BOT_PLIST := $(HOME)/Library/LaunchAgents/$(BOT_LABEL).plist
+
+.PHONY: bot-install
+bot-install: ## Run the Telegram bot permanently against the API, restarting it if it stops
+	@grep -q '^TELEGRAM_BOT_TOKEN=.' .env 2>/dev/null || { echo "TELEGRAM_BOT_TOKEN missing from .env"; exit 1; }
+	@grep -q '^BILLING_SUPPORT_CONTACT=.' .env 2>/dev/null || { echo "BILLING_SUPPORT_CONTACT missing from .env"; exit 1; }
+	@mkdir -p $(HOME)/Library/LaunchAgents .data/logs
+	@printf '%s\n' \
+		'<?xml version="1.0" encoding="UTF-8"?>' \
+		'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+		'<plist version="1.0"><dict>' \
+		'  <key>Label</key><string>$(BOT_LABEL)</string>' \
+		'  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$(CURDIR)/scripts/bot.sh</string></array>' \
+		'  <key>WorkingDirectory</key><string>$(CURDIR)</string>' \
+		'  <key>RunAtLoad</key><true/>' \
+		'  <key>KeepAlive</key><true/>' \
+		'  <key>ThrottleInterval</key><integer>60</integer>' \
+		'  <key>StandardOutPath</key><string>$(CURDIR)/.data/logs/bot.log</string>' \
+		'  <key>StandardErrorPath</key><string>$(CURDIR)/.data/logs/bot.log</string>' \
+		'</dict></plist>' > $(BOT_PLIST)
+	@launchctl bootout gui/$$(id -u)/$(BOT_LABEL) 2>/dev/null || true
+	@# bootout returns before the service is gone; bootstrapping too soon fails with error 5.
+	@while launchctl print gui/$$(id -u)/$(BOT_LABEL) >/dev/null 2>&1; do sleep 1; done
+	@launchctl bootstrap gui/$$(id -u) $(BOT_PLIST)
+	@echo "bot running under launchd; log in .data/logs/bot.log"
+
+.PHONY: bot-uninstall
+bot-uninstall: ## Stop and remove the permanent Telegram bot
+	@launchctl bootout gui/$$(id -u)/$(BOT_LABEL) 2>/dev/null || true
+	@rm -f $(BOT_PLIST)
+	@echo "bot removed"
 
 # ---------------------------------------------------------------------------
 # Build gates

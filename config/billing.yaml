@@ -1,0 +1,46 @@
+# billing.yaml — bot subscription plans (docs/DECISIONS.md D26).
+#
+# Not part of config_version: nothing here affects a score, and a price change
+# must not make scores look as if they had changed.
+#
+# Prices are placeholders to set before selling. Telegram Stars: a user pays
+# roughly $0.013-0.02 per Star depending on platform, and a developer receives
+# about $0.013 per Star on withdrawal, so 800 Stars nets about $10. The Stars
+# subscription price may not exceed 10,000 Stars (Bot API, createInvoiceLink).
+
+version: 1
+
+# Plans in ascending order. A user holding several active plans gets the
+# highest.
+plans:
+  - id: basic
+    name: Basic
+    daily_screens: 20
+    details: false        # /details full breakdown
+    pdf: false            # /pdf one-page report
+    price_stars: 800
+    price_usdt: "10.00"
+  - id: pro
+    name: Pro
+    daily_screens: 200
+    details: true
+    pdf: true
+    price_stars: 3800
+    price_usdt: "49.00"
+
+# One free trial per Telegram account, granted on first contact.
+trial:
+  days: 7
+  plan: basic
+
+usdt:
+  # How long a customer has to pay the exact amount.
+  invoice_ttl: 1h
+  # A payment arriving this long after its invoice expired still counts, as
+  # long as its amount has not been reissued.
+  grace: 24h
+  # How often the payment address is checked.
+  poll: 30s
+
+# How long one paid period lasts. Stars fixes it at 30 days; USDT matches.
+period_days: 30

@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // A real TronGrid events response: the counterfeit-USDT transfer from
@@ -62,5 +63,41 @@ func TestTransferEventsRejectsMalformedID(t *testing.T) {
 	c := traceClient(t, counterfeitEvents)
 	if _, err := c.TransferEvents(context.Background(), "not-a-txid"); err == nil {
 		t.Fatal("expected an error for a malformed transaction id")
+	}
+}
+
+// Only real USDT sent to the payment address counts as a payment. A
+// counterfeit token, or a transfer to another address the API returned
+// anyway, must never come back from Inbound.
+func TestInboundKeepsOnlyRealUSDTToTheAddress(t *testing.T) {
+	const pay = "TLa2f6VPqDgRE67v1736s7bJ8Ray5wYjU7"
+	item := func(tx, to, contract, value string) string {
+		return `{"transaction_id":"` + tx + `","block_timestamp":1790000000000,"from":"TZ8Ksz21Hk1tQuztCKCUJBRXStCav9uyjM",` +
+			`"to":"` + to + `","type":"Transfer","value":"` + value + `","token_info":{"address":"` + contract + `","symbol":"USDT","decimals":6}}`
+	}
+	body := `{"success":true,"meta":{},"data":[` +
+		item("real", pay, USDTContract, "10370000") + `,` +
+		item("fake", pay, "THk5qH79SoAaUnUh8JVdRarSESTZpqPjSQ", "10370000") + `,` +
+		item("elsewhere", "TZ8Ksz21Hk1tQuztCKCUJBRXStCav9uyjM", USDTContract, "10370000") + `]}`
+
+	var query string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		query = r.URL.RawQuery
+		w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	c := NewClient(Options{BaseURL: srv.URL, RequestsPerSecond: 1000})
+
+	got, err := c.Inbound(context.Background(), pay, USDTContract, time.UnixMilli(1789999999000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].TxID != "real" || got[0].Value.String() != "10370000" {
+		t.Fatalf("got %+v, want only the real USDT transfer", got)
+	}
+	for _, want := range []string{"only_confirmed=true", "only_to=true", "contract_address=" + USDTContract, "min_timestamp=1789999999000"} {
+		if !strings.Contains(query, want) {
+			t.Errorf("query %q lacks %q", query, want)
+		}
 	}
 }

@@ -792,3 +792,60 @@ shape without a name. The "Unidentified" prefix is dropped from the list,
 because the category line already says the operator is unnamed. Every
 category is listed, including those at 0%, so a missing line cannot be read
 as "not checked".
+
+## D26 — the bot is sold by monthly subscription
+
+**Date:** 2026-09-22 · **Status:** active · **Supersedes:** SPEC.md §1 non-goal "No user accounts / billing in v1"
+
+The owner decided to sell the Telegram bot by monthly subscription. SPEC.md
+listed accounts and billing as a v1 non-goal; this reverses that for the bot
+only. The API stays unauthenticated and now listens on 127.0.0.1 by default,
+because anyone who could reach it would bypass every plan.
+
+**What is sold.** Two tiers in `config/billing.yaml`: Basic (20 screens a
+day) and Pro (200 a day, `/details`, `/pdf`). New users get a 7-day Basic
+trial, once per Telegram account. Prices there are placeholders to set
+before selling. The file is not part of `config_version`, because a price
+change must not look like a scoring change.
+
+**How customers pay.**
+
+- *Telegram Stars.* A Stars subscription via `createInvoiceLink` with
+  `subscription_period` 2592000, the only value the Bot API accepts, and a
+  price of at most 10,000 Stars. Telegram's rules require Stars for digital
+  services sold in bots. Telegram renews it itself, and each renewal arrives
+  as a `successful_payment`. Pre-checkout approves only a current plan at its
+  current price, so a stale link cannot buy at an old price. `/cancel` stops
+  renewal through `editUserStarSubscription`; a refund, whether issued by
+  Telegram or via `/refund`, ends the period it paid for.
+- *USDT on TRON.* No renewal: each payment buys `period_days`. An invoice is
+  identified by its exact amount, the price plus 1–99 cents that no open or
+  recently expired invoice uses. Exchanges withdraw to two decimals, so
+  cents are the finest unit a customer can reliably send. The watcher reads
+  confirmed transfers of the canonical USDT contract only, so a counterfeit
+  "USDT" can never pay (D18). A payment matching no invoice is kept and the
+  admins are told.
+
+**What cannot go wrong twice.** Stars charge ids and USDT transaction
+hashes are unique in the database, so a redelivered update or a rescan
+never grants a second period. The daily limit is checked and incremented in
+one statement, so concurrent screens cannot exceed it. A screen that fails
+is refunded to the day's allowance. A payment that cannot be recorded tells
+the customer and every admin rather than failing silently. Paying before
+the current period ends continues from its end; no days are lost.
+
+**Operational changes.**
+
+- Updates are handled concurrently, with at most 4 screens at once and one
+  per user. Before, one slow screen held up every user, and Telegram allows
+  only 10 seconds to answer a pre-checkout query.
+- The bot ignores group chats: one person's allowance would be shared with
+  everyone in the group.
+- `/terms`, `/support` and `/paysupport` exist because Telegram requires
+  them of bots that take payments. `config/terms.txt` is a template to be
+  reviewed by a lawyer before selling.
+
+**Not solved here.** The stack runs on one Mac, which paying customers will
+outgrow first. TronGrid's and Binance's terms for commercial use were not
+read. Selling AML screening can be regulated in some jurisdictions; the
+disclaimer helps but is not legal advice.

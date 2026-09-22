@@ -135,6 +135,58 @@ func (c *Client) Outbound(ctx context.Context, address string, since time.Time) 
 	return out, nil
 }
 
+// USDTContract is Tether's TRC-20 contract. Payments are accepted in this
+// token only: anyone can deploy a token called "USDT" (docs/DECISIONS.md D18).
+const USDTContract = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t"
+
+// maxInboundPages bounds one Inbound call. A payment address receiving more
+// than 2,000 USDT transfers between two polls is not a subscription business.
+const maxInboundPages = 10
+
+// Inbound returns confirmed transfers of one TRC-20 token into an address at
+// or after since, oldest first. The contract is checked on every item as well
+// as filtered by the API, so a counterfeit token can never pass as payment.
+func (c *Client) Inbound(ctx context.Context, address, contract string, since time.Time) ([]Movement, error) {
+	u := fmt.Sprintf("%s/v1/accounts/%s/transactions/trc20?only_confirmed=true&only_to=true&limit=200"+
+		"&contract_address=%s&order_by=block_timestamp,asc&min_timestamp=%d",
+		c.baseURL, url.PathEscape(address), url.QueryEscape(contract), since.UnixMilli())
+
+	var out []Movement
+	for page := 0; u != "" && page < maxInboundPages; page++ {
+		var resp trc20Response
+		if err := c.get(ctx, u, &resp); err != nil {
+			return nil, err
+		}
+		if !resp.Success {
+			return nil, fmt.Errorf("tron: trc20 inbound for %s: %s", address, resp.Error)
+		}
+		for _, it := range resp.Data {
+			if !strings.EqualFold(it.Type, "Transfer") {
+				continue
+			}
+			got, err := Normalise(it.TokenInfo.Address)
+			if err != nil || got != contract {
+				continue
+			}
+			to, err := Normalise(it.To)
+			if err != nil || to != address {
+				continue
+			}
+			v, ok := new(big.Int).SetString(it.Value, 10)
+			if !ok {
+				continue
+			}
+			out = append(out, Movement{
+				TxID: it.TransactionID, Time: time.UnixMilli(it.BlockTime).UTC(),
+				From: it.From, To: to, Contract: got, Asset: assetForContract(got), Value: v,
+			})
+		}
+		u = resp.Meta.Links.Next
+	}
+	sortMovements(out)
+	return out, nil
+}
+
 // NativeInbound returns successful TRX transfers into an address at or after
 // since. For a deposit address these are the exchange's fee top-ups.
 func (c *Client) NativeInbound(ctx context.Context, address string, since time.Time) ([]Movement, error) {
