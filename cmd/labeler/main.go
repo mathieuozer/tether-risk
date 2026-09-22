@@ -487,6 +487,36 @@ func derive(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labels.Stor
 		return err
 	}
 
+	// Hot wallets first: the deposit heuristic can then anchor on them too
+	// (docs/DECISIONS.md D28).
+	if hw := cfg.Weights.DerivedHotWallet; hw.Enabled {
+		reserves, err := st.BySources(ctx, snapshotID, chainID, hw.ReserveSources)
+		if err != nil {
+			return err
+		}
+		judged, hot, err := labels.DeriveHotWallets(ctx, ch, cfg, reserves, chainID)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("hot wallets:         %d accepted of %d wallets with reserve flows\n", len(hot), len(judged))
+		for _, l := range hot {
+			fmt.Printf("  %s  %s\n", l.Address, l.Entity)
+		}
+		if len(hot) > 0 {
+			snap, err := st.OpenSnapshot(ctx, "derived hot wallets")
+			if err != nil {
+				return err
+			}
+			if _, err := st.Upsert(ctx, snap, hot); err != nil {
+				return err
+			}
+			if _, err := st.SealSnapshot(ctx, snap); err != nil {
+				return err
+			}
+			snapshotID = snap
+		}
+	}
+
 	// The heuristic anchors on known exchange hot wallets. This map was once
 	// left empty here, so the heuristic could never fire whatever the label
 	// set held (docs/DECISIONS.md D20).
@@ -535,7 +565,7 @@ func derive(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labels.Stor
 	var anchorsQueued int
 	for _, a := range anchors {
 		if !haveAnchor[a] {
-			if err := jobs.Enqueue(ctx, chainID, a, 0, nil); err != nil {
+			if err := jobs.EnqueueBackground(ctx, chainID, a); err != nil {
 				return err
 			}
 			anchorsQueued++
@@ -562,7 +592,7 @@ func derive(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labels.Stor
 		needFetch = needFetch[:rules.FetchCandidates]
 	}
 	for _, c := range needFetch {
-		if err := jobs.Enqueue(ctx, chainID, c.Address, 0, nil); err != nil {
+		if err := jobs.EnqueueBackground(ctx, chainID, c.Address); err != nil {
 			return err
 		}
 	}

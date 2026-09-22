@@ -58,6 +58,26 @@ func (j *Jobs) Enqueue(ctx context.Context, chainID, address string, depth int, 
 	return nil
 }
 
+// BackgroundPriority is for work no customer is waiting on, such as the
+// labeler's deposit candidates. Lower numbers run first; customer screens
+// queue at 99-100, so background work never delays them.
+const BackgroundPriority = 1000
+
+// EnqueueBackground queues a fetch no customer is waiting on. If the address
+// is already queued, its priority is left as it is: a customer's claim on it
+// stays first.
+func (j *Jobs) EnqueueBackground(ctx context.Context, chainID, address string) error {
+	_, err := j.pg.ExecContext(ctx, `
+		INSERT INTO fetch_jobs (chain, address, depth_remaining, priority)
+		VALUES ($1, $2, 0, $3)
+		ON CONFLICT (chain, address) WHERE state IN ('pending','running') DO NOTHING`,
+		chainID, address, BackgroundPriority)
+	if err != nil {
+		return fmt.Errorf("enqueue background %s/%s: %w", chainID, address, err)
+	}
+	return nil
+}
+
 // Claim leases the highest-priority pending job for a worker.
 //
 // SKIP LOCKED lets many workers drain the queue concurrently without blocking

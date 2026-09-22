@@ -107,3 +107,37 @@ func truncateJobs(t *testing.T, pg *sql.DB) {
 		t.Fatalf("truncate fetch_jobs: %v", err)
 	}
 }
+
+// Background work never delays a customer: a customer's job queued later is
+// claimed first, and a customer asking for an address already waiting in the
+// background lifts it to the customer's priority.
+func TestBackgroundJobsYieldToCustomers(t *testing.T) {
+	_, pg := testDBs(t)
+	ctx := context.Background()
+	truncateJobs(t, pg)
+	jobs := NewJobs(pg)
+
+	for _, a := range []string{"TBg1", "TBg2", "TShared"} {
+		if err := jobs.EnqueueBackground(ctx, "tron", a); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := jobs.Enqueue(ctx, "tron", "TCustomer", 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := jobs.Enqueue(ctx, "tron", "TShared", 0, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	var order []string
+	for i := 0; i < 4; i++ {
+		j, err := jobs.Claim(ctx, "w", time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		order = append(order, j.Address)
+	}
+	if order[0] != "TShared" && order[0] != "TCustomer" || order[1] != "TShared" && order[1] != "TCustomer" {
+		t.Fatalf("claim order %v: customer jobs must come first", order)
+	}
+}

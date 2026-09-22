@@ -260,6 +260,22 @@ sources:
       curated source outranks this and should replace it. Thresholds in
       weights.yaml under derived_service.
 
+  - id: "derived:hotwallet"
+    name: "Derived exchange hot wallets"
+    status: allowed
+    confidence: 0.8
+    schedule: after_ingest
+    licence: "Derived from chain data"
+    redistribution: permitted
+    checked: 2026-09-22
+    notes: >
+      A service-shaped wallet that exchanges transfers in both directions with
+      one exchange's own proof-of-reserves wallets, and almost only that
+      exchange's, is that exchange's hot wallet: reserves refill it and it
+      sweeps back. Labelled with the reserve list's category (unnamed_service,
+      D19) and the exchange named. Thresholds in weights.yaml under
+      derived_hotwallet (docs/DECISIONS.md D28).
+
   - id: "derived:deposit"
     name: "Derived exchange deposit wallets"
     status: allowed
