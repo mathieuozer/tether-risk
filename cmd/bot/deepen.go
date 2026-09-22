@@ -133,8 +133,11 @@ func followUpText(lang string, first, final *screenResponse) string {
 
 func pctText(lang string, v float64) string {
 	s := fmt.Sprintf("%.1f", v*100)
-	if lang == langTR {
+	switch lang {
+	case langTR:
 		return "%" + strings.Replace(s, ".", ",", 1)
+	case langRU:
+		return strings.Replace(s, ".", ",", 1) + "%"
 	}
 	return s + "%"
 }

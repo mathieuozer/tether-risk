@@ -5,19 +5,31 @@ import (
 	"strings"
 )
 
-// The connections summary in English and Turkish (docs/DECISIONS.md D27).
-// Each message has a key and a format string per language; a test keeps the
-// two catalogues in step, including the number and kind of their verbs.
+// The connections summary in English, Turkish and Russian (docs/DECISIONS.md
+// D27). Each message has a key and a format string per language; a test keeps
+// the catalogues in step, including the number and kind of their verbs.
 
-// loc renders messages in one language.
-type loc struct{ tr bool }
+// loc renders messages in one language: "en", "tr" or "ru".
+type loc struct{ lang string }
 
-func newLoc(lang string) loc { return loc{tr: strings.HasPrefix(strings.ToLower(lang), "tr")} }
+func newLoc(lang string) loc {
+	l := strings.ToLower(lang)
+	switch {
+	case strings.HasPrefix(l, "tr"):
+		return loc{lang: "tr"}
+	case strings.HasPrefix(l, "ru"):
+		return loc{lang: "ru"}
+	}
+	return loc{lang: "en"}
+}
 
 func (l loc) f(key string, args ...any) string {
 	m := enText
-	if l.tr {
+	switch l.lang {
+	case "tr":
 		m = trText
+	case "ru":
+		m = ruText
 	}
 	format, ok := m[key]
 	if !ok {
@@ -26,11 +38,23 @@ func (l loc) f(key string, args ...any) string {
 	return fmt.Sprintf(format, args...)
 }
 
-// n renders a count with its noun: "3 transfers", or in Turkish, which does
-// not pluralise after a number, "3 transfer".
+// n renders a count with its noun: "3 transfers"; in Turkish, which does not
+// pluralise after a number, "3 transfer"; in Russian, with the form the
+// number takes: "1 перевод", "3 перевода", "5 переводов".
 func (l loc) n(count uint64, noun string) string {
-	if l.tr {
+	switch l.lang {
+	case "tr":
 		return l.num(count) + " " + trNouns[noun]
+	case "ru":
+		forms := ruNouns[noun]
+		i := 2
+		switch n10, n100 := count%10, count%100; {
+		case n10 == 1 && n100 != 11:
+			i = 0
+		case n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14):
+			i = 1
+		}
+		return l.num(count) + " " + forms[i]
 	}
 	if count == 1 {
 		return "1 " + noun
@@ -41,11 +65,15 @@ func (l loc) n(count uint64, noun string) string {
 	return l.num(count) + " " + noun + "s"
 }
 
-// num groups thousands: 10,000 in English, 10.000 in Turkish.
+// num groups thousands: 10,000 in English, 10.000 in Turkish, 10 000 (with a
+// no-break space) in Russian.
 func (l loc) num(n uint64) string {
 	sep := ","
-	if l.tr {
+	switch l.lang {
+	case "tr":
 		sep = "."
+	case "ru":
+		sep = "\u00a0"
 	}
 	s := fmt.Sprintf("%d", n)
 	for i := len(s) - 3; i > 0; i -= 3 {
@@ -54,19 +82,21 @@ func (l loc) num(n uint64) string {
 	return s
 }
 
-// pct renders a share: 61.0% in English, %61,0 in Turkish.
+// pct renders a share: 61.0% in English, %61,0 in Turkish, 61,0% in Russian.
 func (l loc) pct(v float64) string {
-	if l.tr {
+	switch l.lang {
+	case "tr":
 		return "%" + strings.Replace(fmt.Sprintf("%.1f", v), ".", ",", 1)
+	case "ru":
+		return strings.Replace(fmt.Sprintf("%.1f", v), ".", ",", 1) + "%"
 	}
 	return fmt.Sprintf("%.1f%%", v)
 }
 
 func (l loc) category(c string) string {
-	if l.tr {
-		if n, ok := trCategoryNames[c]; ok {
-			return n
-		}
+	names := map[string]map[string]string{"tr": trCategoryNames, "ru": ruCategoryNames}[l.lang]
+	if n, ok := names[c]; ok {
+		return n
 	}
 	if n, ok := categoryNames[c]; ok {
 		return n
@@ -75,10 +105,12 @@ func (l loc) category(c string) string {
 }
 
 func (l loc) band(b string) string {
-	if l.tr {
-		if n, ok := map[string]string{"low": "Düşük", "medium": "Orta", "high": "Yüksek"}[strings.ToLower(b)]; ok {
-			return n
-		}
+	names := map[string]map[string]string{
+		"tr": {"low": "Düşük", "medium": "Orta", "high": "Yüksek"},
+		"ru": {"low": "Низкий", "medium": "Средний", "high": "Высокий"},
+	}[l.lang]
+	if n, ok := names[strings.ToLower(b)]; ok {
+		return n
 	}
 	return titleCase(b)
 }
@@ -105,6 +137,31 @@ var trCategoryNames = map[string]string{
 	"dust":                "Toz işlemler (dust)",
 	"dex":                 "DEX",
 	"exchange":            "Borsa",
+}
+
+// ruNouns holds each noun's forms after 1, after 2-4 and after 5 or more.
+var ruNouns = map[string][3]string{
+	"transfer":        {"перевод", "перевода", "переводов"},
+	"address":         {"адрес", "адреса", "адресов"},
+	"token":           {"токен", "токена", "токенов"},
+	"stored transfer": {"сохранённый перевод", "сохранённых перевода", "сохранённых переводов"},
+}
+
+var ruCategoryNames = map[string]string{
+	"sanctions":           "Санкции",
+	"terrorist_financing": "Финансирование терроризма",
+	"darknet":             "Даркнет-рынок",
+	"stolen_funds":        "Похищенные средства",
+	"frozen_funds":        "Заморожено Tether",
+	"mixer":               "Миксер",
+	"scam":                "Мошенничество",
+	"high_risk_exchange":  "Высокорисковая биржа",
+	"gambling":            "Азартные игры",
+	"named_service":       "Известный сервис",
+	"unnamed_service":     "Неназванный сервис",
+	"dust":                "Пылевые переводы (dust)",
+	"dex":                 "DEX",
+	"exchange":            "Биржа",
 }
 
 var enText = map[string]string{
@@ -305,4 +362,104 @@ var trText = map[string]string{
 	"why_high_volume_new":        "adres yeni ve büyük tutarlar hareket ettirmiş",
 	"why_round_split":            "parayı birkaç cüzdana aynı yuvarlak tutarlarla bölmüş",
 	"why_parked_funds":           "gönderdiği para yeni cüzdanlarda hiç kıpırdamadan bekliyor",
+}
+
+var ruText = map[string]string{
+	"address":                    "🔵 Адрес: %s\n\n",
+	"chain":                      "⛓ Блокчейн: %s\n\n",
+	"listed":                     "🚫 Этот адрес напрямую внесён в список: %s (%s)\n\n",
+	"sanctioned":                 "🚫 Прямое совпадение с санкционным списком. Риск высокий независимо от балла.\n\n",
+	"activity":                   "📊 Активность\n\n",
+	"received":                   "  •   Получено: %s · %s · источники: %s\n",
+	"sent":                       "  •   Отправлено: %s · %s · получатели: %s\n",
+	"active":                     "  •   Период активности: %s → %s\n",
+	"assets":                     "  •   Активы: %s\n",
+	"unpriced":                   "  •   Нераспознанные токены: %s, %s; не оценены (типично для спама и эйрдропов)\n",
+	"connections":                "Связи адреса:\n\n",
+	"no_value":                   "  •   Отслеженных средств нет\n\n",
+	"unattributed":               "  •   Не атрибутировано (неизвестно, а не «чисто») - %s\n",
+	"less_than":                  "\nМенее 0,1%%:\n\n",
+	"risk_level":                 "📈 Балл риск-экспозиции: %s (%.1f / 100)\n",
+	"risk_level_verdict":         "📈 Балл риск-экспозиции: %s (%.1f / 100). Он учитывает только средства, связанные со списками риска; ответ даёт вердикт в начале.\n",
+	"checks_unseen":              "  ⚪ означает «не найдено в видимой части»: %s отслеженных средств уходит в сервисы, которые никто не идентифицировал, а то, что за ними, в эти проверки не входит.\n\n",
+	"coverage":                   "🎯 Покрытие: %s\n",
+	"low_confidence":             "\n⚠️ Низкая уверенность: лишь %s отслеженных средств дошло до известного субъекта. Остальное неизвестно, а не «чисто».\n",
+	"band_capped":                "\n⚠️ Уровень ограничен: единственное основание — непроверенные жалобы на злоупотребления.\n",
+	"truncated":                  "\nℹ️ Отслеживание остановилось на лимите; средства за его пределами неизвестны.\n",
+	"inbound":                    "⬅️ Входящие (откуда пришли средства)",
+	"outbound":                   "➡️ Исходящие (куда ушли средства)",
+	"identified":                 "🏷 Идентифицированные связи\n",
+	"and_more":                   "    … и ещё %d\n",
+	"under":                      "менее 0,1%%",
+	"checks":                     "🛡 Проверки на риск\n\n",
+	"found":                      "  🔴  %s - найдено, %s\n",
+	"not_found":                  "  %s  %s - не найдено\n",
+	"checks_cover":               "\n  Проверки охватывают %s отслеженных средств, которые удалось атрибутировать.\n\n",
+	"r_dead_end":                 "след обрывается (дальше этой точки сохранённой истории нет)",
+	"r_hop_limit":                "за пределом допустимого числа шагов",
+	"r_fanout_cap":               "слишком много контрагентов, чтобы отследить",
+	"r_unlabelled":               "есть метка, но без категории",
+	"profile":                    "оборот %s · контрагенты: %s · %s",
+	"partial":                    " (неполная история)",
+	"direct":                     "напрямую",
+	"hops_away":                  "в %d шагах",
+	"service":                    "Сервис с большим оборотом",
+	"fetch_error":                "⚠️ Не удалось обновить данные адреса из блокчейна, поэтому использованы сохранённые данные: %s\n\n",
+	"still_fetching":             "🔄 История этого адреса ещё загружается. Цифры ниже неполные; повторите проверку через несколько минут.\n\n",
+	"history_limit":              "ℹ️ История этого адреса больше лимита загрузки на один адрес (10 000 переводов); показатели активности отражают самую свежую часть.\n\n",
+	"queued_of":                  "%d из %d",
+	"frontier":                   "🔭 Отслеживаем дальше: адреса, на которых обрывается след, поставлены в очередь (%s). Повторите проверку позже, чтобы получить более глубокий результат.\n",
+	"tracing":                    "🔄 Идёт отслеживание: отслежено контрагентов — %d из %d. Повторите проверку позже, чтобы получить более глубокий результат.\n",
+	"traced":                     "🔎 Отслежено контрагентов: %d из %d.\n",
+	"most_active":                "   Отслежены самые активные контрагенты: %d из %d.\n",
+	"disclaimer":                 "Это результат автоматической предварительной проверки на основе открытых данных. Он не является регулируемым AML-заключением и не должен использоваться в этом качестве.",
+	"still_fetching_followup":    "🔄 История этого адреса ещё загружается. Цифры ниже неполные; итоговый результат я пришлю сюда, когда отслеживание завершится.\n\n",
+	"frontier_followup":          "🔭 Отслеживаем дальше: адреса, на которых обрывается след, поставлены в очередь (%s). Итоговый результат я пришлю сюда, когда отслеживание завершится.\n",
+	"tracing_followup":           "🔄 Идёт отслеживание: отслежено контрагентов — %d из %d. Итоговый результат я пришлю сюда, когда отслеживание завершится.\n",
+	"flags":                      "⚑ Поведенческие признаки (не входят в балл)\n\n",
+	"flag_pass_through":          "  •   Транзитный кошелёк: за %[3]d дн. поступило %[1]s и ушло %[2]s; почти ничего не остаётся. Типично для промежуточных кошельков и расслоения средств, а также для OTC-площадок и внутренних кошельков бирж.\n",
+	"flag_high_volume_new":       "  •   Новый адрес с большим оборотом: %[1]s за %[2]d дн. с первой активности.\n",
+	"flag_new_address":           "  •   Новый адрес: первая активность %d дн. назад.\n",
+	"direct_high":                "🚫 Прямое внесение в список (%s). Риск высокий независимо от балла.\n\n",
+	"v_clear":                    "🟢 НЕТ РИСКА · уверенность %d%%\n",
+	"v_caution":                  "🟡 НЕТ РИСКА · уверенность %d%%\n",
+	"v_high_risk":                "🔴 ЕСТЬ РИСК · уверенность %d%%\n",
+	"v_insufficient":             " · недостаточно данных\n",
+	"conf_high":                  "высокая",
+	"conf_medium":                "средняя",
+	"conf_low":                   "низкая",
+	"vr_own_listed":              "  •   Сам адрес внесён в список: %s\n",
+	"vr_band_high":               "  •   Балл риск-экспозиции высокий\n",
+	"vr_band_medium":             "  •   Балл риск-экспозиции средний\n",
+	"vr_exposure":                "  •   %[2]s: %[1]s отслеженных средств\n",
+	"vr_exposure_minor":          "  •   %[2]s: %[1]s отслеженных средств (ниже порога высокого риска)\n",
+	"vr_low_coverage":            "  •   Атрибутировать удалось лишь %s отслеженных средств; остальное неизвестно, а не «чисто»\n",
+	"vr_tracing_incomplete":      "  •   Отслеживание ещё не завершено\n",
+	"vr_unidentified":            "  •   %s отслеженных средств уходит в сервисы, которые никто не идентифицировал; что за ними, не видно\n",
+	"vr_behaviour":               "  •   Поведение: %s\n",
+	"vr_clean":                   "  •   В %s отслеженных средств риск не найден, отслеживание завершено\n",
+	"flagname_pass_through":      "транзитный кошелёк",
+	"flagname_high_volume_new":   "новый адрес с большим оборотом",
+	"flag_high_volume_new_today": "  •   Новый адрес с большим оборотом: %s менее чем за сутки с первой активности.\n",
+	"flag_round_split":           "  •   Дробление круглыми суммами: %[1]s отправлено отдельными переводами за %[3]d мин.; разных кошельков-получателей: %[2]d. Типичный приём, чтобы оборвать след средств.\n",
+	"flag_parked_funds":          "  •   Замершие средства: кошельки, получившие средства с этого адреса (%d), с тех пор ничего не отправляли; в них лежит %s.\n",
+	"flag_poisoning_target":      "  •   Цель отравления адреса: этому кошельку приходили пустые переводы с адресов-двойников (%d), например с адреса, имитирующего %s. Они остаются в истории операций: никогда не копируйте адрес оттуда.\n",
+	"flagname_round_split":       "дробление круглыми суммами",
+	"flagname_parked_funds":      "замершие средства",
+	"why_clear":                  "   Связей со списками риска не найдено, и почти все средства удалось проследить до известных сервисов.\n",
+	"why_caution":                "   Ничто не связывает адрес с риском настолько, чтобы считать его рискованным. Уверенность снижает: %s.\n",
+	"why_high_risk":              "   Есть риск, потому что %s. Не отправляйте и не принимайте средства без дополнительной проверки.\n",
+	"why_own_listed":             "сам адрес находится в списке «%s»",
+	"why_poisoning_verdict":      "   Есть риск: это адрес-двойник для отравления адреса, он сделан похожим на %s. Он рассылает пустые переводы, чтобы его по ошибке скопировали из истории операций. Не отправляйте на него средства; берите настоящий адрес у самого получателя, а не из истории.\n",
+	"poisoning_entity":           "Отравление адреса, двойник %s",
+	"why_exposure":               "%s его средств связаны с категорией «%s»",
+	"why_low_coverage":           "лишь %s его средств удалось проследить до известного субъекта",
+	"why_band_high":              "общий балл риска высокий",
+	"why_band_medium":            "общий балл риска средний",
+	"why_tracing_incomplete":     "отслеживание ещё не завершено",
+	"why_unidentified":           "%s его средств проходит через сервисы с неизвестным владельцем, поэтому проверить, что за ними, нельзя",
+	"why_pass_through":           "средства проходят через адрес транзитом",
+	"why_high_volume_new":        "адрес новый и уже провёл крупные суммы",
+	"why_round_split":            "средства раздроблены на одинаковые круглые суммы по нескольким кошелькам",
+	"why_parked_funds":           "отправленные им средства лежат нетронутыми в новых кошельках",
 }

@@ -185,9 +185,17 @@ func categoryWord(lang, c string) string {
 		"stolen_funds": "Çalıntı Fonlar", "frozen_funds": "Tether tarafından dondurulmuş", "mixer": "Karıştırıcı (Mixer)", "scam": "Dolandırıcılık",
 		"high_risk_exchange": "Yüksek Riskli Borsa", "gambling": "Kumar",
 	}
+	ru := map[string]string{
+		"sanctions": "Санкции", "terrorist_financing": "Финансирование терроризма", "darknet": "Даркнет-рынок",
+		"stolen_funds": "Похищенные средства", "frozen_funds": "Заморожено Tether", "mixer": "Миксер", "scam": "Мошенничество",
+		"high_risk_exchange": "Высокорисковая биржа", "gambling": "Азартные игры",
+	}
 	m := en
-	if lang == langTR {
+	switch lang {
+	case langTR:
 		m = tr
+	case langRU:
+		m = ru
 	}
 	if n, ok := m[c]; ok {
 		return n

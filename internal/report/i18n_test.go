@@ -25,24 +25,34 @@ func verbs(format string) []string {
 }
 
 func TestCataloguesMatch(t *testing.T) {
-	for k, en := range enText {
-		tr, ok := trText[k]
-		if !ok {
-			t.Errorf("%q has no Turkish text", k)
-			continue
+	for _, c := range []struct {
+		name  string
+		text  map[string]string
+		cats  map[string]string
+		nouns int
+	}{{"Turkish", trText, trCategoryNames, len(trNouns)}, {"Russian", ruText, ruCategoryNames, len(ruNouns)}} {
+		for k, en := range enText {
+			other, ok := c.text[k]
+			if !ok {
+				t.Errorf("%q has no %s text", k, c.name)
+				continue
+			}
+			if a, b := strings.Join(verbs(en), ""), strings.Join(verbs(other), ""); a != b {
+				t.Errorf("%q: English verbs %q, %s %q", k, a, c.name, b)
+			}
 		}
-		if a, b := strings.Join(verbs(en), ""), strings.Join(verbs(tr), ""); a != b {
-			t.Errorf("%q: English verbs %q, Turkish %q", k, a, b)
+		for k := range c.text {
+			if _, ok := enText[k]; !ok {
+				t.Errorf("%q has %s text but no English", k, c.name)
+			}
 		}
-	}
-	for k := range trText {
-		if _, ok := enText[k]; !ok {
-			t.Errorf("%q has Turkish text but no English", k)
+		for cat := range categoryNames {
+			if _, ok := c.cats[cat]; !ok {
+				t.Errorf("category %q has no %s name", cat, c.name)
+			}
 		}
-	}
-	for c := range categoryNames {
-		if _, ok := trCategoryNames[c]; !ok {
-			t.Errorf("category %q has no Turkish name", c)
+		if c.nouns != 4 {
+			t.Errorf("%s has %d nouns, want 4", c.name, c.nouns)
 		}
 	}
 }
@@ -161,5 +171,57 @@ func TestPoisoningTargetNote(t *testing.T) {
 	want := "Adres zehirleme hedefi: bu cüzdana 3 taklit adresten değersiz transfer gelmiş, örneğin TBkgik…EtN8 adresini taklit eden biri."
 	if tr := Connections(in); !strings.Contains(tr, want) {
 		t.Errorf("missing %q in:\n%s", want, tr)
+	}
+}
+
+func TestConnectionsInRussian(t *testing.T) {
+	in := ConnectionsInput{Address: "TAddr", Chain: "tron", Band: "high", Score: 63.9, Coverage: 0.918, Lang: "ru",
+		Activity: &ConnectionsActivity{InUSD: 19600, InTransfers: 22, InCounterparties: 31},
+		Depth:    &ConnectionsDepth{Counterparties: 100, Traced: 100, TotalCounterparties: 140},
+		Inbound: &ConnectionsDirection{TracedWeight: 1, Categories: []ConnectionsCategory{{Category: "frozen_funds", Pct: 54.05}},
+			Entries: []ConnectionsEntry{{Address: "TFTqpcigcD64vsg9W8WsSYJZ5t8PqrTAYX", Entity: "Unidentified high-volume service",
+				Category: "unnamed_service", Pct: 12, MinHops: 3,
+				Profile: &ConnectionsProfile{VolumeUSD: 43977446, Transfers: 10000, Counterparties: 6402, Partial: true}}}},
+		Verdict: &ConnectionsVerdict{Level: "high_risk", ConfidencePct: 92, Reasons: []ConnectionsVerdictReason{
+			{Code: "band_high"}, {Code: "exposure", Category: "frozen_funds", Pct: 54.05},
+		}}}
+	out := Connections(in)
+	for _, want := range []string{
+		"🔴 ЕСТЬ РИСК · уверенность 92%\n   Есть риск, потому что общий балл риска высокий; 54,0% его средств связаны с категорией «Заморожено Tether».",
+		"Связи адреса:",
+		"Заморожено Tether - 54,0%",
+		"оборот $43.98M · контрагенты: 6\u00a0402 адреса · 10\u00a0000 сохранённых переводов (неполная история)",
+		"Получено: $19.6k · 22 перевода · источники: 31 адрес",
+		"в 3 шагах",
+		"Отслежены самые активные контрагенты: 100 из 140.",
+		"Балл риск-экспозиции: Высокий (63.9 / 100)",
+		"Покрытие: 91,8%",
+		"Санкции - не найдено",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+	for _, en := range []string{"Connections of", "RISKY", "not found"} {
+		if strings.Contains(out, en) {
+			t.Errorf("English %q left in Russian output", en)
+		}
+	}
+
+	// A not-risky answer under 10% confidence says so.
+	in.Verdict = &ConnectionsVerdict{Level: "caution", ConfidencePct: 7, Insufficient: true,
+		Reasons: []ConnectionsVerdictReason{{Code: "low_coverage", Pct: 4}}}
+	if out := Connections(in); !strings.Contains(out, "🟡 НЕТ РИСКА · уверенность 7% · недостаточно данных\n") {
+		t.Errorf("Russian insufficient-data verdict:\n%s", out)
+	}
+}
+
+func TestRussianPlurals(t *testing.T) {
+	l := newLoc("ru")
+	for n, want := range map[uint64]string{1: "1 адрес", 2: "2 адреса", 5: "5 адресов", 11: "11 адресов", 12: "12 адресов",
+		21: "21 адрес", 22: "22 адреса", 111: "111 адресов", 1004: "1\u00a0004 адреса"} {
+		if got := l.n(n, "address"); got != want {
+			t.Errorf("n(%d) = %q, want %q", n, got, want)
+		}
 	}
 }

@@ -38,7 +38,7 @@ type ConnectionsInput struct {
 
 	Disclaimer string
 
-	// Lang is "en" or "tr"; anything else renders English.
+	// Lang is "en", "tr" or "ru"; anything else renders English.
 	Lang string
 
 	// Flags are behaviour notes; shown, never scored.
@@ -286,7 +286,7 @@ func Connections(in ConnectionsInput) string {
 		// The API's disclaimer is English; its meaning, not its wording, is
 		// what must reach the reader.
 		disclaimer := in.Disclaimer
-		if l.tr {
+		if l.lang != "en" {
 			disclaimer = l.f("disclaimer")
 		}
 		fmt.Fprintf(&b, "\n%s\n", disclaimer)

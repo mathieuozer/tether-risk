@@ -375,7 +375,7 @@ func (s *server) handleReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var buf bytes.Buffer
-	if err := report.Render(&buf, res, time.Now().UTC()); err != nil {
+	if err := report.Render(&buf, res, time.Now().UTC(), "en"); err != nil {
 		s.log.Error("render report failed", "address", res.Address, "error", err)
 		writeError(w, http.StatusInternalServerError, "report_failed", err.Error())
 		return

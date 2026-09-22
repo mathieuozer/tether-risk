@@ -82,7 +82,7 @@ func run(apiURL, chainID, configDir, tgBase string, concurrency int, log *slog.L
 		return err
 	}
 	terms := map[string]string{}
-	for lang, file := range map[string]string{langEN: "terms.txt", langTR: "terms.tr.txt"} {
+	for lang, file := range map[string]string{langEN: "terms.txt", langTR: "terms.tr.txt", langRU: "terms.ru.txt"} {
 		raw, err := os.ReadFile(filepath.Join(configDir, file))
 		if err != nil {
 			return fmt.Errorf("read terms: %w", err)
@@ -160,12 +160,17 @@ func run(apiURL, chainID, configDir, tgBase string, concurrency int, log *slog.L
 	}
 
 	for lang, cmds := range publicCommands {
-		code := lang
-		if lang == langEN {
-			code = "" // the default for every other language
+		codes := []string{lang}
+		switch lang {
+		case langEN:
+			codes = []string{""} // the default for every other language
+		case langRU:
+			codes = ruClients
 		}
-		if err := b.tg.setMyCommands(ctx, cmds, code); err != nil {
-			log.Warn("could not register the command menu", "lang", lang, "error", err)
+		for _, code := range codes {
+			if err := b.tg.setMyCommands(ctx, cmds, code); err != nil {
+				log.Warn("could not register the command menu", "lang", code, "error", err)
+			}
 		}
 	}
 	if appURL != "" {

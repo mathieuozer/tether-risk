@@ -1296,3 +1296,33 @@ them (hot wallets, operators, deposits: 455 today), are now
 `named_service`. It is weighted 15 like `unnamed_service`, because a name is
 not a KYC tier (D19). Its value counts fully towards confidence, and it
 never triggers the unidentified-service reason.
+
+## D33 — Russian, the third language
+
+**Date:** 2026-09-22 · **Status:** active · **Follows:** D27
+
+The product is sold in Russia and the CIS, so the bot, the command menu,
+the connections report, the Mini App, the PDF verdict and the terms exist
+in Russian as well as English and Turkish. Telegram clients set to ru, uk,
+be, kk, uz, ky or tg are answered in Russian; the Russian command menu is
+registered for each of those codes. `/language` offers English / Türkçe /
+Русский.
+
+**The verdict headline** is "ЕСТЬ РИСК" or "НЕТ РИСКА", then "уверенность
+X%", then one or two lines of why; under 10% confidence a not-risky answer
+adds "недостаточно данных". Counts use Russian plural forms (1 адрес,
+3 адреса, 5 адресов). Where a number would force agreement inside a
+sentence, the Russian text puts it after a colon instead.
+
+**The PDF font.** The PDF core fonts cover only Western European text:
+Cyrillic, and Turkish ı, ş and ğ, printed as wrong glyphs. The report now
+embeds Noto Sans (regular, bold, italic) under the SIL Open Font License
+1.1, with the licence at `internal/report/fonts/OFL.txt`. Only the glyphs
+used are embedded. `TestPDFFontsCoverEveryLanguage` reads the font's cmap
+and fails if any letter in the three catalogues has no glyph. The PDF's
+verdict block is written in the requested language. The analyst detail
+below it stays English, as it was for Turkish. The HTTP API takes no
+language, so its PDF is English. The CLI passes `-lang`.
+
+**Open:** `config/terms.ru.txt` is a translation awaiting legal review; the
+English text governs.

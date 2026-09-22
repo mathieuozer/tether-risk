@@ -140,7 +140,7 @@ screen.
 
 ### Language
 
-`POST /app/api/lang {"lang": "tr"}`, one of `en` and `tr`. It sets the language for the bot too.
+`POST /app/api/lang {"lang": "tr"}`, one of `en`, `tr` and `ru`. It sets the language for the bot too.
 
 ## Public API: `/api/v1/*`
 
