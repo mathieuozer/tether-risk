@@ -23,11 +23,11 @@
   var SCREEN_TIMEOUT = 120000;
 
   // Same as categoryOrder / riskChecks in internal/report/connections.go.
-  var CATEGORY_ORDER = ['sanctions', 'terrorist_financing', 'darknet', 'stolen_funds', 'mixer', 'scam',
+  var CATEGORY_ORDER = ['sanctions', 'terrorist_financing', 'darknet', 'stolen_funds', 'frozen_funds', 'mixer', 'scam',
     'high_risk_exchange', 'gambling', 'unnamed_service', 'dust', 'dex', 'exchange'];
-  var RISK_CHECKS = ['sanctions', 'terrorist_financing', 'darknet', 'stolen_funds',
+  var RISK_CHECKS = ['sanctions', 'terrorist_financing', 'darknet', 'stolen_funds', 'frozen_funds',
     'mixer', 'scam', 'high_risk_exchange', 'gambling'];
-  var SEVERE = ['sanctions', 'terrorist_financing', 'darknet', 'stolen_funds', 'mixer', 'scam'];
+  var SEVERE = ['sanctions', 'terrorist_financing', 'darknet', 'stolen_funds', 'frozen_funds', 'mixer', 'scam'];
   var ELEVATED = ['high_risk_exchange', 'gambling'];
   var MIN_LISTED = 0.1;
   var ENTRIES_SHOWN = 5;
@@ -1131,6 +1131,7 @@
     }
     html += mockBadge();
     html += resultBanners(r);
+    html += verdictCard(r);
     html += summaryCard(r);
     html += actionsRow(r);
     html += depthNotes(r);
@@ -1288,6 +1289,21 @@
       '<ul class="checks">' + rows + '</ul>' +
       '<p class="hint small card-foot">' + tt('checks_cover', { pct: fmtPct((r.coverage || 0) * 100) }) +
       (r.low_confidence ? ' ' + tt('checks_lowconf') : '') + '</p></section>';
+  }
+
+  // The answer first: clean, caution or high risk, how far to trust it, and why.
+  function verdictCard(r) {
+    var v = r.verdict;
+    if (!v || !v.level) return '';
+    var reasons = (v.reasons || []).map(function (x) {
+      var p = { pct: fmtPct(x.pct || 0), cat: x.category ? catName(x.category) : '', flag: x.flag ? tt('flag_' + x.flag + '_title') : '' };
+      return '<li>' + esc(tt('vr_' + x.code, p)) + '</li>';
+    }).join('');
+    return '<section class="card verdict verdict-' + esc(v.level) + '" aria-labelledby="verdict-title">' +
+      '<div class="verdict-head"><span class="verdict-dot" aria-hidden="true"></span>' +
+      '<h2 id="verdict-title">' + tt('v_' + v.level) + '</h2>' +
+      '<span class="verdict-conf">' + tt('conf_label', { c: tt('conf_' + v.confidence) }) + '</span></div>' +
+      '<ul class="verdict-reasons">' + reasons + '</ul></section>';
   }
 
   // Behaviour notes: what the address did, shown beside the score but never part of it.

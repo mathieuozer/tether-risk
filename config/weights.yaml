@@ -21,6 +21,7 @@ categories:
   terrorist_financing:  {weight: 100, description: "Designated terrorist financing"}
   darknet:              {weight: 90,  description: "Darknet market"}
   stolen_funds:         {weight: 85,  description: "Proceeds of a documented theft or exploit"}
+  frozen_funds:         {weight: 85,  description: "USDT frozen by Tether: blacklisted on its own contract"}
   mixer:                {weight: 70,  description: "Mixing or tumbling service"}
   scam:                 {weight: 70,  description: "Fraud, phishing, ponzi"}
   high_risk_exchange:   {weight: 40,  description: "Exchange with absent or nominal KYC"}
@@ -98,6 +99,7 @@ labels:
     - ofac
     - un
     - eu
+    - tether_blacklist
     - curated
     - htx_por
     - poloniex_por
@@ -113,6 +115,8 @@ labels:
   always_wins:
     - sanctions
     - terrorist_financing
+    # Tether's own freeze on its own contract (docs/DECISIONS.md D29).
+    - frozen_funds
 
   # SPEC.md §6.4: never let a single unverified abuse report alone push an
   # address into a high-risk band. An address whose only evidence is abuse
@@ -170,6 +174,39 @@ behaviour:
     # A new address that has already moved at least this much, in and out
     # together, is noted as such rather than merely new.
     high_volume_usd: 1000000
+
+# ---------------------------------------------------------------------------
+# Verdict (docs/DECISIONS.md D29): the answer to "is this wallet clean?" in
+# three states, with reasons and a confidence. It reads the score, coverage,
+# exposure and behaviour notes; it never changes them.
+#
+# Exposure is a share of traced value, both directions combined, in percent.
+# ---------------------------------------------------------------------------
+verdict:
+  # Any of these at or above its share makes the verdict high risk.
+  # Starting values, to be checked against the benchmark (cmd/validate
+  # verdict), never tuned to match another vendor (SPEC.md §9.5).
+  red_exposure:
+    sanctions: 1
+    terrorist_financing: 1
+    frozen_funds: 5
+    stolen_funds: 5
+    darknet: 5
+    mixer: 10
+    scam: 10
+    high_risk_exchange: 25
+    gambling: 40
+  # A clean verdict needs at least this coverage and finished tracing. Below
+  # it the answer is caution: unknown, not clean.
+  clear_min_coverage: 0.80
+  # Tracing counts as finished when the value still waiting at unfetched
+  # dead ends is under this share of traced value, in percent. One pending
+  # address carrying a trace of value should not withhold an answer.
+  max_pending_pct: 5
+  # Confidence: high at or above this coverage with tracing finished,
+  # medium at or above the second, low below.
+  confidence_high: 0.90
+  confidence_medium: 0.60
 
 # ---------------------------------------------------------------------------
 # Derived exchange hot wallets (docs/DECISIONS.md D28). Reserve wallets refill

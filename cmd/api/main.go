@@ -169,6 +169,9 @@ type screenResponse struct {
 	// Flags are behaviour notes; they do not enter the score.
 	Flags []flagResponse `json:"flags"`
 
+	// Verdict is the three-state answer with its reasons (D29).
+	Verdict *verdictResponse `json:"verdict,omitempty"`
+
 	// Depth says whether tracing had finished when this was scored.
 	Depth *depthResponse `json:"depth,omitempty"`
 
@@ -207,6 +210,31 @@ type directionResponse struct {
 	UnattributedReasons []reasonResponse `json:"unattributed_reasons"`
 
 	Traversal traversalStats `json:"traversal"`
+}
+
+type verdictResponse struct {
+	Level      string                  `json:"level"`
+	Confidence string                  `json:"confidence"`
+	Reasons    []verdictReasonResponse `json:"reasons"`
+}
+
+type verdictReasonResponse struct {
+	Code     string  `json:"code"`
+	Category string  `json:"category,omitempty"`
+	Pct      float64 `json:"pct,omitempty"`
+	Flag     string  `json:"flag,omitempty"`
+}
+
+func toVerdict(v *scoring.Verdict) *verdictResponse {
+	if v == nil {
+		return nil
+	}
+	out := &verdictResponse{Level: v.Level, Confidence: v.Confidence, Reasons: []verdictReasonResponse{}}
+	for _, r := range v.Reasons {
+		out.Reasons = append(out.Reasons, verdictReasonResponse{Code: r.Code, Category: r.Category,
+			Pct: float64(int(r.Pct*100+0.5)) / 100, Flag: r.Flag})
+	}
+	return out
 }
 
 type flagResponse struct {
@@ -488,6 +516,7 @@ func toResponse(res *scoring.Result) screenResponse {
 		Disclaimer:        disclaimer,
 		Activity:          toActivity(res.Activity),
 		Flags:             toFlags(res.Flags),
+		Verdict:           toVerdict(res.Verdict),
 		Depth:             toDepth(res.Depth),
 	}
 }

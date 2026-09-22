@@ -43,6 +43,21 @@ type ConnectionsInput struct {
 
 	// Flags are behaviour notes; shown, never scored.
 	Flags []ConnectionsFlag
+
+	// Verdict is the three-state answer (D29); nil when not computed.
+	Verdict *ConnectionsVerdict
+}
+
+// ConnectionsVerdict is the answer to "is this wallet clean?".
+type ConnectionsVerdict struct {
+	Level      string // clear, caution, high_risk
+	Confidence string // high, medium, low
+	Reasons    []ConnectionsVerdictReason
+}
+
+type ConnectionsVerdictReason struct {
+	Code, Category, Flag string
+	Pct                  float64
 }
 
 // ConnectionsFlag is one behaviour note.
@@ -156,6 +171,7 @@ func Connections(in ConnectionsInput) string {
 
 	b.WriteString(l.f("address", in.Address))
 	b.WriteString(l.f("chain", chainName(in.Chain)))
+	writeVerdict(&b, in.Verdict, l)
 
 	if in.OwnLabel != nil {
 		name := in.OwnLabel.Entity
@@ -165,7 +181,13 @@ func Connections(in ConnectionsInput) string {
 		b.WriteString(l.f("listed", name, l.category(in.OwnLabel.Category)))
 	}
 	if in.SanctionsOverride {
-		b.WriteString(l.f("sanctioned"))
+		// The override fires for any always-wins category; only a sanctions
+		// listing is described as one.
+		if in.OwnLabel != nil && in.OwnLabel.Category != "sanctions" {
+			b.WriteString(l.f("direct_high", l.category(in.OwnLabel.Category)))
+		} else {
+			b.WriteString(l.f("sanctioned"))
+		}
 	}
 
 	if a := in.Activity; a != nil && (a.InTransfers+a.OutTransfers+a.UnpricedTransfers) > 0 {
@@ -307,7 +329,7 @@ func truncated(d *ConnectionsDirection) bool {
 // categoryOrder is every category in config/weights.yaml, highest weight
 // first. A test keeps it in step with the config.
 var categoryOrder = []string{
-	"sanctions", "terrorist_financing", "darknet", "stolen_funds", "mixer", "scam",
+	"sanctions", "terrorist_financing", "darknet", "stolen_funds", "frozen_funds", "mixer", "scam",
 	"high_risk_exchange", "gambling", "unnamed_service", "dust", "dex", "exchange",
 }
 
@@ -333,6 +355,7 @@ var categoryNames = map[string]string{
 	"terrorist_financing": "Terrorist Financing",
 	"darknet":             "Darknet Market",
 	"stolen_funds":        "Stolen Funds",
+	"frozen_funds":        "Frozen by Tether",
 	"mixer":               "Mixer",
 	"scam":                "Scam",
 	"high_risk_exchange":  "High-Risk Exchange",
@@ -421,7 +444,7 @@ func writeEntries(b *strings.Builder, in ConnectionsInput, l loc) {
 // riskChecks are the categories a reader looks for first. Each is reported
 // found or not found, never silently omitted.
 var riskChecks = []string{
-	"sanctions", "terrorist_financing", "darknet", "stolen_funds",
+	"sanctions", "terrorist_financing", "darknet", "stolen_funds", "frozen_funds",
 	"mixer", "scam", "high_risk_exchange", "gambling",
 }
 
@@ -450,6 +473,30 @@ func writeChecks(b *strings.Builder, in ConnectionsInput, shares []ConnectionsCa
 		}
 	}
 	b.WriteString(l.f("checks_cover", l.pct(in.Coverage*100)))
+}
+
+// writeVerdict puts the answer first: the level, how far to trust it, and
+// why, so a reader who stops after three lines still has it.
+func writeVerdict(b *strings.Builder, v *ConnectionsVerdict, l loc) {
+	if v == nil {
+		return
+	}
+	b.WriteString(l.f("v_"+v.Level, l.f("conf_"+v.Confidence)))
+	for _, r := range v.Reasons {
+		switch r.Code {
+		case "own_listed":
+			b.WriteString(l.f("vr_own_listed", l.category(r.Category)))
+		case "exposure", "exposure_minor":
+			b.WriteString(l.f("vr_"+r.Code, l.pct(r.Pct), l.category(r.Category)))
+		case "low_coverage", "clean":
+			b.WriteString(l.f("vr_"+r.Code, l.pct(r.Pct)))
+		case "behaviour":
+			b.WriteString(l.f("vr_behaviour", l.f("flagname_"+r.Flag)))
+		default:
+			b.WriteString(l.f("vr_" + r.Code))
+		}
+	}
+	b.WriteString("\n")
 }
 
 // writeFlags lists behaviour notes. They describe what the address did and

@@ -128,6 +128,13 @@ func run(ctx context.Context, cmd, configDir, chainID string, limit int, compare
 		}
 		results = append(results, r)
 
+	case "verdict":
+		r, err := checkVerdictBenchmark(ctx, svc, ch, pg, chainID, limit)
+		if err != nil {
+			return 2, err
+		}
+		results = append(results, r)
+
 	case "compare":
 		r, err := checkExternalComparison(ctx, svc, chainID, compareFile)
 		if err != nil {

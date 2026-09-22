@@ -268,6 +268,8 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 		}
 	}
 	res.Depth = depth
+	v := scoring.Decide(res, s.cfg.Weights.Verdict)
+	res.Verdict = &v
 
 	// SPEC.md §2: every score must be reconstructible from stored intermediate
 	// data. Persist the paths, not just the number.

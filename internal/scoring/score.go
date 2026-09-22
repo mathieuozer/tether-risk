@@ -118,6 +118,10 @@ type Result struct {
 	// with the result and never enter the score (docs/DECISIONS.md D28).
 	Flags []Flag
 
+	// Verdict answers "is this wallet clean?" from everything above
+	// (docs/DECISIONS.md D29). Set last; it changes nothing it reads.
+	Verdict *Verdict
+
 	// Depth reports how much of the neighbourhood was stored when this was
 	// scored. Nil when not computed.
 	Depth *DepthStatus

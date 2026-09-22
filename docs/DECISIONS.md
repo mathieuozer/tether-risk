@@ -980,3 +980,70 @@ TJBsbT…8Y5P ($7.11M in and out in 11 days) and TKKPgK…dk4V both show
 pass-through and high-volume new. They are notes, not scores, because a
 pass-through wallet can be layering or an OTC desk, and the data cannot
 tell which. Thresholds are in weights.yaml under `behaviour`.
+
+## D29 — Tether's blacklist, a three-state verdict, and a benchmark for it
+
+**Date:** 2026-09-22 · **Status:** active · **Follows:** D28
+
+The owner's product question is "a customer gives a wallet; is it clean?".
+A score does not answer that, and an unmeasured answer cannot be called
+precise. Three changes address it.
+
+**Tether's own blacklist.** Tether freezes USDT by calling `addBlackList` on
+its own TRON contract. The events are public, free and first-party. The
+labeler now reads every `AddedBlackList`, `RemovedBlackList` and
+`DestroyedBlackFunds` event and replays them in order. An address is frozen
+from its latest addition until a later removal. As of 2026-09-22 that is
+7,570 addresses (8,555 additions, 967 removals), labelled
+`tether_blacklist` at confidence 1.0 in a new category, `frozen_funds`
+(weight 85; justification in METHODOLOGY.md). A direct listing always
+reports High (`always_wins`). The whole list is re-read daily, and
+addresses Tether releases are retired through the new `Store.Retire`.
+
+The effect was immediate. TKKPgK…dk4V, which the D28 follow-up had
+finished at Low 10.4, reaches a frozen address with 54% of its traced
+value. The TJBsbT…8Y5P network touches the same frozen address,
+TBFsge…GdhD, at three points.
+
+**Verdict.** Every result now carries a verdict: clear, caution or
+high_risk, with a confidence and the reasons, in the API, bot, app, CLI and
+PDF, and first in each.
+
+- *High risk:* the address is directly listed, the band is High, or exposure
+  to a category reaches its line (sanctions and terrorist financing 1%;
+  frozen, stolen and darknet 5%; mixer and scam 10%).
+- *Caution:* any smaller risk exposure, a Medium band, coverage under 80%,
+  tracing unfinished (5% or more of value still at unfetched dead ends), or
+  a behaviour note.
+- *Clear:* none of the above. Unknown is never called clean.
+
+Thresholds are in weights.yaml under `verdict`. They are checked against
+the benchmark and never fitted to another vendor (SPEC.md §9.5).
+
+**Benchmark** (`validate verdict`). Three sets with a known answer, drawn
+from stored data:
+
+| Set | n | Clear | Caution | High risk | Must be | Misses |
+|---|---|---|---|---|---|---|
+| Listed (frozen/OFAC, fetched) | 5 | 0 | 0 | 5 | high risk | 0 |
+| Exposed (direct flow with a listed address) | 50 | 0 | 35 | 15 | never clear | 0 |
+| Exchange deposit wallets | 50 | 17 | 33 | 0 | never high risk | 0 |
+
+The first run called only 1 of 50 deposit wallets clear. Most were held
+back by "tracing unfinished" when a single pending address carried a
+negligible share of value. That rule now counts value, not addresses:
+under 5% pending is finished. With it, 17 of 50 are clear and nothing else
+moved. The remaining deposit wallets are cautions for low coverage, their
+customers' money coming from unnamed sources, which is true.
+
+What the benchmark does not prove: its bad sets come from our own lists, so
+it measures whether exposure is detected and reported, not whether the
+lists are complete. The competitor comparison (§9.5) and a hand-checked
+clean set are still needed before "precise" can be claimed.
+
+**Licensed data.** Researched in docs/LICENSED_DATA.md: Bitquery's labels
+(71.6M TRON, public prices) and MistTrack are the realistic options, both
+needing written resale terms. Arkham and Nansen forbid redistribution.
+Chainalysis and TRM paid products are enterprise-priced. Buying any of them
+means changing SPEC.md §1's "zero licence spend"; that is the owner's
+decision.

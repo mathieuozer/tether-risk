@@ -47,6 +47,7 @@ type Weights struct {
 	DerivedDeposit   DerivedDeposit   `yaml:"derived_deposit"`
 	DerivedHotWallet DerivedHotWallet `yaml:"derived_hotwallet"`
 	Behaviour        Behaviour        `yaml:"behaviour"`
+	Verdict          Verdict          `yaml:"verdict"`
 	DerivedService   DerivedService   `yaml:"derived_service"`
 	Pricing          Pricing          `yaml:"pricing"`
 }
@@ -128,6 +129,15 @@ type DerivedDeposit struct {
 	// fetching. A candidate is judged on its whole outbound history, which
 	// is unknown until it has been fetched.
 	FetchCandidates int `yaml:"fetch_candidates"`
+}
+
+// Verdict configures the three-state answer (docs/DECISIONS.md D29).
+type Verdict struct {
+	RedExposure      map[string]float64 `yaml:"red_exposure"`
+	ClearMinCoverage float64            `yaml:"clear_min_coverage"`
+	MaxPendingPct    float64            `yaml:"max_pending_pct"`
+	ConfidenceHigh   float64            `yaml:"confidence_high"`
+	ConfidenceMedium float64            `yaml:"confidence_medium"`
 }
 
 // Behaviour configures the unscored behaviour notes (docs/DECISIONS.md D28).
@@ -447,6 +457,14 @@ func (c *Config) Validate() error {
 		if !known[id] {
 			bad("derived_deposit.anchor_sources: %q is not a source in sources.yaml", id)
 		}
+	}
+	for cat := range c.Weights.Verdict.RedExposure {
+		if _, ok := c.Weights.Categories[cat]; !ok {
+			bad("verdict.red_exposure: %q is not a defined category", cat)
+		}
+	}
+	if v := c.Weights.Verdict; v.ClearMinCoverage <= 0 || v.ConfidenceMedium > v.ConfidenceHigh {
+		bad("verdict: clear_min_coverage must be positive and confidence_medium at most confidence_high")
 	}
 	if h := c.Weights.DerivedHotWallet; h.Enabled {
 		for _, id := range h.ReserveSources {

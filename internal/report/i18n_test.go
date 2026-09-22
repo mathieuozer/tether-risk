@@ -102,3 +102,21 @@ func TestBehaviourNotes(t *testing.T) {
 		}
 	}
 }
+
+func TestVerdictComesFirst(t *testing.T) {
+	in := ConnectionsInput{Address: "TAddr", Chain: "tron", Band: "high", Score: 63.9, Coverage: 0.918,
+		Verdict: &ConnectionsVerdict{Level: "high_risk", Confidence: "high", Reasons: []ConnectionsVerdictReason{
+			{Code: "band_high"}, {Code: "exposure", Category: "frozen_funds", Pct: 54.05},
+		}}}
+	en := Connections(in)
+	if !strings.Contains(en, "🔴 HIGH RISK · confidence: high\n  •   Risk band is High\n  •   54.0% of traced value reaches Frozen by Tether") {
+		t.Errorf("English verdict:\n%s", en)
+	}
+	if strings.Index(en, "HIGH RISK") > strings.Index(en, "Risk level") {
+		t.Error("the verdict must come before the details")
+	}
+	in.Lang = "tr"
+	if tr := Connections(in); !strings.Contains(tr, "🔴 RİSKLİ · güven: yüksek") || !strings.Contains(tr, "Tether tarafından dondurulmuş: izlenen değerin %54,0 kadarı") {
+		t.Errorf("Turkish verdict:\n%s", tr)
+	}
+}

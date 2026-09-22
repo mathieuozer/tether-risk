@@ -830,3 +830,14 @@ textarea.input { resize: vertical; min-height: 120px; line-height: 1.5; }
   background: var(--medium-bg); border-left: 3px solid var(--medium); }
 .flag-name { font-weight: 600; }
 .flag-text { color: var(--hint, inherit); font-size: 14px; line-height: 1.45; }
+
+/* Verdict */
+.verdict { border: 1.5px solid var(--vc); }
+.verdict-clear { --vc: var(--low, #1a7f37); --vbg: var(--low-bg, #e6f4ea); }
+.verdict-caution { --vc: var(--medium); --vbg: var(--medium-bg); }
+.verdict-high_risk { --vc: var(--high, #c62828); --vbg: var(--high-bg, #fdecea); }
+.verdict-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.verdict-head h2 { margin: 0; font-size: 22px; color: var(--vc); }
+.verdict-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--vc); box-shadow: 0 0 0 5px var(--vbg); }
+.verdict-conf { margin-left: auto; font-size: 13px; color: var(--hint); }
+.verdict-reasons { margin: 12px 0 0; padding-left: 20px; display: grid; gap: 6px; font-size: 15px; line-height: 1.4; }

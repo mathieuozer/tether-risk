@@ -213,6 +213,23 @@ scored:
 They record what the address did. The same pattern fits layering and an OTC
 desk, and the data cannot tell them apart, so a note never moves the band.
 
+## 4d. Verdict (D29)
+
+Every result carries a verdict derived from it: **clear**, **caution** or
+**high risk**, with a confidence and the reasons. High risk means a direct
+listing, a High band, or exposure at or above a category's line (sanctions
+and terrorist financing 1%; frozen funds, stolen funds and darknet 5%; mixer
+and scam 10%). Caution means any smaller risk exposure, a Medium band,
+coverage under 80%, 5% or more of value still at unfetched dead ends, or a
+behaviour note. Clear means none of these. Confidence is high at 90%
+coverage or more with tracing finished, medium at 60% or more, and low
+below that. A direct listing is high risk with high confidence at any
+coverage.
+
+Measured with `validate verdict` on 2026-09-22. No listed or exposed
+address was called clean, and no exchange deposit wallet was called high
+risk (see D29 for the table and what it does not prove).
+
 ## 4b. Behavioural service detection
 
 No citable source for named TRON exchange hot wallets exists within the
@@ -327,6 +344,7 @@ recomputing a score by hand from the stored path set gets the same number back.
 | `terrorist_financing` | 100 | As above. |
 | `darknet` | 90 | Proceeds are almost always criminal; near-zero legitimate use. |
 | `stolen_funds` | 85 | Documented theft. Slightly below darknet because victims' own funds move through these paths too. |
+| `frozen_funds` | 85 | Tether froze the address's USDT on its own contract, typically at a law-enforcement request over hacks, scams or sanctions. Authoritative for the fact of the freeze, silent on its reason, so set with stolen funds rather than sanctions. A direct listing always reports High (D29). |
 | `mixer` | 70 | Deliberate obfuscation. Not illegal in itself and has legitimate privacy uses, which is why it is not 90. |
 | `scam` | 70 | Fraud proceeds. Equal to mixer because the evidence quality is comparable and the harm is direct. |
 | `high_risk_exchange` | 40 | Absent or nominal KYC. A real signal, but these process large volumes of ordinary activity. |

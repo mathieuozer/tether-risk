@@ -80,6 +80,13 @@ entity, category, pct, min_hops, profile?}`, `unattributed_reasons[] {reason,
 pct}`, `top_paths[] {explanation}` and `traversal {fanout_capped,
 hop_limit_reached}`.
 
+It also carries `flags[] {code, in_usd?, out_usd?, volume_usd?, days?,
+age_days?}` (behaviour notes, never scored) and `verdict {level,
+confidence, reasons[] {code, category?, pct?, flag?}}`, where `level` is
+`clear`, `caution` or `high_risk` (docs/DECISIONS.md D29). The screen
+response adds `follow_up: true` when the bot will send the final result to
+the chat after further tracing.
+
 ### `POST /app/api/report`
 
 Request as for screen. Needs the plan's `pdf`. The PDF is sent to the user's

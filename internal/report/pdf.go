@@ -59,6 +59,24 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
 	pdf.Ln(8)
 	pdf.SetTextColor(0, 0, 0)
 
+	// --- verdict: the answer first (docs/DECISIONS.md D29) ---
+	if v := res.Verdict; v != nil {
+		vr, vg, vb := verdictColour(v.Level)
+		pdf.SetFillColor(vr, vg, vb)
+		pdf.SetTextColor(255, 255, 255)
+		pdf.SetFont("Helvetica", "B", 13)
+		l := newLoc("en")
+		title := map[string]string{"clear": "LOOKS CLEAN", "caution": "CAUTION", "high_risk": "HIGH RISK"}[v.Level]
+		pdf.CellFormat(width, 11, fmt.Sprintf("  %s  -  confidence: %s", title, l.f("conf_"+v.Confidence)), "", 0, "L", true, 0, "")
+		pdf.Ln(13)
+		pdf.SetTextColor(0, 0, 0)
+		pdf.SetFont("Helvetica", "", 9.5)
+		for _, r := range v.Reasons {
+			pdf.MultiCell(width, 5, "- "+verdictReasonText(l, r), "", "L", false)
+		}
+		pdf.Ln(3)
+	}
+
 	// --- headline: band and coverage together ---
 	// Deliberately side by side. A score without its coverage is not
 	// actionable, and separating them lets the number be read alone.
@@ -96,9 +114,14 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time) error {
 				l.Entity, l.Category, l.Source, l.Confidence, conflict))
 	}
 	if res.SanctionsOverride {
-		warning(pdf, width, "DIRECT SANCTIONS MATCH",
-			"This address appears on a sanctions list. The band is set to High regardless "+
-				"of the computed score.")
+		if l := res.OwnLabel; l != nil && l.Category != "sanctions" {
+			warning(pdf, width, "DIRECT LISTING: "+strings.ToUpper(newLoc("en").category(l.Category)),
+				fmt.Sprintf("%s. The band is set to High regardless of the computed score.", l.Entity))
+		} else {
+			warning(pdf, width, "DIRECT SANCTIONS MATCH",
+				"This address appears on a sanctions list. The band is set to High regardless "+
+					"of the computed score.")
+		}
 	}
 	if res.LowConfidence {
 		warning(pdf, width, "LOW CONFIDENCE - READ BEFORE USING",
@@ -283,6 +306,36 @@ func line(pdf *fpdf.Fpdf, width float64) {
 	pdf.SetDrawColor(200, 200, 200)
 	pdf.Line(15, y, 15+width, y)
 	pdf.SetDrawColor(0, 0, 0)
+}
+
+func verdictColour(level string) (int, int, int) {
+	switch level {
+	case "clear":
+		return 27, 127, 70
+	case "high_risk":
+		return 196, 43, 43
+	default:
+		return 180, 110, 0
+	}
+}
+
+// verdictReasonText renders one verdict reason as a sentence, reusing the
+// report's catalogue without its bullet and line break.
+func verdictReasonText(l loc, r scoring.VerdictReason) string {
+	var s string
+	switch r.Code {
+	case "own_listed":
+		s = l.f("vr_own_listed", l.category(r.Category))
+	case "exposure", "exposure_minor":
+		s = l.f("vr_"+r.Code, l.pct(r.Pct), l.category(r.Category))
+	case "low_coverage", "clean":
+		s = l.f("vr_"+r.Code, l.pct(r.Pct))
+	case "behaviour":
+		s = l.f("vr_behaviour", l.f("flagname_"+r.Flag))
+	default:
+		s = l.f("vr_" + r.Code)
+	}
+	return strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(s), "•"))
 }
 
 func bandColour(band string) (int, int, int) {

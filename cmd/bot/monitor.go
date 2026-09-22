@@ -18,7 +18,7 @@ import (
 // riskCategories are the categories whose first appearance is an alert. They
 // match the report's risk checks.
 var riskCategories = []string{
-	"sanctions", "terrorist_financing", "darknet", "stolen_funds",
+	"sanctions", "terrorist_financing", "darknet", "stolen_funds", "frozen_funds",
 	"mixer", "scam", "high_risk_exchange", "gambling",
 }
 
@@ -177,12 +177,12 @@ func alertText(lang string, w billing.Watch, prev *billing.WatchState, cur billi
 func categoryWord(lang, c string) string {
 	en := map[string]string{
 		"sanctions": "Sanctions", "terrorist_financing": "Terrorist Financing", "darknet": "Darknet Market",
-		"stolen_funds": "Stolen Funds", "mixer": "Mixer", "scam": "Scam",
+		"stolen_funds": "Stolen Funds", "frozen_funds": "Frozen by Tether", "mixer": "Mixer", "scam": "Scam",
 		"high_risk_exchange": "High-Risk Exchange", "gambling": "Gambling",
 	}
 	tr := map[string]string{
 		"sanctions": "Yaptırımlar", "terrorist_financing": "Terörün Finansmanı", "darknet": "Darknet Pazarı",
-		"stolen_funds": "Çalıntı Fonlar", "mixer": "Karıştırıcı (Mixer)", "scam": "Dolandırıcılık",
+		"stolen_funds": "Çalıntı Fonlar", "frozen_funds": "Tether tarafından dondurulmuş", "mixer": "Karıştırıcı (Mixer)", "scam": "Dolandırıcılık",
 		"high_risk_exchange": "Yüksek Riskli Borsa", "gambling": "Kumar",
 	}
 	m := en

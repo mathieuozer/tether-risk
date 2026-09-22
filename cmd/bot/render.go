@@ -33,6 +33,17 @@ type screenResponse struct {
 	Inbound  *direction `json:"inbound"`
 	Outbound *direction `json:"outbound"`
 
+	Verdict *struct {
+		Level      string `json:"level"`
+		Confidence string `json:"confidence"`
+		Reasons    []struct {
+			Code     string  `json:"code"`
+			Category string  `json:"category"`
+			Pct      float64 `json:"pct"`
+			Flag     string  `json:"flag"`
+		} `json:"reasons"`
+	} `json:"verdict"`
+
 	Flags []struct {
 		Code      string  `json:"code"`
 		InUSD     float64 `json:"in_usd"`
@@ -218,6 +229,13 @@ func summary(r *screenResponse, lang string, followUp bool) string {
 	for _, f := range r.Flags {
 		in.Flags = append(in.Flags, report.ConnectionsFlag{Code: f.Code, InUSD: f.InUSD, OutUSD: f.OutUSD,
 			VolumeUSD: f.VolumeUSD, Days: f.Days, AgeDays: f.AgeDays})
+	}
+	if v := r.Verdict; v != nil {
+		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence}
+		for _, x := range v.Reasons {
+			cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: x.Code, Category: x.Category, Flag: x.Flag, Pct: x.Pct})
+		}
+		in.Verdict = cv
 	}
 	if r.OwnLabel != nil {
 		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: r.OwnLabel.Entity, Category: r.OwnLabel.Category}
