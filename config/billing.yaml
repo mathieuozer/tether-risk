@@ -18,6 +18,9 @@ plans:
     daily_screens: 20
     details: false        # /details full breakdown
     pdf: false            # /pdf one-page report
+    watches: 3            # addresses monitored for risk changes
+    batch: 0              # addresses per batch file; 0 = no batch screening
+    api: false            # API keys
     price_stars: 800
     price_usdt: "10.00"
   - id: pro
@@ -25,8 +28,23 @@ plans:
     daily_screens: 200
     details: true
     pdf: true
+    watches: 25
+    batch: 100
+    api: false
     price_stars: 3800
     price_usdt: "49.00"
+  - id: business
+    name: Business
+    daily_screens: 2000
+    details: true
+    pdf: true
+    watches: 200
+    batch: 1000
+    api: true
+    # The Stars ceiling for a subscription is 10,000 Stars (~$130 net), below
+    # what this plan is worth; business customers are expected to pay USDT.
+    price_stars: 10000
+    price_usdt: "199.00"
 
 # One free trial per Telegram account, granted on first contact.
 trial:
@@ -44,3 +62,10 @@ usdt:
 
 # How long one paid period lasts. Stars fixes it at 30 days; USDT matches.
 period_days: 30
+
+# Watched addresses are rescreened on this schedule. Every rescreen spends
+# TronGrid budget, so the interval times the total watches is the cost.
+monitor:
+  interval: 6h
+  # Rescreens at most this many watches per pass; the rest wait for the next.
+  per_pass: 200

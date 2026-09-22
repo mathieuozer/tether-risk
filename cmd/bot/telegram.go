@@ -88,10 +88,18 @@ func (t *telegram) do(req *http.Request, method string, out any) error {
 // --- types -----------------------------------------------------------------
 
 type tgUser struct {
-	ID        int64  `json:"id"`
-	IsBot     bool   `json:"is_bot"`
-	Username  string `json:"username"`
-	FirstName string `json:"first_name"`
+	ID           int64  `json:"id"`
+	IsBot        bool   `json:"is_bot"`
+	Username     string `json:"username"`
+	FirstName    string `json:"first_name"`
+	LanguageCode string `json:"language_code"`
+}
+
+type document struct {
+	FileID   string `json:"file_id"`
+	FileName string `json:"file_name"`
+	MimeType string `json:"mime_type"`
+	FileSize int64  `json:"file_size"`
 }
 
 type tgChat struct {
@@ -121,6 +129,7 @@ type message struct {
 	From              *tgUser            `json:"from"`
 	Chat              tgChat             `json:"chat"`
 	Text              string             `json:"text"`
+	Document          *document          `json:"document"`
 	SuccessfulPayment *successfulPayment `json:"successful_payment"`
 	RefundedPayment   *refundedPayment   `json:"refunded_payment"`
 }
@@ -148,9 +157,14 @@ type update struct {
 }
 
 type button struct {
-	Text         string `json:"text"`
-	URL          string `json:"url,omitempty"`
-	CallbackData string `json:"callback_data,omitempty"`
+	Text         string  `json:"text"`
+	URL          string  `json:"url,omitempty"`
+	CallbackData string  `json:"callback_data,omitempty"`
+	WebApp       *webApp `json:"web_app,omitempty"`
+}
+
+type webApp struct {
+	URL string `json:"url"`
 }
 
 type keyboard struct {
@@ -252,8 +266,59 @@ type botCommand struct {
 	Description string `json:"description"`
 }
 
-func (t *telegram) setMyCommands(ctx context.Context, cmds []botCommand) error {
-	return t.call(ctx, "setMyCommands", map[string]any{"commands": cmds}, nil)
+// setMyCommands registers the command menu; lang "" is the default for
+// every language without its own list.
+func (t *telegram) setMyCommands(ctx context.Context, cmds []botCommand, lang string) error {
+	params := map[string]any{"commands": cmds}
+	if lang != "" {
+		params["language_code"] = lang
+	}
+	return t.call(ctx, "setMyCommands", params, nil)
+}
+
+// setMenuButton makes the button beside the input field open the Mini App.
+func (t *telegram) setMenuButton(ctx context.Context, text, appURL string) error {
+	return t.call(ctx, "setChatMenuButton", map[string]any{
+		"menu_button": map[string]any{"type": "web_app", "text": text, "web_app": webApp{URL: appURL}},
+	}, nil)
+}
+
+// maxDownload bounds files the bot downloads: batch lists, never media.
+const maxDownload = 1 << 20
+
+// download fetches a file a user sent, up to maxDownload bytes.
+func (t *telegram) download(ctx context.Context, fileID string) ([]byte, error) {
+	var f struct {
+		FilePath string `json:"file_path"`
+		FileSize int64  `json:"file_size"`
+	}
+	if err := t.call(ctx, "getFile", map[string]any{"file_id": fileID}, &f); err != nil {
+		return nil, err
+	}
+	if f.FileSize > maxDownload {
+		return nil, fmt.Errorf("file too large")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		fmt.Sprintf("%s/file/bot%s/%s", t.base, t.token, f.FilePath), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := t.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("telegram download: %s", strings.ReplaceAll(err.Error(), t.token, "<token>"))
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("telegram download: %d", resp.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxDownload+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(data) > maxDownload {
+		return nil, fmt.Errorf("file too large")
+	}
+	return data, nil
 }
 
 // sendDocument uploads a file as multipart form data.

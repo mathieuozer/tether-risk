@@ -103,15 +103,14 @@ func (b *bot) handlePayment(ctx context.Context, m tron.Movement, open []billing
 	if pl, ok := b.billing.Plan(inv.Plan); ok {
 		plan = pl.Name
 	}
-	b.say(ctx, inv.UserID, fmt.Sprintf("Payment received: %s USDT. Your %s plan is active until %s. Thank you!\n\nUSDT periods do not renew by themselves; /plans extends at any time without losing days.",
-		billing.FormatUSDT(p.Amount), plan, date(until)))
+	b.say(ctx, inv.UserID, t(b.langOf(ctx, inv.UserID), "usdt_received", billing.FormatUSDT(p.Amount), plan, date(until)))
 	b.notifyAdmins(ctx, fmt.Sprintf("💵 %s USDT from user %d for %s\ntx %s", billing.FormatUSDT(p.Amount), inv.UserID, plan, p.Tx))
 	return nil
 }
 
 // report asks the API for the one-page PDF report.
-func (b *bot) report(ctx context.Context, address string) ([]byte, error) {
-	body, err := json.Marshal(map[string]string{"chain": b.chainID, "address": address})
+func (b *bot) report(ctx context.Context, chain, address string) ([]byte, error) {
+	body, err := json.Marshal(map[string]string{"chain": chain, "address": address})
 	if err != nil {
 		return nil, err
 	}

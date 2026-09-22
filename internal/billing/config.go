@@ -34,6 +34,9 @@ type Plan struct {
 	DailyScreens int    `yaml:"daily_screens"`
 	Details      bool   `yaml:"details"`
 	PDF          bool   `yaml:"pdf"`
+	Watches      int    `yaml:"watches"`
+	Batch        int    `yaml:"batch"`
+	API          bool   `yaml:"api"`
 	PriceStars   int    `yaml:"price_stars"`
 	PriceUSDT    string `yaml:"price_usdt"`
 
@@ -58,6 +61,10 @@ type Config struct {
 		Poll       time.Duration `yaml:"poll"`
 	} `yaml:"usdt"`
 	PeriodDays int `yaml:"period_days"`
+	Monitor    struct {
+		Interval time.Duration `yaml:"interval"`
+		PerPass  int           `yaml:"per_pass"`
+	} `yaml:"monitor"`
 
 	byID map[string]*Plan
 }
@@ -95,6 +102,9 @@ func (c *Config) init() error {
 		if p.DailyScreens < 1 {
 			return fmt.Errorf("plan %s: daily_screens must be at least 1", p.ID)
 		}
+		if p.Watches < 0 || p.Batch < 0 {
+			return fmt.Errorf("plan %s: watches and batch must not be negative", p.ID)
+		}
 		if p.PriceStars < 1 || p.PriceStars > StarsMaxSubscription {
 			return fmt.Errorf("plan %s: price_stars must be 1-%d, got %d", p.ID, StarsMaxSubscription, p.PriceStars)
 		}
@@ -123,6 +133,9 @@ func (c *Config) init() error {
 	}
 	if c.PeriodDays < 1 {
 		return fmt.Errorf("period_days must be at least 1")
+	}
+	if c.Monitor.Interval < time.Hour || c.Monitor.PerPass < 1 {
+		return fmt.Errorf("monitor: interval must be at least 1h and per_pass at least 1")
 	}
 	return nil
 }

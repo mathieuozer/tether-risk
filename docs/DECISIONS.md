@@ -849,3 +849,74 @@ the current period ends continues from its end; no days are lost.
 outgrow first. TronGrid's and Binance's terms for commercial use were not
 read. Selling AML screening can be regulated in some jurisdictions; the
 disclaimer helps but is not legal advice.
+
+## D27 — the product: Mini App, watches, batch, API keys, Turkish
+
+**Date:** 2026-09-22 · **Status:** active · **Follows:** D26 · **Supersedes:** SPEC.md §1 non-goal "No continuous monitoring or alerting in v1"
+
+The owner asked for the product side to be taken seriously and built out in
+full. D26 made the bot sellable. This makes it something customers keep
+paying for.
+
+**One gate for every channel.** The chat, the Mini App, the public API and
+batch files all screen through one function, `gate` in `cmd/bot/gate.go`. It
+checks the address and chain, the plan, the feature and the daily limit,
+runs the screen, refunds it if it fails, and records it in
+`screen_history`. A channel that bypassed it would bypass billing. The
+screening itself is still the internal API's, unchanged; SPEC.md §8's "the
+bot holds no logic of its own" holds for everything that decides risk.
+
+**Mini App.** It is served by the bot process at `/app/` from files embedded
+in the binary, and authenticated with Telegram's signed `initData`: an
+HMAC-SHA256 keyed from the bot token, rejected after 24 hours. It covers
+screening with charts, history, watches, the account with both payment
+methods, batch, API keys and language (docs/APP_API.md). It lives in the bot
+process because the bot already holds the token, the database and the
+payment state. A separate service would have to duplicate or proxy all
+three. It needs a public HTTPS URL (`APP_URL`); `APP_ADDR` stays on
+localhost behind a tunnel.
+
+**Watches (reverses a SPEC.md non-goal).** Customers watch addresses: Basic
+3, Pro 25, Business 200. Every 6 hours the monitor rescreens each one
+through the internal API and alerts in Telegram when risk worsens: a higher
+band, a new high-risk category, or a direct listing. The first check sets a
+baseline and never alerts. Improvements are not alerts. Rescreens count
+against the watch allowance, not daily screens. Every rescreen spends
+TronGrid budget, so the interval and `per_pass` are config. At 200 watches a
+pass that is a few hundred requests every 6 hours.
+
+**Batch.** Pro and Business upload a .txt or .csv file, or paste a list in
+the app. Each address uses one daily screen. The bot checks the plan's batch
+size and today's remaining screens up front, rather than failing halfway
+through. Results come back as a CSV in the chat.
+
+**Business plan and API keys.** A third plan (2,000 screens a day, API
+access) at 199 USDT, or the Stars ceiling of 10,000 Stars. Keys are 192
+random bits, shown once, and stored as SHA-256. A slow password hash would
+add latency to every request and nothing else, because the key is not
+guessable. Each key is limited to 5 requests a second. The public API is the
+same gate, so a key cannot exceed its owner's plan.
+
+**Turkish.** The bot, the connections report, the PDF caption, the Mini App
+and the terms exist in English and Turkish. A user's language is their
+`/language` choice, else their Telegram client's. It is stored, so alerts
+and payment messages sent unprompted use it too. The report's category
+names and wording are the reference, and the app uses the same. Tests keep
+every catalogue complete, with matching format verbs.
+
+**Chains.** Addresses are recognised by shape: T… for TRON, 0x… for EVM,
+with an optional `bsc`/`eth` prefix. An address on a chain not enabled yet
+is refused by name ("Ethereum is not available yet"), not treated as a typo.
+Ethereum and BSC need only an Alchemy key (docs/ALCHEMY.md).
+
+**Verified.** Tests use a fake Telegram, a fake TronGrid, a fake screening
+API and a real Postgres. They cover initData forgery and expiry, the app and
+API endpoints, watch limits and alerts, batch parsing and delivery, key
+revocation and rate limits, chain parsing, and Turkish answers. Breaking the
+signature check, the alert comparison and the rate limit each made a test
+fail. The real Mini App was driven in headless Chrome against the real
+backend and a real screen, in both themes.
+
+**Not solved here.** A public HTTPS URL for the app (a Cloudflare tunnel on
+this Mac to start). Hosting off this Mac. Legal review of both terms files.
+Behavioural flags such as "in = out within days" are not scored yet.

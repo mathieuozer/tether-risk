@@ -37,6 +37,11 @@ type fakeTelegram struct {
 }
 
 func (f *fakeTelegram) handler(w http.ResponseWriter, r *http.Request) {
+	if strings.Contains(r.URL.Path, "/file/") {
+		// A batch file: two valid addresses, one repeated, one invalid.
+		w.Write([]byte(addrA + "\n" + addrA + "\n" + payAddr + "\nnot-an-address\n"))
+		return
+	}
 	method := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
 	params := map[string]any{}
 	if strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
@@ -57,8 +62,11 @@ func (f *fakeTelegram) handler(w http.ResponseWriter, r *http.Request) {
 	f.mu.Unlock()
 
 	var result any = true
-	if method == "createInvoiceLink" {
+	switch method {
+	case "createInvoiceLink":
 		result = "https://t.me/$invoice-" + fmt.Sprint(params["payload"])
+	case "getFile":
+		result = map[string]any{"file_path": "docs/batch.txt", "file_size": 100}
 	}
 	json.NewEncoder(w).Encode(map[string]any{"ok": true, "result": result})
 }
@@ -98,12 +106,23 @@ type harness struct {
 	tg    *fakeTelegram
 	clock time.Time
 	tron  *string // body the fake TronGrid returns
+
+	mu     sync.Mutex
+	result map[string]any // fields the fake screening API returns
+}
+
+// setResult changes what the fake screening API returns.
+func (h *harness) setResult(fields map[string]any) {
+	h.mu.Lock()
+	h.result = fields
+	h.mu.Unlock()
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
 	pg := storetest.Postgres(t, "tether_risk_bot_test")
-	for _, tbl := range []string{"usage_daily", "subscriptions", "usdt_invoices", "usdt_unmatched", "usdt_watch", "bot_users"} {
+	for _, tbl := range []string{"usage_daily", "subscriptions", "usdt_invoices", "usdt_unmatched", "usdt_watch",
+		"screen_history", "watches", "api_keys", "bot_users"} {
 		if _, err := pg.Exec("TRUNCATE TABLE " + tbl + " CASCADE"); err != nil {
 			t.Fatal(err)
 		}
@@ -117,15 +136,24 @@ func newHarness(t *testing.T) *harness {
 	tgSrv := httptest.NewServer(http.HandlerFunc(tg.handler))
 	t.Cleanup(tgSrv.Close)
 
+	h := &harness{tg: tg, clock: time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC), result: map[string]any{
+		"score": 15.0, "band": "low", "coverage": 0.99,
+	}}
 	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/report" {
 			w.Header().Set("Content-Type", "application/pdf")
 			w.Write([]byte("%PDF-1.4 fake"))
 			return
 		}
-		json.NewEncoder(w).Encode(map[string]any{
-			"address": addrA, "chain": "tron", "score": 15, "band": "low", "coverage": 0.99,
-		})
+		var req map[string]string
+		json.NewDecoder(r.Body).Decode(&req)
+		h.mu.Lock()
+		out := map[string]any{"address": req["address"], "chain": req["chain"]}
+		for k, v := range h.result {
+			out[k] = v
+		}
+		h.mu.Unlock()
+		json.NewEncoder(w).Encode(out)
 	}))
 	t.Cleanup(apiSrv.Close)
 
@@ -135,7 +163,7 @@ func newHarness(t *testing.T) *harness {
 	}))
 	t.Cleanup(tronSrv.Close)
 
-	h := &harness{tg: tg, clock: time.Date(2026, 9, 22, 12, 0, 0, 0, time.UTC), tron: &tronBody}
+	h.tron = &tronBody
 	h.b = &bot{
 		tg:        newTelegram(tgSrv.URL, "TEST:TOKEN"),
 		apiURL:    apiSrv.URL,
@@ -146,13 +174,19 @@ func newHarness(t *testing.T) *harness {
 		store:     billing.NewStore(pg, cfg),
 		admins:    map[int64]bool{adminID: true},
 		support:   "@support",
-		terms:     "TERMS @support",
+		terms:     map[string]string{langEN: "TERMS @support", langTR: "KOŞULLAR @support"},
 		usdtAddr:  payAddr,
 		tron:      tron.NewClient(tron.Options{BaseURL: tronSrv.URL, RequestsPerSecond: 1000}),
 		screening: make(chan struct{}, 2),
 		busy:      map[int64]bool{},
 		links:     map[string]string{},
 		now:       func() time.Time { return h.clock },
+
+		chains:      []chainInfo{{ID: "tron", Name: "Tron", Enabled: true}, {ID: "ethereum", Name: "Ethereum"}},
+		appURL:      "https://risk.example.com/app/",
+		monitorWake: make(chan struct{}, 1),
+		root:        context.Background(),
+		limiter:     &keyLimiter{},
 	}
 	return h
 }
@@ -199,7 +233,7 @@ func TestNewUserGetsTrialAndScreens(t *testing.T) {
 func TestInvalidAddressCostsNothing(t *testing.T) {
 	h := newHarness(t)
 	h.text(2, "hello there")
-	if !contains(h.tg.sent(2), "does not look like a TRON address") {
+	if !contains(h.tg.sent(2), "does not look like a blockchain address") {
 		t.Errorf("got %q", h.tg.sent(2))
 	}
 	if used, _ := h.b.store.Used(context.Background(), 2, h.clock); used != 0 {

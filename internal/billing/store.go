@@ -22,20 +22,23 @@ type User struct {
 	ID             int64
 	Username       string
 	FirstName      string
+	ClientLang     string // Telegram language_code, as sent
+	Lang           string // chosen with /language; "" to follow the client
 	TrialStartedAt *time.Time
 }
 
 // Touch records that a user was seen, creating them on first contact.
 func (s *Store) Touch(ctx context.Context, u User) (User, error) {
 	err := s.pg.QueryRowContext(ctx, `
-		INSERT INTO bot_users (user_id, username, first_name)
-		VALUES ($1, NULLIF($2, ''), NULLIF($3, ''))
+		INSERT INTO bot_users (user_id, username, first_name, client_lang)
+		VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), NULLIF($4, ''))
 		ON CONFLICT (user_id) DO UPDATE SET
 			username     = COALESCE(EXCLUDED.username, bot_users.username),
 			first_name   = COALESCE(EXCLUDED.first_name, bot_users.first_name),
+			client_lang  = COALESCE(EXCLUDED.client_lang, bot_users.client_lang),
 			last_seen_at = now()
-		RETURNING trial_started_at`,
-		u.ID, u.Username, u.FirstName).Scan(&u.TrialStartedAt)
+		RETURNING trial_started_at, COALESCE(lang, ''), COALESCE(client_lang, '')`,
+		u.ID, u.Username, u.FirstName, u.ClientLang).Scan(&u.TrialStartedAt, &u.Lang, &u.ClientLang)
 	if err != nil {
 		return u, fmt.Errorf("touch user %d: %w", u.ID, err)
 	}

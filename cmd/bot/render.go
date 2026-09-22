@@ -113,40 +113,42 @@ type direction struct {
 	} `json:"traversal"`
 }
 
-func (b *bot) screen(ctx context.Context, address string) (*screenResponse, error) {
-	body, err := json.Marshal(map[string]string{"chain": b.chainID, "address": address})
+// screen runs a screen through the internal API. It returns the decoded
+// result and the raw JSON, which the app passes through unchanged.
+func (b *bot) screen(ctx context.Context, chain, address string) (*screenResponse, []byte, error) {
+	body, err := json.Marshal(map[string]string{"chain": chain, "address": address})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, b.apiURL+"/v1/screen", bytes.NewReader(body))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := b.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("screening service unreachable: %w", err)
+		return nil, nil, fmt.Errorf("screening service unreachable: %w", err)
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	var out screenResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("unexpected response from the screening service: %w", err)
+		return nil, nil, fmt.Errorf("unexpected response from the screening service: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		if out.Detail != "" {
-			return nil, fmt.Errorf("%s", out.Detail)
+			return nil, nil, fmt.Errorf("%s", out.Detail)
 		}
-		return nil, fmt.Errorf("screening failed (%d)", resp.StatusCode)
+		return nil, nil, fmt.Errorf("screening failed (%d)", resp.StatusCode)
 	}
-	return &out, nil
+	return &out, raw, nil
 }
 
 func format(r *screenResponse) string {
@@ -186,9 +188,10 @@ func format(r *screenResponse) string {
 	return b.String()
 }
 
-// summary renders the compact connections list.
-func summary(r *screenResponse) string {
+// summary renders the compact connections list in the user's language.
+func summary(r *screenResponse, lang string) string {
 	in := report.ConnectionsInput{
+		Lang:              lang,
 		Address:           r.Address,
 		Chain:             r.Chain,
 		Score:             r.Score,

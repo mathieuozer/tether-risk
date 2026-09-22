@@ -42,6 +42,7 @@ func TestConfigRejectsBadPrices(t *testing.T) {
 	} {
 		c := Config{Plans: []Plan{tc.plan}, PeriodDays: 30}
 		c.USDT.InvoiceTTL, c.USDT.Poll = time.Hour, time.Minute
+		c.Monitor.Interval, c.Monitor.PerPass = time.Hour, 1
 		if err := c.init(); err == nil {
 			t.Errorf("%s: accepted", tc.name)
 		}

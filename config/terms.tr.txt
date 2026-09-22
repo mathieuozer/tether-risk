@@ -1,0 +1,29 @@
+KULLANIM KOŞULLARI
+
+ŞABLON: Ödeme almaya başlamadan önce satış yaptığınız ülkeler için bir avukata inceletin. {support} yerine BILLING_SUPPORT_CONTACT yazılır. Hukuki bağlayıcılık açısından İngilizce metin (/terms, İngilizce dil seçiliyken) esastır.
+
+1. Hizmet
+Bu bot, açık veriler kullanarak blokzincir adreslerini tarar ve fonlarının hangi tür kuruluşlarla bağlantılı olduğunu raporlar. Bu otomatik bir ön taramadır. Düzenlenmiş bir kara para aklamayla mücadele (AML) kararı değildir; hukuki, mali veya uyum danışmanlığı değildir ve herhangi bir karar için tek dayanak olarak kullanılmamalıdır. Sonuçlar bir kapsam oranı gösterir: atanamayan değer bilinmiyordur, temiz değildir.
+
+2. Garanti yoktur
+Sonuçlar eksik, güncel olmayan veya hatalı olabilen açık verilere dayanır. Hizmet olduğu gibi sunulur; doğruluk, eksiksizlik veya erişilebilirlik garantisi verilmez. Taramanın işleyişini her zaman değiştirebiliriz.
+
+3. Planlar ve ödeme
+Planlar, fiyatlar ve günlük sınırlar /plans altında gösterilir. Telegram Stars abonelikleri /cancel ile veya Telegram ayarlarından iptal edilene kadar 30 günde bir yenilenir; iptal gelecekteki ödemeleri durdurur, erişim ödenmiş dönemin sonuna kadar sürer. USDT ödemeleri tek bir dönem satın alır ve yenilenmez. Günlük sınırlar 00:00 UTC'de sıfırlanır.
+
+4. İadeler
+Stars ödemeleri, örneğin hizmet ödenmiş bir dönemin önemli bir bölümünde kullanılamadıysa, takdirimize bağlı olarak Telegram üzerinden iade edilebilir; iade, ödediği dönemi sona erdirir. USDT ödemeleri, bizim tarafımızdaki bir hata nedeniyle alınıp tanımlanmadığı durumlar dışında iade edilmez. Yanlış ağa, yanlış tutarla veya fatura süresi dolduktan sonra gönderilen USDT kurtarılamayabilir; destekle iletişime geçin.
+
+5. Kabul edilebilir kullanım
+Erişimi yeniden satmayın, hesabınızı paylaşmayın, planınızın ötesinde otomatik istek göndermeyin ve hizmeti hukuka aykırı amaçlarla kullanmayın. Bu koşulları ihlal eden erişimi, mevcut dönemin iadesi olmaksızın askıya alabiliriz.
+
+6. Veriler
+Hizmeti sunmak ve destek taleplerini yanıtlamak için Telegram kullanıcı kimliğinizi, kullanıcı adınızı, taradığınız ve izlediğiniz adresleri, ödemelerinizi ve günlük kullanımınızı saklarız. Bu verileri satmayız.
+
+7. Sorumluluk
+Yasaların izin verdiği ölçüde toplam sorumluluğumuz, talepten önceki 30 gün içinde ödediğiniz tutarla sınırlıdır.
+
+8. Değişiklikler
+Bu koşulları veya planları değiştirebiliriz. Fiyat değişiklikleri bir sonraki yenilemenizden itibaren geçerli olur.
+
+Destek ve ödeme soruları: {support}  (veya /support ve /paysupport)

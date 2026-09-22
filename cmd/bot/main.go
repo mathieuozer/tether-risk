@@ -14,6 +14,9 @@
 //	BILLING_SUPPORT_CONTACT  where customers get help, e.g. @yourname or an email
 //	BILLING_USDT_ADDRESS     TRON address receiving USDT; unset disables USDT
 //	TRONGRID_API_KEY         used to watch the USDT address
+//	APP_ADDR                 where the Mini App and public API listen (default 127.0.0.1:8098)
+//	APP_URL                  the public HTTPS URL of the Mini App, e.g. https://risk.example.com/app/;
+//	                         unset hides the app button (the server still runs)
 package main
 
 import (
@@ -78,13 +81,31 @@ func run(apiURL, chainID, configDir, tgBase string, concurrency int, log *slog.L
 	if err != nil {
 		return err
 	}
-	terms, err := os.ReadFile(filepath.Join(configDir, "terms.txt"))
-	if err != nil {
-		return fmt.Errorf("read terms: %w", err)
+	terms := map[string]string{}
+	for lang, file := range map[string]string{langEN: "terms.txt", langTR: "terms.tr.txt"} {
+		raw, err := os.ReadFile(filepath.Join(configDir, file))
+		if err != nil {
+			return fmt.Errorf("read terms: %w", err)
+		}
+		terms[lang] = strings.ReplaceAll(string(raw), "{support}", support)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	cfg, err := config.Load(configDir)
+	if err != nil {
+		return err
+	}
+	appURL := strings.TrimSpace(os.Getenv("APP_URL"))
+	if appURL != "" && !strings.HasPrefix(appURL, "https://") {
+		// Telegram opens Mini Apps over HTTPS only.
+		return fmt.Errorf("APP_URL must be an https:// URL, got %q", appURL)
+	}
+	appAddr := os.Getenv("APP_ADDR")
+	if appAddr == "" {
+		appAddr = "127.0.0.1:8098"
+	}
 
 	pg, err := store.OpenPostgres(ctx)
 	if err != nil {
@@ -106,21 +127,23 @@ func run(apiURL, chainID, configDir, tgBase string, concurrency int, log *slog.L
 		store:     billing.NewStore(pg, bcfg),
 		admins:    admins,
 		support:   support,
-		terms:     strings.ReplaceAll(string(terms), "{support}", support),
+		terms:     terms,
 		usdtAddr:  strings.TrimSpace(os.Getenv("BILLING_USDT_ADDRESS")),
 		screening: make(chan struct{}, max(concurrency, 1)),
 		busy:      map[int64]bool{},
 		links:     map[string]string{},
 		now:       time.Now,
+
+		chains:      loadChains(cfg),
+		appURL:      appURL,
+		monitorWake: make(chan struct{}, 1),
+		root:        ctx,
+		limiter:     &keyLimiter{},
 	}
 
 	if b.usdtAddr != "" {
 		if !tron.IsValid(b.usdtAddr) {
 			return fmt.Errorf("BILLING_USDT_ADDRESS %q is not a valid TRON address", b.usdtAddr)
-		}
-		cfg, err := config.Load(configDir)
-		if err != nil {
-			return err
 		}
 		chainCfg, ok := cfg.Chain("tron")
 		if !ok {
@@ -134,14 +157,28 @@ func run(apiURL, chainID, configDir, tgBase string, concurrency int, log *slog.L
 		log.Warn("BILLING_USDT_ADDRESS is not set: USDT payments are disabled, Stars only")
 	}
 
-	if err := b.tg.setMyCommands(ctx, publicCommands); err != nil {
-		log.Warn("could not register the command menu", "error", err)
+	for lang, cmds := range publicCommands {
+		code := lang
+		if lang == langEN {
+			code = "" // the default for every other language
+		}
+		if err := b.tg.setMyCommands(ctx, cmds, code); err != nil {
+			log.Warn("could not register the command menu", "lang", lang, "error", err)
+		}
+	}
+	if appURL != "" {
+		if err := b.tg.setMenuButton(ctx, "App", appURL); err != nil {
+			log.Warn("could not set the Mini App menu button", "error", err)
+		}
 	}
 
-	log.Info("bot starting", "api", b.apiURL, "chain", chainID, "admins", len(admins),
-		"usdt", b.usdtAddr != "", "plans", len(bcfg.Plans))
+	srv := &http.Server{Addr: appAddr, Handler: b.routes(), ReadHeaderTimeout: 10 * time.Second,
+		WriteTimeout: 4 * time.Minute, IdleTimeout: 2 * time.Minute}
 
-	var wg sync.WaitGroup
+	log.Info("bot starting", "api", b.apiURL, "admins", len(admins), "usdt", b.usdtAddr != "",
+		"plans", len(bcfg.Plans), "app_addr", appAddr, "app_url", appURL != "")
+
+	wg := &b.wg
 	if b.tron != nil {
 		wg.Add(1)
 		go func() {
@@ -149,7 +186,26 @@ func run(apiURL, chainID, configDir, tgBase string, concurrency int, log *slog.L
 			b.watchUSDT(ctx)
 		}()
 	}
-	err = b.poll(ctx, &wg)
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		b.monitor(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("app server failed", "addr", appAddr, "error", err)
+			stop()
+		}
+	}()
+	go func() {
+		<-ctx.Done()
+		shut, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shut)
+	}()
+
+	err = b.poll(ctx, wg)
 	wg.Wait()
 	return err
 }
@@ -166,7 +222,7 @@ type bot struct {
 	store    *billing.Store
 	admins   map[int64]bool
 	support  string
-	terms    string
+	terms    map[string]string // by language
 	usdtAddr string
 	tron     *tron.Client
 
@@ -175,10 +231,17 @@ type bot struct {
 	screening chan struct{}
 
 	mu    sync.Mutex
-	busy  map[int64]bool    // users with a screen in flight
-	links map[string]string // plan -> cached Stars invoice link
+	busy  map[int64]bool    // users with a screen or batch in flight
+	links map[string]string // plan/lang -> cached Stars invoice link
 
 	now func() time.Time
+
+	chains      []chainInfo
+	appURL      string        // public Mini App URL; "" when not exposed
+	monitorWake chan struct{} // nudges the monitor to check new watches now
+	root        context.Context
+	wg          sync.WaitGroup // background work: batches, watchers, server
+	limiter     *keyLimiter
 }
 
 // poll reads updates and handles each on its own goroutine. Handling them in

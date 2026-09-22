@@ -1,0 +1,437 @@
+{
+    "address": "TNwf8VBNCkg7Y1pgyzbHdWdekkamoqcrmL",
+    "chain": "tron",
+    "score": 14.9904,
+    "band": "low",
+    "coverage": 0.999364,
+    "low_confidence": false,
+    "inbound": {
+        "score": 14.9904,
+        "coverage": 0.999364,
+        "categories": [
+            {
+                "category": "unnamed_service",
+                "pct": 99.9358,
+                "weight": 15,
+                "contribution": 14.9904,
+                "path_count": 24
+            },
+            {
+                "category": "dust",
+                "pct": 0.0007,
+                "weight": 5,
+                "contribution": 0,
+                "path_count": 19233
+            }
+        ],
+        "unattributed_pct": 0.0636,
+        "total_traced": 0.41657,
+        "top_paths": [
+            {
+                "explanation": "1 hop(s) to Unidentified high-volume service, categorised unnamed_service, contributing 0.2799 of traced value",
+                "hops": [
+                    "TFTqpcigcD64vsg9W8WsSYJZ5t8PqrTAYX"
+                ],
+                "hop_count": 1,
+                "terminal_address": "TFTqpcigcD64vsg9W8WsSYJZ5t8PqrTAYX",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "contribution": 0.279948
+            },
+            {
+                "explanation": "1 hop(s) to Unidentified high-volume service, categorised unnamed_service, contributing 0.0879 of traced value",
+                "hops": [
+                    "TU4vEruvZwLLkSfV9bNw12EJTPvNr7Pvaa"
+                ],
+                "hop_count": 1,
+                "terminal_address": "TU4vEruvZwLLkSfV9bNw12EJTPvNr7Pvaa",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "contribution": 0.08786
+            },
+            {
+                "explanation": "1 hop(s) to Unidentified high-volume service, categorised unnamed_service, contributing 0.0178 of traced value",
+                "hops": [
+                    "TP3qzx3EShpRd8a5zx8g3qBwBfLjPNyoWV"
+                ],
+                "hop_count": 1,
+                "terminal_address": "TP3qzx3EShpRd8a5zx8g3qBwBfLjPNyoWV",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "contribution": 0.017846
+            },
+            {
+                "explanation": "1 hop(s) to Unidentified high-volume service, categorised unnamed_service, contributing 0.0121 of traced value",
+                "hops": [
+                    "TKa4fJy9qY6B9gxgE5K8MBoPmSMGKRf9HS"
+                ],
+                "hop_count": 1,
+                "terminal_address": "TKa4fJy9qY6B9gxgE5K8MBoPmSMGKRf9HS",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "contribution": 0.012126
+            },
+            {
+                "explanation": "1 hop(s) to Unidentified high-volume service, categorised unnamed_service, contributing 0.0036 of traced value",
+                "hops": [
+                    "TCEEJKaAT4mF3AsjqwUUHmHvosq67x3FTz"
+                ],
+                "hop_count": 1,
+                "terminal_address": "TCEEJKaAT4mF3AsjqwUUHmHvosq67x3FTz",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "contribution": 0.003631
+            },
+            {
+                "explanation": "2 hop(s) to Unidentified high-volume service, categorised unnamed_service, contributing 0.0033 of traced value",
+                "hops": [
+                    "THUfAPVMgC8ruiegNt5Hzm8WJZdJxA8Uyj",
+                    "TG2CMGxnTPgQ6V58kiKd7wbyN8ewtAmY76"
+                ],
+                "hop_count": 2,
+                "terminal_address": "TG2CMGxnTPgQ6V58kiKd7wbyN8ewtAmY76",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "contribution": 0.003312
+            },
+            {
+                "explanation": "1 hop(s) to Unidentified high-volume service, categorised unnamed_service, contributing 0.0024 of traced value",
+                "hops": [
+                    "TQrY8tryqsYVCYS3MFbtffiPp2ccyn4STm"
+                ],
+                "hop_count": 1,
+                "terminal_address": "TQrY8tryqsYVCYS3MFbtffiPp2ccyn4STm",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "contribution": 0.002447
+            },
+            {
+                "explanation": "3 hop(s) to Unidentified high-volume service, categorised unnamed_service, contributing 0.0019 of traced value",
+                "hops": [
+                    "TGfr78nEiGtYRinXxYs3mRMMEVbhxU97on",
+                    "TUfNiwbvmxoeD7ip3cgPadtMmXahTWcSVb",
+                    "TUpHuDkiCCmwaTZBHZvQdwWzGNm5t8J2b9"
+                ],
+                "hop_count": 3,
+                "terminal_address": "TUpHuDkiCCmwaTZBHZvQdwWzGNm5t8J2b9",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "contribution": 0.001893
+            },
+            {
+                "explanation": "1 hop(s) to Unidentified high-volume service, categorised unnamed_service, contributing 0.0015 of traced value",
+                "hops": [
+                    "TCftg36mxeU8UU3uW4tZJiSmBq2x7WrW99"
+                ],
+                "hop_count": 1,
+                "terminal_address": "TCftg36mxeU8UU3uW4tZJiSmBq2x7WrW99",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "contribution": 0.001543
+            },
+            {
+                "explanation": "1 hop(s) to Unidentified high-volume service, categorised unnamed_service, contributing 0.0012 of traced value",
+                "hops": [
+                    "TLNpkPaeDHvvTRWhzMDBBkfUFQ9QdA52SW"
+                ],
+                "hop_count": 1,
+                "terminal_address": "TLNpkPaeDHvvTRWhzMDBBkfUFQ9QdA52SW",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "contribution": 0.001216
+            }
+        ],
+        "connections": [
+            {
+                "address": "TFTqpcigcD64vsg9W8WsSYJZ5t8PqrTAYX",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "confidence": 0.75,
+                "pct": 67.2031,
+                "min_hops": 1,
+                "paths": 1,
+                "profile": {
+                    "volume_usd": 43977446.07,
+                    "transfers": 10000,
+                    "counterparties": 6402,
+                    "first_seen": "2026-09-04",
+                    "last_seen": "2026-09-21",
+                    "assets": [
+                        "USDT"
+                    ],
+                    "partial": true
+                }
+            },
+            {
+                "address": "TU4vEruvZwLLkSfV9bNw12EJTPvNr7Pvaa",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "confidence": 0.75,
+                "pct": 21.255,
+                "min_hops": 1,
+                "paths": 4,
+                "profile": {
+                    "volume_usd": 578074674.38,
+                    "transfers": 31175,
+                    "counterparties": 9033,
+                    "first_seen": "2021-12-20",
+                    "last_seen": "2026-09-22",
+                    "assets": [
+                        "TRX",
+                        "USDT"
+                    ],
+                    "partial": true
+                }
+            },
+            {
+                "address": "TP3qzx3EShpRd8a5zx8g3qBwBfLjPNyoWV",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "confidence": 0.75,
+                "pct": 4.2841,
+                "min_hops": 1,
+                "paths": 1,
+                "profile": {
+                    "volume_usd": 32340413.83,
+                    "transfers": 10015,
+                    "counterparties": 4191,
+                    "first_seen": "2023-03-24",
+                    "last_seen": "2026-09-21",
+                    "assets": [
+                        "USDT"
+                    ],
+                    "partial": true
+                }
+            },
+            {
+                "address": "TKa4fJy9qY6B9gxgE5K8MBoPmSMGKRf9HS",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "confidence": 0.75,
+                "pct": 2.9109,
+                "min_hops": 1,
+                "paths": 1,
+                "profile": {
+                    "volume_usd": 4257995.53,
+                    "transfers": 10002,
+                    "counterparties": 8571,
+                    "first_seen": "2026-08-28",
+                    "last_seen": "2026-09-21",
+                    "assets": [
+                        "USDT"
+                    ],
+                    "partial": true
+                }
+            },
+            {
+                "address": "TCEEJKaAT4mF3AsjqwUUHmHvosq67x3FTz",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "confidence": 0.75,
+                "pct": 0.8715,
+                "min_hops": 1,
+                "paths": 1,
+                "profile": {
+                    "volume_usd": 26267871.39,
+                    "transfers": 10017,
+                    "counterparties": 7906,
+                    "first_seen": "2026-04-24",
+                    "last_seen": "2026-09-21",
+                    "assets": [
+                        "USDT"
+                    ],
+                    "partial": true
+                }
+            },
+            {
+                "address": "TG2CMGxnTPgQ6V58kiKd7wbyN8ewtAmY76",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "confidence": 0.75,
+                "pct": 0.8298,
+                "min_hops": 2,
+                "paths": 2,
+                "profile": {
+                    "volume_usd": 872051102.78,
+                    "transfers": 10610,
+                    "counterparties": 5552,
+                    "first_seen": "2025-09-26",
+                    "last_seen": "2026-09-21",
+                    "assets": [
+                        "TRX",
+                        "USDD",
+                        "USDT"
+                    ],
+                    "partial": true
+                }
+            },
+            {
+                "address": "TQrY8tryqsYVCYS3MFbtffiPp2ccyn4STm",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "confidence": 0.75,
+                "pct": 0.5874,
+                "min_hops": 1,
+                "paths": 1,
+                "profile": {
+                    "volume_usd": 2816648190.5,
+                    "transfers": 18000,
+                    "counterparties": 9530,
+                    "first_seen": "2021-11-02",
+                    "last_seen": "2026-09-21",
+                    "assets": [
+                        "TRX",
+                        "USDT"
+                    ],
+                    "partial": true
+                }
+            },
+            {
+                "address": "TUpHuDkiCCmwaTZBHZvQdwWzGNm5t8J2b9",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "confidence": 0.75,
+                "pct": 0.4545,
+                "min_hops": 3,
+                "paths": 1,
+                "profile": {
+                    "volume_usd": 226062264.45,
+                    "transfers": 13299,
+                    "counterparties": 8256,
+                    "first_seen": "2022-01-27",
+                    "last_seen": "2026-09-21",
+                    "assets": [
+                        "TRX",
+                        "TUSD",
+                        "USDD",
+                        "USDT"
+                    ],
+                    "partial": true
+                }
+            },
+            {
+                "address": "TCftg36mxeU8UU3uW4tZJiSmBq2x7WrW99",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "confidence": 0.75,
+                "pct": 0.3704,
+                "min_hops": 1,
+                "paths": 1,
+                "profile": {
+                    "volume_usd": 14937437.27,
+                    "transfers": 3739,
+                    "counterparties": 1924,
+                    "first_seen": "2026-08-31",
+                    "last_seen": "2026-09-21",
+                    "assets": [
+                        "TRX",
+                        "USDT"
+                    ],
+                    "partial": false
+                }
+            },
+            {
+                "address": "TLNpkPaeDHvvTRWhzMDBBkfUFQ9QdA52SW",
+                "entity": "Unidentified high-volume service",
+                "category": "unnamed_service",
+                "source": "derived:service",
+                "confidence": 0.75,
+                "pct": 0.292,
+                "min_hops": 1,
+                "paths": 1,
+                "profile": {
+                    "volume_usd": 4208251.1,
+                    "transfers": 10002,
+                    "counterparties": 4467,
+                    "first_seen": "2026-09-06",
+                    "last_seen": "2026-09-21",
+                    "assets": [
+                        "USDT"
+                    ],
+                    "partial": true
+                }
+            }
+        ],
+        "unattributed_reasons": [
+            {
+                "reason": "hop_limit",
+                "pct": 0.0636,
+                "paths": 1
+            }
+        ],
+        "traversal": {
+            "nodes_visited": 68,
+            "fanout_capped": false,
+            "hop_limit_reached": true
+        }
+    },
+    "outbound": {
+        "score": 0,
+        "coverage": 0,
+        "categories": [],
+        "unattributed_pct": 0,
+        "total_traced": 0,
+        "top_paths": [],
+        "connections": [],
+        "unattributed_reasons": [],
+        "traversal": {
+            "nodes_visited": 1,
+            "fanout_capped": false,
+            "hop_limit_reached": false
+        }
+    },
+    "activity": {
+        "in_usd": 19556.1,
+        "out_usd": 0,
+        "in_transfers": 39,
+        "out_transfers": 0,
+        "in_counterparties": 31,
+        "out_counterparties": 0,
+        "first_seen": "2026-08-13",
+        "last_seen": "2026-09-19",
+        "assets": [
+            {
+                "asset": "USDT",
+                "in_usd": 19556.1,
+                "out_usd": 0,
+                "transfers": 39
+            }
+        ],
+        "unpriced_transfers": 0,
+        "unpriced_tokens": 0
+    },
+    "depth": {
+        "fetched": false,
+        "still_fetching": false,
+        "frontier_pending": 0,
+        "frontier_queued": 0,
+        "frontier_ended": 0,
+        "history_truncated": false,
+        "counterparties": 31,
+        "traced": 31,
+        "total_counterparties": 31,
+        "complete": true
+    },
+    "label_snapshot_id": 15,
+    "config_version": "b1392ff9358a60b6",
+    "disclaimer": "Automated triage and pre-screening built on open data. This is not a regulated AML determination and must not be used as one."
+}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand/v2"
 	"strconv"
@@ -9,20 +10,41 @@ import (
 	"time"
 
 	"github.com/mozer/tether-risk/internal/billing"
-	"github.com/mozer/tether-risk/internal/chain/tron"
 )
 
-// publicCommands is the menu Telegram shows next to the input field.
-var publicCommands = []botCommand{
-	{"plans", "Plans and prices, subscribe"},
-	{"status", "Your plan, renewal and today's usage"},
-	{"details", "Full breakdown: /details <address> (Pro)"},
-	{"pdf", "One-page PDF report: /pdf <address> (Pro)"},
-	{"cancel", "Stop automatic renewal"},
-	{"help", "How to use this bot"},
-	{"terms", "Terms of service"},
-	{"support", "Contact support"},
-	{"paysupport", "Help with a payment"},
+// publicCommands is the menu Telegram shows next to the input field, per
+// language.
+var publicCommands = map[string][]botCommand{
+	langEN: {
+		{"app", "Open the app"},
+		{"plans", "Plans and prices, subscribe"},
+		{"status", "Your plan, renewal and today's usage"},
+		{"watches", "Addresses you watch for risk changes"},
+		{"history", "Your recent screens"},
+		{"details", "Full breakdown: /details <address> (Pro)"},
+		{"pdf", "One-page PDF report: /pdf <address> (Pro)"},
+		{"cancel", "Stop automatic renewal"},
+		{"language", "English / Türkçe"},
+		{"help", "How to use this bot"},
+		{"terms", "Terms of service"},
+		{"support", "Contact support"},
+		{"paysupport", "Help with a payment"},
+	},
+	langTR: {
+		{"app", "Uygulamayı aç"},
+		{"plans", "Planlar ve fiyatlar, abonelik"},
+		{"status", "Planınız, yenileme ve bugünkü kullanım"},
+		{"watches", "Risk değişimi için izlediğiniz adresler"},
+		{"history", "Son taramalarınız"},
+		{"details", "Tam döküm: /details <adres> (Pro)"},
+		{"pdf", "Tek sayfa PDF rapor: /pdf <adres> (Pro)"},
+		{"cancel", "Otomatik yenilemeyi durdur"},
+		{"language", "English / Türkçe"},
+		{"help", "Bot nasıl kullanılır"},
+		{"terms", "Kullanım koşulları"},
+		{"support", "Destek"},
+		{"paysupport", "Ödeme desteği"},
+	},
 }
 
 func (b *bot) dispatch(ctx context.Context, u update) {
@@ -50,6 +72,13 @@ func (b *bot) sayWith(ctx context.Context, chatID int64, text string, kb *keyboa
 	}
 }
 
+// chatCtx is one incoming message's context: who, where, in which language.
+type chatCtx struct {
+	chat int64
+	user billing.User
+	lang string
+}
+
 func (b *bot) message(ctx context.Context, m *message) {
 	if m.From == nil || m.From.IsBot {
 		return
@@ -59,31 +88,26 @@ func (b *bot) message(ctx context.Context, m *message) {
 	if m.Chat.Type != "private" {
 		return
 	}
-	user, err := b.store.Touch(ctx, billing.User{ID: m.From.ID, Username: m.From.Username, FirstName: m.From.FirstName})
+	user, err := b.store.Touch(ctx, billing.User{ID: m.From.ID, Username: m.From.Username,
+		FirstName: m.From.FirstName, ClientLang: m.From.LanguageCode})
 	if err != nil {
 		b.log.Error("touch user", "error", err)
-		b.say(ctx, m.Chat.ID, "Something went wrong on our side. Please try again in a minute.")
+		b.say(ctx, m.Chat.ID, t(normLang("", m.From.LanguageCode), "error_ours"))
 		return
 	}
+	c := chatCtx{chat: m.Chat.ID, user: user, lang: normLang(user.Lang, m.From.LanguageCode)}
 
 	switch {
 	case m.SuccessfulPayment != nil:
-		b.paid(ctx, m)
+		b.paid(ctx, c, m)
 		return
 	case m.RefundedPayment != nil:
-		b.refunded(ctx, m)
+		b.refunded(ctx, c, m)
 		return
 	}
 
-	text := strings.TrimSpace(m.Text)
-	if text == "" {
-		return
-	}
-	cmd, arg := splitCommand(text)
-	chat := m.Chat.ID
-
-	// A first contact of any kind starts the trial, so /start and a pasted
-	// address both work as a first message.
+	// A first contact of any kind starts the trial, so /start, a pasted
+	// address and a batch file all work as a first message.
 	trialStarted := false
 	if billing.TrialDue(b.billing, user.TrialStartedAt) && !b.isAdmin(user.ID) {
 		ok, err := b.store.StartTrial(ctx, user.ID, b.now())
@@ -93,41 +117,70 @@ func (b *bot) message(ctx context.Context, m *message) {
 		trialStarted = ok
 	}
 
+	if m.Document != nil {
+		if trialStarted {
+			b.say(ctx, c.chat, b.trialNotice(c.lang))
+		}
+		b.batchFile(ctx, c, m.Document)
+		return
+	}
+
+	text := strings.TrimSpace(m.Text)
+	if text == "" {
+		return
+	}
+	cmd, arg := splitCommand(text)
+
 	switch cmd {
 	case "/start":
-		b.welcome(ctx, chat, m.From, trialStarted)
+		b.welcome(ctx, c, m.From, trialStarted)
 	case "/help":
-		b.say(ctx, chat, helpText)
+		b.say(ctx, c.chat, t(c.lang, "help"))
+	case "/app":
+		b.openApp(ctx, c)
+	case "/language", "/lang", "/dil":
+		b.sayWith(ctx, c.chat, t(c.lang, "lang_pick"), &keyboard{InlineKeyboard: [][]button{{
+			{Text: "English", CallbackData: "lang:en"}, {Text: "Türkçe", CallbackData: "lang:tr"},
+		}}})
 	case "/plans", "/subscribe", "/upgrade":
-		b.plans(ctx, chat, user.ID)
+		b.plans(ctx, c)
 	case "/status", "/account":
-		b.status(ctx, chat, user.ID)
+		b.status(ctx, c)
 	case "/cancel":
-		b.cancel(ctx, chat, user.ID)
+		b.cancel(ctx, c)
 	case "/terms":
-		b.say(ctx, chat, b.terms)
+		b.say(ctx, c.chat, b.terms[c.lang])
 	case "/support":
-		b.say(ctx, chat, "Support: "+b.support+"\n\nPlease include your user id ("+
-			strconv.FormatInt(user.ID, 10)+") and, for a payment, the date and amount.")
+		b.say(ctx, c.chat, t(c.lang, "support", b.support, user.ID))
 	case "/paysupport":
-		b.paySupport(ctx, chat, user.ID)
+		b.paySupport(ctx, c)
 	case "/details":
-		b.screenCommand(ctx, chat, user.ID, arg, "details")
+		b.screenCommand(ctx, c, arg, kindDetails, "/details")
 	case "/pdf":
-		b.screenCommand(ctx, chat, user.ID, arg, "pdf")
+		b.screenCommand(ctx, c, arg, kindPDF, "/pdf")
+	case "/watch":
+		b.watchCommand(ctx, c, arg)
+	case "/unwatch":
+		b.unwatchCommand(ctx, c, arg)
+	case "/watches":
+		b.watchesCommand(ctx, c)
+	case "/history":
+		b.historyCommand(ctx, c)
+	case "/apikey", "/apikeys":
+		b.apiKeyCommand(ctx, c, arg)
 	case "/grant", "/revoke", "/stats", "/refund", "/user":
 		if !b.isAdmin(user.ID) {
-			b.say(ctx, chat, "Unknown command. Send an address, or /help.")
+			b.say(ctx, c.chat, t(c.lang, "unknown_command"))
 			return
 		}
-		b.admin(ctx, chat, cmd, arg)
+		b.admin(ctx, c.chat, cmd, arg)
 	case "":
 		if trialStarted {
-			b.say(ctx, chat, b.trialNotice())
+			b.say(ctx, c.chat, b.trialNotice(c.lang))
 		}
-		b.screenCommand(ctx, chat, user.ID, strings.Fields(text)[0], "summary")
+		b.screenCommand(ctx, c, text, kindSummary, "")
 	default:
-		b.say(ctx, chat, "Unknown command. Send an address, or /help.")
+		b.say(ctx, c.chat, t(c.lang, "unknown_command"))
 	}
 }
 
@@ -142,137 +195,107 @@ func splitCommand(text string) (string, string) {
 	return strings.ToLower(cmd), strings.TrimSpace(arg)
 }
 
-const helpText = `Address risk screening for TRON.
-
-Send an address and you get a summary of its connections: where its funds came from and went, and the risk categories they touch.
-
-/details <address>  full per-direction breakdown with paths (Pro)
-/pdf <address>      one-page PDF report (Pro)
-/plans              plans and prices
-/status             your plan and today's usage
-/cancel             stop automatic renewal
-/terms  /support  /paysupport
-
-This is automated triage and pre-screening built on open data. It is not a regulated AML determination and must not be used as one.
-
-Always read the coverage figure alongside the score. Low coverage means most traced value could not be attributed to a known entity: unknown, not clean.`
-
-func (b *bot) welcome(ctx context.Context, chat int64, from *tgUser, trialStarted bool) {
+func (b *bot) welcome(ctx context.Context, c chatCtx, from *tgUser, trialStarted bool) {
 	var sb strings.Builder
 	name := from.FirstName
 	if name == "" {
-		name = "there"
+		name = t(c.lang, "there")
 	}
-	fmt.Fprintf(&sb, "Hi %s. Send me a TRON address and I will screen it: where its money came from, where it went, and which risk categories it touches.\n\n", name)
+	sb.WriteString(t(c.lang, "welcome", name))
 	switch {
 	case b.isAdmin(from.ID):
-		sb.WriteString("You are an admin: every feature, no daily limit.\n")
+		sb.WriteString(t(c.lang, "welcome_admin"))
 	case trialStarted:
-		sb.WriteString(b.trialNotice() + "\n")
+		sb.WriteString(b.trialNotice(c.lang) + "\n")
 	}
-	sb.WriteString("\n/plans to subscribe · /help for everything else")
-	b.say(ctx, chat, sb.String())
+	sb.WriteString(t(c.lang, "welcome_footer"))
+	b.sayWith(ctx, c.chat, sb.String(), b.appKeyboard(c.lang))
 }
 
-func (b *bot) trialNotice() string {
+func (b *bot) trialNotice(lang string) string {
 	p, _ := b.billing.Plan(b.billing.Trial.Plan)
-	return fmt.Sprintf("Your free %d-day trial has started: the %s plan, %d screens a day.",
-		b.billing.Trial.Days, p.Name, p.DailyScreens)
+	return t(lang, "trial_started", b.billing.Trial.Days, p.Name, p.DailyScreens)
+}
+
+// appKeyboard is a one-button keyboard opening the Mini App, or nil when no
+// public URL is configured.
+func (b *bot) appKeyboard(lang string) *keyboard {
+	if b.appURL == "" {
+		return nil
+	}
+	return &keyboard{InlineKeyboard: [][]button{{{Text: t(lang, "btn_open_app"), WebApp: &webApp{URL: b.appURL}}}}}
+}
+
+func (b *bot) openApp(ctx context.Context, c chatCtx) {
+	if b.appURL == "" {
+		b.say(ctx, c.chat, t(c.lang, "app_off"))
+		return
+	}
+	b.sayWith(ctx, c.chat, t(c.lang, "app_open"), b.appKeyboard(c.lang))
 }
 
 // --- screening -------------------------------------------------------------
 
-func (b *bot) screenCommand(ctx context.Context, chat, userID int64, address, kind string) {
-	address = strings.TrimSpace(address)
-	if address == "" {
-		b.say(ctx, chat, "Usage: /"+kind+" <address>")
+func (b *bot) screenCommand(ctx context.Context, c chatCtx, arg string, kind screenKind, cmd string) {
+	if strings.TrimSpace(arg) == "" {
+		b.say(ctx, c.chat, t(c.lang, "usage_cmd", cmd))
 		return
 	}
-	// Input hygiene, not a judgement about the address: a typo should not
-	// cost a screen from the daily allowance.
-	if b.chainID == "tron" && !tron.IsValid(address) {
-		b.say(ctx, chat, "That does not look like a TRON address. It should start with T and be 34 characters long.")
-		return
-	}
-
-	now := b.now()
-	limit := 0 // admins: no limit
-	if !b.isAdmin(userID) {
-		acc, err := b.store.Access(ctx, userID, now)
-		if err != nil {
-			b.log.Error("access", "user", userID, "error", err)
-			b.say(ctx, chat, "Something went wrong on our side. Please try again in a minute.")
-			return
-		}
-		if acc.Plan == nil {
-			b.sayWith(ctx, chat, "You have no active plan. Your trial or subscription has ended.\n\nChoose a plan to continue:",
-				b.plansKeyboard(ctx, userID))
-			return
-		}
-		if kind == "details" && !acc.Plan.Details || kind == "pdf" && !acc.Plan.PDF {
-			b.sayWith(ctx, chat, "/"+kind+" is part of a higher plan. Your plan is "+acc.Plan.Name+".",
-				b.plansKeyboard(ctx, userID))
-			return
-		}
-		limit = acc.Plan.DailyScreens
-	}
-
-	if !b.claim(userID) {
-		b.say(ctx, chat, "Your previous screen is still running. I will answer it first.")
-		return
-	}
-	defer b.release(userID)
-
-	used, ok, err := b.store.Consume(ctx, userID, now, limit)
+	// Say something as soon as the screen starts: it can take a minute.
+	out, err := b.gate(ctx, screenRequest{UserID: c.user.ID, Text: arg, Kind: kind, Channel: chanBot,
+		Started: func(_, address string) { b.say(ctx, c.chat, t(c.lang, "screening", address)) }})
 	if err != nil {
-		b.log.Error("consume", "user", userID, "error", err)
-		b.say(ctx, chat, "Something went wrong on our side. Please try again in a minute.")
+		b.refusal(ctx, c, err)
 		return
 	}
-	if !ok {
-		b.sayWith(ctx, chat, fmt.Sprintf("You have used all %d screens for today. The count resets at 00:00 UTC.\n\nNeed more? Upgrade:", limit),
-			b.plansKeyboard(ctx, userID))
-		return
+	switch kind {
+	case kindPDF:
+		err = b.tg.sendDocument(ctx, c.chat, out.Chain+"-"+out.Address+".pdf", out.PDF, t(c.lang, "pdf_caption", out.Address))
+	case kindDetails:
+		err = b.tg.sendMessage(ctx, c.chat, format(out.Result), nil)
+	default:
+		err = b.tg.sendMessage(ctx, c.chat, summary(out.Result, c.lang), nil)
 	}
-
-	select {
-	case b.screening <- struct{}{}:
-	case <-ctx.Done():
-		return
+	if err != nil {
+		b.log.Warn("deliver screen", "user", c.user.ID, "error", err)
 	}
-	defer func() { <-b.screening }()
-
-	b.say(ctx, chat, "Screening "+address+"...")
-	if err := b.deliver(ctx, chat, address, kind); err != nil {
-		// A failed screen costs nothing.
-		if rerr := b.store.Refund(ctx, userID, now); rerr != nil {
-			b.log.Error("refund screen", "user", userID, "error", rerr)
-		}
-		b.log.Warn("screen failed", "address", address, "error", err)
-		b.say(ctx, chat, "Could not screen that address. This did not count toward your daily limit.\n\n"+err.Error())
-		return
-	}
-	if limit > 0 && limit-used <= 3 {
-		b.say(ctx, chat, fmt.Sprintf("%d of %d screens left today.", limit-used, limit))
+	if out.Limit > 0 && out.Limit-out.Used <= 3 {
+		b.say(ctx, c.chat, t(c.lang, "screens_left", out.Limit-out.Used, out.Limit))
 	}
 }
 
-func (b *bot) deliver(ctx context.Context, chat int64, address, kind string) error {
-	if kind == "pdf" {
-		pdf, err := b.report(ctx, address)
-		if err != nil {
-			return err
+// refusal tells a chat user why the gate said no.
+func (b *bot) refusal(ctx context.Context, c chatCtx, err error) {
+	var ge *gateError
+	if !errors.As(err, &ge) {
+		b.log.Error("gate", "user", c.user.ID, "error", err)
+		b.say(ctx, c.chat, t(c.lang, "error_ours"))
+		return
+	}
+	switch ge.Code {
+	case "bad_address":
+		b.say(ctx, c.chat, t(c.lang, "bad_address"))
+	case "chain_unavailable":
+		name := ge.Chain
+		if ci, ok := b.chain(ge.Chain); ok {
+			name = ci.Name
 		}
-		return b.tg.sendDocument(ctx, chat, b.chainID+"-"+address+".pdf", pdf, "Risk report for "+address)
+		b.say(ctx, c.chat, t(c.lang, "chain_unavailable", name))
+	case "no_plan":
+		b.sayWith(ctx, c.chat, t(c.lang, "no_plan"), b.plansKeyboard(ctx, c))
+	case "feature_locked":
+		acc, _ := b.access(ctx, c.user.ID)
+		b.sayWith(ctx, c.chat, t(c.lang, "feature_locked", ge.Feature, acc.planName()), b.plansKeyboard(ctx, c))
+	case "busy":
+		b.say(ctx, c.chat, t(c.lang, "busy"))
+	case "limit_reached":
+		b.sayWith(ctx, c.chat, t(c.lang, "limit_reached", ge.Limit), b.plansKeyboard(ctx, c))
+	case "screen_failed":
+		b.log.Warn("screen failed", "user", c.user.ID, "error", ge.Cause)
+		b.say(ctx, c.chat, t(c.lang, "screen_failed", ge.Cause))
+	default:
+		b.say(ctx, c.chat, t(c.lang, "error_ours"))
 	}
-	res, err := b.screen(ctx, address)
-	if err != nil {
-		return err
-	}
-	if kind == "details" {
-		return b.tg.sendMessage(ctx, chat, format(res), nil)
-	}
-	return b.tg.sendMessage(ctx, chat, summary(res), nil)
 }
 
 // claim marks a user as having a screen in flight; false if one already is.
@@ -292,47 +315,287 @@ func (b *bot) release(userID int64) {
 	b.mu.Unlock()
 }
 
+// --- watches and history ---------------------------------------------------
+
+func (b *bot) watchCommand(ctx context.Context, c chatCtx, arg string) {
+	fields := strings.Fields(arg)
+	if len(fields) == 0 {
+		b.say(ctx, c.chat, t(c.lang, "watch_usage"))
+		return
+	}
+	// "bsc 0x… name" or "0x… name": the chain word, if any, is part of the target.
+	target, label := fields[0], strings.Join(fields[1:], " ")
+	if _, ok := chainAliases[strings.ToLower(fields[0])]; ok && len(fields) > 1 {
+		target, label = fields[0]+" "+fields[1], strings.Join(fields[2:], " ")
+	}
+	w, n, limit, err := b.addWatch(ctx, c.user.ID, target, "", label)
+	if err != nil {
+		var ge *gateError
+		if errors.As(err, &ge) && ge.Code == "limit_reached" {
+			b.sayWith(ctx, c.chat, t(c.lang, "watch_limit", ge.Limit), b.plansKeyboard(ctx, c))
+			return
+		}
+		b.refusal(ctx, c, err)
+		return
+	}
+	b.say(ctx, c.chat, t(c.lang, "watch_added", w.Address, humanInterval(c.lang, b.billing.Monitor.Interval), n, limitText(c.lang, limit)))
+}
+
+// addWatch is the watch-adding path shared by the chat, app and API. It
+// returns the watch, how many the user now has, and their limit.
+func (b *bot) addWatch(ctx context.Context, userID int64, text, chain, label string) (billing.Watch, int, int, error) {
+	chain, address, err := b.parseTarget(text, chain)
+	if err != nil {
+		var te *targetError
+		if errors.As(err, &te) {
+			return billing.Watch{}, 0, 0, &gateError{Code: te.code, Status: 400, Chain: te.chain}
+		}
+		return billing.Watch{}, 0, 0, err
+	}
+	acc, err := b.access(ctx, userID)
+	if err != nil {
+		return billing.Watch{}, 0, 0, err
+	}
+	if !acc.Admin && acc.Plan == nil {
+		return billing.Watch{}, 0, 0, refuse("no_plan", 402)
+	}
+	if acc.Watches == 0 {
+		return billing.Watch{}, 0, 0, &gateError{Code: "feature_locked", Status: 403, Feature: "/watch"}
+	}
+	if len(label) > 64 {
+		label = label[:64]
+	}
+	w, err := b.store.AddWatch(ctx, userID, chain, address, label, acc.Watches, b.now())
+	if errors.Is(err, billing.ErrWatchLimit) {
+		return billing.Watch{}, 0, 0, &gateError{Code: "limit_reached", Status: 429, Limit: acc.Watches}
+	}
+	if err != nil {
+		return billing.Watch{}, 0, 0, err
+	}
+	all, _ := b.store.Watches(ctx, userID)
+	b.wakeMonitor()
+	return w, len(all), acc.Watches, nil
+}
+
+func (b *bot) unwatchCommand(ctx context.Context, c chatCtx, arg string) {
+	fields := strings.Fields(arg)
+	if len(fields) == 0 {
+		b.say(ctx, c.chat, t(c.lang, "watch_usage"))
+		return
+	}
+	addr := fields[len(fields)-1]
+	if evmAddress.MatchString(addr) {
+		addr = strings.ToLower(addr)
+	}
+	if err := b.store.RemoveWatchByAddress(ctx, c.user.ID, addr, b.now()); err != nil {
+		if errors.Is(err, billing.ErrNotFound) {
+			b.say(ctx, c.chat, t(c.lang, "watch_notfound"))
+			return
+		}
+		b.log.Error("remove watch", "error", err)
+		b.say(ctx, c.chat, t(c.lang, "error_ours"))
+		return
+	}
+	b.say(ctx, c.chat, t(c.lang, "watch_removed", addr))
+}
+
+func (b *bot) watchesCommand(ctx context.Context, c chatCtx) {
+	ws, err := b.store.Watches(ctx, c.user.ID)
+	if err != nil {
+		b.log.Error("watches", "error", err)
+		b.say(ctx, c.chat, t(c.lang, "error_ours"))
+		return
+	}
+	if len(ws) == 0 {
+		b.say(ctx, c.chat, t(c.lang, "watches_none"))
+		return
+	}
+	acc, _ := b.access(ctx, c.user.ID)
+	var sb strings.Builder
+	sb.WriteString(t(c.lang, "watches_title", len(ws), limitText(c.lang, acc.Watches)))
+	for _, w := range ws {
+		name := w.Address
+		if w.Label != "" {
+			name = w.Label + " · " + w.Address
+		}
+		state := t(c.lang, "watch_pending")
+		if w.Last != nil {
+			state = fmt.Sprintf("%s %.1f", bandWord(c.lang, w.Last.Band), w.Last.Score)
+			if len(w.Last.RiskCategories) > 0 {
+				state += " · " + strings.Join(w.Last.RiskCategories, ", ")
+			}
+		}
+		fmt.Fprintf(&sb, "\n%s\n  %s\n", name, state)
+	}
+	b.say(ctx, c.chat, sb.String())
+}
+
+func (b *bot) historyCommand(ctx context.Context, c chatCtx) {
+	items, err := b.store.History(ctx, c.user.ID, 15)
+	if err != nil {
+		b.log.Error("history", "error", err)
+		b.say(ctx, c.chat, t(c.lang, "error_ours"))
+		return
+	}
+	if len(items) == 0 {
+		b.say(ctx, c.chat, t(c.lang, "history_none"))
+		return
+	}
+	var sb strings.Builder
+	sb.WriteString(t(c.lang, "history_title"))
+	for _, h := range items {
+		result := "PDF"
+		if h.Band != nil && h.Score != nil {
+			result = fmt.Sprintf("%s %.1f", bandWord(c.lang, *h.Band), *h.Score)
+		}
+		fmt.Fprintf(&sb, "\n%s  %s\n  %s\n", h.CreatedAt.UTC().Format("01-02 15:04"), result, h.Address)
+	}
+	b.say(ctx, c.chat, sb.String())
+}
+
+func bandWord(lang, band string) string {
+	if lang == langTR {
+		if w, ok := map[string]string{"low": "Düşük", "medium": "Orta", "high": "Yüksek"}[band]; ok {
+			return w
+		}
+	}
+	if band == "" {
+		return band
+	}
+	return strings.ToUpper(band[:1]) + band[1:]
+}
+
+func limitText(lang string, n int) string {
+	if n < 0 {
+		if lang == langTR {
+			return "sınırsız"
+		}
+		return "unlimited"
+	}
+	return strconv.Itoa(n)
+}
+
+func humanInterval(lang string, d time.Duration) string {
+	h := int(d.Hours())
+	if lang == langTR {
+		return fmt.Sprintf("%d saatte", h)
+	}
+	return fmt.Sprintf("%d hours", h)
+}
+
+// --- API keys --------------------------------------------------------------
+
+func (b *bot) apiKeyCommand(ctx context.Context, c chatCtx, arg string) {
+	acc, err := b.access(ctx, c.user.ID)
+	if err != nil {
+		b.say(ctx, c.chat, t(c.lang, "error_ours"))
+		return
+	}
+	if !acc.API {
+		b.sayWith(ctx, c.chat, t(c.lang, "apikey_locked"), b.plansKeyboard(ctx, c))
+		return
+	}
+	fields := strings.Fields(arg)
+	switch {
+	case len(fields) == 0:
+		keys, err := b.store.Keys(ctx, c.user.ID)
+		if err != nil {
+			b.say(ctx, c.chat, t(c.lang, "error_ours"))
+			return
+		}
+		if len(keys) == 0 {
+			b.say(ctx, c.chat, t(c.lang, "apikey_none"))
+			return
+		}
+		var sb strings.Builder
+		sb.WriteString(t(c.lang, "apikey_list"))
+		for _, k := range keys {
+			used := "-"
+			if k.LastUsedAt != nil {
+				used = datetime(*k.LastUsedAt)
+			}
+			fmt.Fprintf(&sb, "\n#%d  %s…  %s\n  %s · %s\n", k.ID, k.Prefix, k.Name, date(k.CreatedAt), used)
+		}
+		sb.WriteString("\n" + t(c.lang, "apikey_usage"))
+		b.say(ctx, c.chat, sb.String())
+	case fields[0] == "new":
+		key, _, err := b.store.CreateKey(ctx, c.user.ID, strings.Join(fields[1:], " "), b.now())
+		if errors.Is(err, billing.ErrKeyLimit) {
+			b.say(ctx, c.chat, t(c.lang, "apikey_too_many"))
+			return
+		}
+		if err != nil {
+			b.log.Error("create key", "error", err)
+			b.say(ctx, c.chat, t(c.lang, "error_ours"))
+			return
+		}
+		b.say(ctx, c.chat, t(c.lang, "apikey_new", key, b.publicBase()))
+	case fields[0] == "revoke" && len(fields) > 1:
+		id, _ := strconv.ParseInt(strings.TrimPrefix(fields[1], "#"), 10, 64)
+		if err := b.store.RevokeKey(ctx, c.user.ID, id, b.now()); err != nil {
+			b.say(ctx, c.chat, t(c.lang, "apikey_usage"))
+			return
+		}
+		b.say(ctx, c.chat, t(c.lang, "apikey_revoked", id))
+	default:
+		b.say(ctx, c.chat, t(c.lang, "apikey_usage"))
+	}
+}
+
+// publicBase is the public origin customers reach the API at.
+func (b *bot) publicBase() string {
+	base := strings.TrimSuffix(b.appURL, "/")
+	return strings.TrimSuffix(base, "/app")
+}
+
 // --- plans and status ------------------------------------------------------
 
-func (b *bot) plansText(acc billing.Access) string {
+func (b *bot) plansText(lang string, acc billing.Access) string {
 	var sb strings.Builder
-	sb.WriteString("Plans, billed monthly:\n")
+	sb.WriteString(t(lang, "plans_title"))
 	for _, p := range b.billing.Plans {
-		fmt.Fprintf(&sb, "\n%s: %d screens a day", p.Name, p.DailyScreens)
+		sb.WriteString(t(lang, "plan_line", p.Name, p.DailyScreens))
 		if p.Details {
-			sb.WriteString(", /details breakdown")
+			sb.WriteString(t(lang, "feat_details"))
 		}
 		if p.PDF {
-			sb.WriteString(", PDF reports")
+			sb.WriteString(t(lang, "feat_pdf"))
 		}
-		fmt.Fprintf(&sb, "\n  %d Stars a month, renews automatically", p.PriceStars)
+		if p.Watches > 0 {
+			sb.WriteString(t(lang, "feat_watches", p.Watches))
+		}
+		if p.Batch > 0 {
+			sb.WriteString(t(lang, "feat_batch", p.Batch))
+		}
+		if p.API {
+			sb.WriteString(t(lang, "feat_api"))
+		}
+		sb.WriteString(t(lang, "price_stars", p.PriceStars))
 		if b.usdtAddr != "" {
-			fmt.Fprintf(&sb, "\n  or %s USDT (TRC-20) for %d days", billing.FormatUSDT(p.PriceMicroUSDT), b.billing.PeriodDays)
+			sb.WriteString(t(lang, "price_usdt", billing.FormatUSDT(p.PriceMicroUSDT), b.billing.PeriodDays))
 		}
 		sb.WriteString("\n")
 	}
 	if acc.Plan != nil {
-		fmt.Fprintf(&sb, "\nYour plan: %s until %s.", acc.Plan.Name, date(acc.Until))
+		sb.WriteString(t(lang, "your_plan", acc.Plan.Name, date(acc.Until)))
 		if acc.Renews {
-			sb.WriteString(" It renews automatically.")
+			sb.WriteString(t(lang, "renews"))
 		}
 	}
-	sb.WriteString("\n\nPaying early never loses days: a new period starts when the current one ends.")
+	sb.WriteString(t(lang, "no_days_lost"))
 	return sb.String()
 }
 
-func (b *bot) plans(ctx context.Context, chat, userID int64) {
-	acc, err := b.store.Access(ctx, userID, b.now())
+func (b *bot) plans(ctx context.Context, c chatCtx) {
+	acc, err := b.store.Access(ctx, c.user.ID, b.now())
 	if err != nil {
 		b.log.Error("access", "error", err)
 	}
-	b.sayWith(ctx, chat, b.plansText(acc), b.plansKeyboard(ctx, userID))
+	b.sayWith(ctx, c.chat, b.plansText(c.lang, acc), b.plansKeyboard(ctx, c))
 }
 
-// plansKeyboard has a Stars button and, when enabled, a USDT button per plan.
-// A plan the user already renews through Stars shows as active rather than
-// offering a second concurrent subscription.
-func (b *bot) plansKeyboard(ctx context.Context, userID int64) *keyboard {
+// renewingPlans are the plans a user renews through Stars.
+func (b *bot) renewingPlans(ctx context.Context, userID int64) map[string]bool {
 	subs, err := b.store.Subscriptions(ctx, userID)
 	if err != nil {
 		b.log.Error("subscriptions", "error", err)
@@ -344,19 +607,26 @@ func (b *bot) plansKeyboard(ctx context.Context, userID int64) *keyboard {
 			renewing[s.Plan] = true
 		}
 	}
+	return renewing
+}
 
+// plansKeyboard has a Stars button and, when enabled, a USDT button per plan.
+// A plan the user already renews through Stars shows as active rather than
+// offering a second concurrent subscription.
+func (b *bot) plansKeyboard(ctx context.Context, c chatCtx) *keyboard {
+	renewing := b.renewingPlans(ctx, c.user.ID)
 	kb := &keyboard{}
 	for _, p := range b.billing.Plans {
 		var row []button
 		if renewing[p.ID] {
-			row = append(row, button{Text: "✅ " + p.Name + " active", CallbackData: "status"})
-		} else if link, err := b.starsLink(ctx, &p); err == nil {
-			row = append(row, button{Text: fmt.Sprintf("⭐ %s · %d Stars/mo", p.Name, p.PriceStars), URL: link})
+			row = append(row, button{Text: t(c.lang, "btn_active", p.Name), CallbackData: "status"})
+		} else if link, err := b.starsLink(ctx, &p, c.lang); err == nil {
+			row = append(row, button{Text: t(c.lang, "btn_stars", p.Name, p.PriceStars), URL: link})
 		} else {
 			b.log.Error("stars invoice link", "plan", p.ID, "error", err)
 		}
 		if b.usdtAddr != "" {
-			row = append(row, button{Text: fmt.Sprintf("💵 %s · %s USDT", p.Name, billing.FormatUSDT(p.PriceMicroUSDT)),
+			row = append(row, button{Text: t(c.lang, "btn_usdt", p.Name, billing.FormatUSDT(p.PriceMicroUSDT)),
 				CallbackData: "usdt:" + p.ID})
 		}
 		if len(row) > 0 {
@@ -370,95 +640,101 @@ func (b *bot) plansKeyboard(ctx context.Context, userID int64) *keyboard {
 // it: pre-checkout compares the amount against the current configuration.
 func starsPayload(planID string) string { return "plan:" + planID }
 
-func (b *bot) starsLink(ctx context.Context, p *billing.Plan) (string, error) {
+// starsLink returns the plan's Stars subscription link in the user's
+// language, creating it once per plan and language.
+func (b *bot) starsLink(ctx context.Context, p *billing.Plan, lang string) (string, error) {
+	key := p.ID + "/" + lang
 	b.mu.Lock()
-	link, ok := b.links[p.ID]
+	link, ok := b.links[key]
 	b.mu.Unlock()
 	if ok {
 		return link, nil
 	}
-	desc := fmt.Sprintf("%d address screens a day", p.DailyScreens)
+	desc := t(lang, "inv_screens", p.DailyScreens)
 	if p.Details {
-		desc += ", full breakdowns"
+		desc += t(lang, "inv_details")
 	}
 	if p.PDF {
-		desc += ", PDF reports"
+		desc += t(lang, "inv_pdf")
 	}
-	desc += ". Renews every 30 days; cancel any time with /cancel."
-	link, err := b.tg.createSubscriptionLink(ctx, "Risk screening "+p.Name, desc, starsPayload(p.ID), int64(p.PriceStars))
+	desc += t(lang, "inv_renew")
+	link, err := b.tg.createSubscriptionLink(ctx, t(lang, "inv_title", p.Name), desc, starsPayload(p.ID), int64(p.PriceStars))
 	if err != nil {
 		return "", err
 	}
 	b.mu.Lock()
-	b.links[p.ID] = link
+	b.links[key] = link
 	b.mu.Unlock()
 	return link, nil
 }
 
-func (b *bot) status(ctx context.Context, chat, userID int64) {
+func (b *bot) status(ctx context.Context, c chatCtx) {
 	now := b.now()
-	if b.isAdmin(userID) {
-		b.say(ctx, chat, fmt.Sprintf("Admin: every feature, no daily limit.\nYour user id: %d", userID))
+	if b.isAdmin(c.user.ID) {
+		b.say(ctx, c.chat, t(c.lang, "status_admin", c.user.ID))
 		return
 	}
-	acc, err := b.store.Access(ctx, userID, now)
+	acc, err := b.store.Access(ctx, c.user.ID, now)
 	if err != nil {
 		b.log.Error("access", "error", err)
-		b.say(ctx, chat, "Something went wrong on our side. Please try again in a minute.")
+		b.say(ctx, c.chat, t(c.lang, "error_ours"))
 		return
 	}
-	used, _ := b.store.Used(ctx, userID, now)
+	used, _ := b.store.Used(ctx, c.user.ID, now)
 	var sb strings.Builder
 	if acc.Plan == nil {
-		sb.WriteString("No active plan.\n\n/plans to subscribe.")
+		sb.WriteString(t(c.lang, "status_none"))
 	} else {
-		how := map[string]string{"trial": "free trial", "stars": "Telegram Stars", "usdt": "USDT", "grant": "granted"}[acc.Source]
-		fmt.Fprintf(&sb, "Plan: %s (%s)\nActive until: %s\n", acc.Plan.Name, how, datetime(acc.Until))
+		sb.WriteString(t(c.lang, "status_plan", acc.Plan.Name, t(c.lang, "src_"+acc.Source), datetime(acc.Until)))
 		if acc.Renews {
-			sb.WriteString("Renews automatically. /cancel to stop.\n")
+			sb.WriteString(t(c.lang, "status_renews"))
 		} else if acc.Source != "trial" {
-			sb.WriteString("Does not renew automatically. /plans to extend.\n")
+			sb.WriteString(t(c.lang, "status_manual"))
 		}
-		fmt.Fprintf(&sb, "Today: %d of %d screens used (resets 00:00 UTC)\n", used, acc.Plan.DailyScreens)
+		sb.WriteString(t(c.lang, "status_today", used, acc.Plan.DailyScreens))
+		if acc.Plan.Watches > 0 {
+			ws, _ := b.store.Watches(ctx, c.user.ID)
+			sb.WriteString(t(c.lang, "status_watch", len(ws), acc.Plan.Watches))
+		}
 	}
-	fmt.Fprintf(&sb, "\nYour user id: %d", userID)
-	b.say(ctx, chat, sb.String())
+	sb.WriteString(t(c.lang, "status_id", c.user.ID))
+	b.say(ctx, c.chat, sb.String())
 }
 
-func (b *bot) cancel(ctx context.Context, chat, userID int64) {
+func (b *bot) cancel(ctx context.Context, c chatCtx) {
 	now := b.now()
-	charges, err := b.store.RenewingCharges(ctx, userID, now)
+	charges, err := b.store.RenewingCharges(ctx, c.user.ID, now)
 	if err != nil {
 		b.log.Error("renewing charges", "error", err)
-		b.say(ctx, chat, "Something went wrong on our side. Please try again in a minute.")
+		b.say(ctx, c.chat, t(c.lang, "error_ours"))
 		return
 	}
 	if len(charges) == 0 {
-		b.say(ctx, chat, "Nothing renews automatically, so there is nothing to cancel. USDT payments and trials never renew by themselves.")
+		b.say(ctx, c.chat, t(c.lang, "cancel_none"))
 		return
 	}
 	for _, ch := range charges {
-		if err := b.tg.editUserStarSubscription(ctx, userID, ch, true); err != nil {
-			b.log.Error("cancel stars subscription", "user", userID, "charge", ch, "error", err)
-			b.say(ctx, chat, "Telegram did not accept the cancellation. You can also cancel in Telegram: Settings > My Stars > Subscriptions. Or contact "+b.support)
+		if err := b.tg.editUserStarSubscription(ctx, c.user.ID, ch, true); err != nil {
+			b.log.Error("cancel stars subscription", "user", c.user.ID, "charge", ch, "error", err)
+			b.say(ctx, c.chat, t(c.lang, "cancel_failed", b.support))
 			return
 		}
 		if err := b.store.MarkRenewalCanceled(ctx, ch, now); err != nil {
 			b.log.Error("mark renewal canceled", "charge", ch, "error", err)
 		}
 	}
-	acc, _ := b.store.Access(ctx, userID, now)
-	msg := "Automatic renewal is cancelled. You will not be charged again."
+	acc, _ := b.store.Access(ctx, c.user.ID, now)
+	msg := t(c.lang, "cancel_done")
 	if acc.Plan != nil {
-		msg += fmt.Sprintf("\n\nYour %s plan stays active until %s.", acc.Plan.Name, date(acc.Until))
+		msg += t(c.lang, "cancel_until", acc.Plan.Name, date(acc.Until))
 	}
-	b.say(ctx, chat, msg)
+	b.say(ctx, c.chat, msg)
 }
 
-func (b *bot) paySupport(ctx context.Context, chat, userID int64) {
-	subs, _ := b.store.Subscriptions(ctx, userID)
+func (b *bot) paySupport(ctx context.Context, c chatCtx) {
+	subs, _ := b.store.Subscriptions(ctx, c.user.ID)
 	var sb strings.Builder
-	sb.WriteString("Payment help: " + b.support + "\n\nPlease include your user id (" + strconv.FormatInt(userID, 10) + ")")
+	sb.WriteString(t(c.lang, "paysupport", b.support, c.user.ID))
 	var paid []billing.Subscription
 	for _, s := range subs {
 		if s.Source == "stars" || s.Source == "usdt" {
@@ -466,12 +742,11 @@ func (b *bot) paySupport(ctx context.Context, chat, userID int64) {
 		}
 	}
 	if len(paid) > 0 {
-		sb.WriteString(" and the payment in question. Your payments:\n")
+		sb.WriteString(t(c.lang, "paysupport_list"))
 		for i := len(paid) - 1; i >= 0 && i >= len(paid)-5; i-- {
 			s := paid[i]
-			p, _ := b.billing.Plan(s.Plan)
 			name := s.Plan
-			if p != nil {
+			if p, ok := b.billing.Plan(s.Plan); ok {
 				name = p.Name
 			}
 			fmt.Fprintf(&sb, "\n%s  %s via %s", date(s.StartsAt), name, s.Source)
@@ -479,14 +754,14 @@ func (b *bot) paySupport(ctx context.Context, chat, userID int64) {
 				fmt.Fprintf(&sb, "\n  charge %s", s.StarsChargeID)
 			}
 			if s.RevokedAt != nil {
-				sb.WriteString("  (refunded)")
+				sb.WriteString(t(c.lang, "refunded_tag"))
 			}
 		}
 	} else {
 		sb.WriteString(".")
 	}
-	sb.WriteString("\n\nUSDT sent with the wrong amount or after an invoice expired is kept on record; support can apply it by hand.")
-	b.say(ctx, chat, sb.String())
+	sb.WriteString(t(c.lang, "paysupport_note"))
+	b.say(ctx, c.chat, sb.String())
 }
 
 // --- Stars payments --------------------------------------------------------
@@ -495,31 +770,36 @@ func (b *bot) paySupport(ctx context.Context, chat, userID int64) {
 // price. Telegram allows 10 seconds for the answer, so nothing slow happens
 // here.
 func (b *bot) preCheckout(ctx context.Context, q *preCheckoutQuery) {
+	lang := normLang("", q.From.LanguageCode)
 	ok, reason := b.checkStarsOrder(q.Currency, q.TotalAmount, q.InvoicePayload)
+	msg := ""
 	if !ok {
 		b.log.Warn("pre-checkout rejected", "user", q.From.ID, "payload", q.InvoicePayload, "reason", reason)
+		msg = t(lang, reason)
 	}
-	if err := b.tg.answerPreCheckoutQuery(ctx, q.ID, ok, reason); err != nil {
+	if err := b.tg.answerPreCheckoutQuery(ctx, q.ID, ok, msg); err != nil {
 		b.log.Error("answer pre-checkout", "user", q.From.ID, "error", err)
 	}
 }
 
+// checkStarsOrder returns whether an order is valid, and if not the message
+// key explaining why.
 func (b *bot) checkStarsOrder(currency string, amount int64, payload string) (bool, string) {
 	id, found := strings.CutPrefix(payload, "plan:")
 	p, ok := b.billing.Plan(id)
 	if !found || !ok {
-		return false, "This plan is no longer offered. Please open /plans again."
+		return false, "offer_gone"
 	}
 	if currency != "XTR" || amount != int64(p.PriceStars) {
-		return false, "The price of this plan has changed. Please open /plans again."
+		return false, "price_changed"
 	}
 	return true, ""
 }
 
-func (b *bot) paid(ctx context.Context, m *message) {
+func (b *bot) paid(ctx context.Context, c chatCtx, m *message) {
 	sp := m.SuccessfulPayment
 	if sp.Currency != "XTR" {
-		b.log.Error("payment in unexpected currency", "user", m.From.ID, "currency", sp.Currency)
+		b.log.Error("payment in unexpected currency", "user", c.user.ID, "currency", sp.Currency)
 		return
 	}
 	id, _ := strings.CutPrefix(sp.InvoicePayload, "plan:")
@@ -529,35 +809,35 @@ func (b *bot) paid(ctx context.Context, m *message) {
 		expires = time.Unix(sp.SubscriptionExpirationDate, 0).UTC()
 	}
 	recorded, err := b.store.RecordStars(ctx, billing.StarsPayment{
-		UserID: m.From.ID, Plan: id, Amount: sp.TotalAmount, ChargeID: sp.TelegramPaymentChargeID,
+		UserID: c.user.ID, Plan: id, Amount: sp.TotalAmount, ChargeID: sp.TelegramPaymentChargeID,
 		Recurring: sp.IsRecurring, ExpiresAt: expires, ReceivedAt: now,
 	})
 	if err != nil {
 		// The money has been taken. Never leave a paying customer without
 		// access silently: tell them and every admin.
-		b.log.Error("record stars payment", "user", m.From.ID, "charge", sp.TelegramPaymentChargeID, "error", err)
-		b.say(ctx, m.Chat.ID, "Your payment went through, but I could not activate your plan. Support has been told and will fix it; you can also write to "+b.support)
+		b.log.Error("record stars payment", "user", c.user.ID, "charge", sp.TelegramPaymentChargeID, "error", err)
+		b.say(ctx, c.chat, t(c.lang, "paid_failed", b.support))
 		b.notifyAdmins(ctx, fmt.Sprintf("⚠️ Stars payment NOT activated\nuser %d, charge %s, %d Stars, payload %q\nerror: %v",
-			m.From.ID, sp.TelegramPaymentChargeID, sp.TotalAmount, sp.InvoicePayload, err))
+			c.user.ID, sp.TelegramPaymentChargeID, sp.TotalAmount, sp.InvoicePayload, err))
 		return
 	}
 	if !recorded {
 		return // a repeated delivery of a payment already handled
 	}
-	acc, _ := b.store.Access(ctx, m.From.ID, now)
+	acc, _ := b.store.Access(ctx, c.user.ID, now)
 	name, until := id, expires
 	if acc.Plan != nil {
 		name, until = acc.Plan.Name, acc.Until
 	}
-	msg := fmt.Sprintf("Thank you! %s is active until %s and renews automatically. /cancel stops renewal at any time.", name, date(until))
+	msg := t(c.lang, "paid_thanks", name, date(until))
 	if sp.IsRecurring && !sp.IsFirstRecurring {
-		msg = fmt.Sprintf("Your %s subscription renewed. Active until %s.", name, date(until))
+		msg = t(c.lang, "paid_renewed", name, date(until))
 	}
-	b.say(ctx, m.Chat.ID, msg)
+	b.say(ctx, c.chat, msg)
 	b.notifyAdmins(ctx, fmt.Sprintf("⭐ %d Stars from %s for %s", sp.TotalAmount, who(m.From), name))
 }
 
-func (b *bot) refunded(ctx context.Context, m *message) {
+func (b *bot) refunded(ctx context.Context, c chatCtx, m *message) {
 	rp := m.RefundedPayment
 	uid, err := b.store.RevokeCharge(ctx, rp.TelegramPaymentChargeID, "refunded", b.now())
 	if err != nil {
@@ -565,58 +845,71 @@ func (b *bot) refunded(ctx context.Context, m *message) {
 		return
 	}
 	if uid != 0 {
-		b.say(ctx, m.Chat.ID, "Your payment was refunded, and the plan it paid for has ended.")
+		b.say(ctx, c.chat, t(c.lang, "refunded"))
 	}
 }
 
-// --- USDT invoices ---------------------------------------------------------
+// --- callbacks: USDT invoices, language, status ------------------------------
 
 func (b *bot) callback(ctx context.Context, q *callbackQuery) {
 	chat := q.From.ID
 	if q.Message != nil {
 		chat = q.Message.Chat.ID
 	}
+	user, err := b.store.Touch(ctx, billing.User{ID: q.From.ID, Username: q.From.Username,
+		FirstName: q.From.FirstName, ClientLang: q.From.LanguageCode})
+	if err != nil {
+		b.log.Error("touch user", "error", err)
+	}
+	c := chatCtx{chat: chat, user: user, lang: normLang(user.Lang, q.From.LanguageCode)}
+	c.user.ID = q.From.ID
+
 	switch {
 	case q.Data == "status":
 		_ = b.tg.answerCallbackQuery(ctx, q.ID, "")
-		b.status(ctx, chat, q.From.ID)
+		b.status(ctx, c)
+	case strings.HasPrefix(q.Data, "lang:"):
+		lang := normLang(strings.TrimPrefix(q.Data, "lang:"), "")
+		if err := b.store.SetLang(ctx, q.From.ID, lang); err != nil {
+			b.log.Error("set lang", "error", err)
+		}
+		_ = b.tg.answerCallbackQuery(ctx, q.ID, "")
+		b.say(ctx, chat, t(lang, "lang_set"))
 	case strings.HasPrefix(q.Data, "usdt:"):
-		b.usdtInvoice(ctx, q, chat, strings.TrimPrefix(q.Data, "usdt:"))
+		b.usdtInvoiceChat(ctx, q, c, strings.TrimPrefix(q.Data, "usdt:"))
 	default:
 		_ = b.tg.answerCallbackQuery(ctx, q.ID, "")
 	}
 }
 
-func (b *bot) usdtInvoice(ctx context.Context, q *callbackQuery, chat int64, planID string) {
+// usdtInvoice issues a USDT invoice for a plan. Shared by the chat and the app.
+func (b *bot) usdtInvoice(ctx context.Context, userID int64, planID string) (billing.Invoice, *billing.Plan, error) {
 	p, ok := b.billing.Plan(planID)
 	if !ok || b.usdtAddr == "" {
-		_ = b.tg.answerCallbackQuery(ctx, q.ID, "This option is no longer available.")
-		return
+		return billing.Invoice{}, nil, refuse("not_found", 404)
 	}
-	if _, err := b.store.Touch(ctx, billing.User{ID: q.From.ID, Username: q.From.Username, FirstName: q.From.FirstName}); err != nil {
-		b.log.Error("touch user", "error", err)
-	}
-	inv, err := b.store.CreateInvoice(ctx, q.From.ID, p.ID, b.usdtAddr, b.now(), rand.IntN(1000))
+	inv, err := b.store.CreateInvoice(ctx, userID, p.ID, b.usdtAddr, b.now(), rand.IntN(1000))
+	return inv, p, err
+}
+
+func (b *bot) usdtInvoiceChat(ctx context.Context, q *callbackQuery, c chatCtx, planID string) {
+	inv, p, err := b.usdtInvoice(ctx, q.From.ID, planID)
 	if err != nil {
+		var ge *gateError
+		if errors.As(err, &ge) {
+			_ = b.tg.answerCallbackQuery(ctx, q.ID, t(c.lang, "option_gone"))
+			return
+		}
 		b.log.Error("create usdt invoice", "user", q.From.ID, "error", err)
-		_ = b.tg.answerCallbackQuery(ctx, q.ID, "Could not create an invoice. Please try again in a few minutes.")
+		_ = b.tg.answerCallbackQuery(ctx, q.ID, t(c.lang, "invoice_failed"))
 		return
 	}
 	_ = b.tg.answerCallbackQuery(ctx, q.ID, "")
 	amount := billing.FormatUSDT(inv.Amount)
 	mins := int(inv.ExpiresAt.Sub(b.now()).Round(time.Minute).Minutes())
-	b.say(ctx, chat, fmt.Sprintf(`%s for %d days, paid in USDT:
-
-Send exactly %s USDT
-Network: TRON (TRC-20) only
-To the address in the next message
-
-The exact amount identifies your payment. Send %s, not a rounded figure. If you withdraw from an exchange, make sure the amount that arrives is %s: the exchange's fee must not come out of it.
-
-This invoice is valid for %d minutes. I will message you here as soon as the payment is confirmed, usually within 2 minutes.`,
-		p.Name, b.billing.PeriodDays, amount, amount, amount, mins))
+	b.say(ctx, c.chat, t(c.lang, "usdt_invoice", p.Name, b.billing.PeriodDays, amount, amount, amount, mins))
 	// On its own so it can be copied with one tap.
-	b.say(ctx, chat, b.usdtAddr)
+	b.say(ctx, c.chat, b.usdtAddr)
 }
 
 // --- admin -----------------------------------------------------------------
@@ -673,7 +966,7 @@ func (b *bot) admin(ctx context.Context, chat int64, cmd, arg string) {
 		}
 		b.say(ctx, chat, fmt.Sprintf("Granted %s to %d until %s.", args[1], uid, datetime(until)))
 		p, _ := b.billing.Plan(args[1])
-		b.say(ctx, uid, fmt.Sprintf("You have been given the %s plan until %s. Send an address to start.", p.Name, date(until)))
+		b.say(ctx, uid, t(b.langOf(ctx, uid), "granted", p.Name, date(until)))
 
 	case "/revoke":
 		if len(args) < 1 {
@@ -736,11 +1029,13 @@ func (b *bot) admin(ctx context.Context, chat int64, cmd, arg string) {
 		acc, _ := b.store.Access(ctx, uid, now)
 		used, _ := b.store.Used(ctx, uid, now)
 		subs, _ := b.store.Subscriptions(ctx, uid)
+		ws, _ := b.store.Watches(ctx, uid)
+		keys, _ := b.store.Keys(ctx, uid)
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "User %d\n", uid)
 		if acc.Plan != nil {
-			fmt.Fprintf(&sb, "Plan: %s via %s until %s (renews: %v)\nToday: %d/%d\n",
-				acc.Plan.Name, acc.Source, datetime(acc.Until), acc.Renews, used, acc.Plan.DailyScreens)
+			fmt.Fprintf(&sb, "Plan: %s via %s until %s (renews: %v)\nToday: %d/%d · watches %d · API keys %d\n",
+				acc.Plan.Name, acc.Source, datetime(acc.Until), acc.Renews, used, acc.Plan.DailyScreens, len(ws), len(keys))
 		} else {
 			sb.WriteString("No active plan\n")
 		}
