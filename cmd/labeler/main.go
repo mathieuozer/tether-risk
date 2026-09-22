@@ -84,6 +84,7 @@ func usage() {
 
 commands:
   ingest       run every permitted source into a new snapshot
+  tether       refresh Tether's blacklist only, and make watches touching a newly frozen address due
   derive-services  detect high-volume service addresses from behaviour
   derive       run the deposit-wallet heuristic against stored chain data
   activations  read who created each labelled service wallet (for operator grouping)
@@ -119,6 +120,8 @@ func run(ctx context.Context, cmd, configDir, chainID, ofacFile string, log *slo
 		return deriveServices(ctx, cfg, st, chainID, log)
 	case "derive":
 		return derive(ctx, cfg, pg, st, chainID, log)
+	case "tether":
+		return tetherRefresh(ctx, cfg, pg, st, log)
 	case "activations":
 		return fetchActivations(ctx, cfg, pg, chainID, log)
 	case "counts":
@@ -221,26 +224,11 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 	// First-party and authoritative, but not a sanctions list: a failure is
 	// logged and the run continues, and the previous snapshot's list stands.
 	if src, ok := cfg.Source("tether_blacklist"); ok && src.Ingestible() {
-		batch, err := ingestTetherBlacklist(ctx, cfg, log)
+		res, _, err := refreshTether(ctx, cfg, st, snapshotID, log)
 		if err != nil {
-			log.Error("tether blacklist failed; the previous list stands", "error", err)
-		} else {
-			res, err := st.Upsert(ctx, snapshotID, batch)
-			if err != nil {
-				return err
-			}
-			keep := make(map[string]bool, len(batch))
-			for _, l := range batch {
-				keep[l.Address] = true
-			}
-			released, err := st.Retire(ctx, snapshotID, "tether_blacklist", "tron", keep)
-			if err != nil {
-				return err
-			}
-			log.Info("tether blacklist ingested", "frozen", len(batch), "inserted", res.Inserted,
-				"released_since_last_run", released)
-			total = add(total, res)
+			return err
 		}
+		total = add(total, res)
 	}
 
 	// --- exchange proof-of-reserves lists (docs/DECISIONS.md D19) ---
@@ -909,4 +897,132 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// refreshTether reads the blacklist into snapshotID and returns the
+// addresses frozen since the previous read. A failed read is logged and the
+// previous list stands: the blacklist is authoritative but not a sanctions
+// list, so its absence is not worth failing a run over.
+func refreshTether(ctx context.Context, cfg *config.Config, st *labels.Store, snapshotID int64,
+	log *slog.Logger) (labels.UpsertResult, []string, error) {
+	batch, err := ingestTetherBlacklist(ctx, cfg, log)
+	if err != nil {
+		log.Error("tether blacklist failed; the previous list stands", "error", err)
+		return labels.UpsertResult{}, nil, nil
+	}
+	before, err := st.CurrentAddresses(ctx, "tether_blacklist", "tron")
+	if err != nil {
+		return labels.UpsertResult{}, nil, err
+	}
+	res, err := st.Upsert(ctx, snapshotID, batch)
+	if err != nil {
+		return res, nil, err
+	}
+	keep := make(map[string]bool, len(batch))
+	var fresh []string
+	for _, l := range batch {
+		keep[l.Address] = true
+		if !before[l.Address] {
+			fresh = append(fresh, l.Address)
+		}
+	}
+	released, err := st.Retire(ctx, snapshotID, "tether_blacklist", "tron", keep)
+	if err != nil {
+		return res, nil, err
+	}
+	log.Info("tether blacklist ingested", "frozen", len(batch), "inserted", res.Inserted,
+		"newly_frozen", len(fresh), "released_since_last_run", released)
+	return res, fresh, nil
+}
+
+// tetherRefresh is the frequent refresh (docs/DECISIONS.md D34). Tether
+// freezes in clusters, and a counterparty of a frozen wallet that is going
+// to be frozen too almost always is within three days, so a daily read is
+// too slow to warn anyone. It seals a snapshot holding only the blacklist
+// change, then makes every watch with direct flow to or from a newly frozen
+// address due, so the bot's monitor rescreens it within minutes.
+func tetherRefresh(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labels.Store, log *slog.Logger) error {
+	// Labels are valid from the snapshot they were written in. Sealing a
+	// later snapshot while another run is still writing into an earlier one
+	// would change what the sealed one resolves to after the fact (SPEC.md
+	// §2), so the refresh waits for that run. A snapshot left open for six
+	// hours is a crashed run, not a running one.
+	var open int
+	if err := pg.QueryRowContext(ctx, `SELECT count(*) FROM label_snapshots
+		WHERE sealed_at IS NULL AND created_at > now() - interval '6 hours'`).Scan(&open); err != nil {
+		return err
+	}
+	if open > 0 {
+		log.Info("another labeler run holds an open snapshot; skipping this refresh")
+		return nil
+	}
+	snapshotID, err := st.OpenSnapshot(ctx, "labeler tether")
+	if err != nil {
+		return err
+	}
+	_, fresh, err := refreshTether(ctx, cfg, st, snapshotID, log)
+	if err != nil {
+		return err
+	}
+	if _, err := st.SealSnapshot(ctx, snapshotID); err != nil {
+		return err
+	}
+	fmt.Printf("snapshot %d sealed; %d newly frozen\n", snapshotID, len(fresh))
+	if len(fresh) == 0 {
+		return nil
+	}
+
+	var watched []string
+	rows, err := pg.QueryContext(ctx, `SELECT DISTINCT address FROM watches WHERE chain = 'tron' AND removed_at IS NULL`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			rows.Close()
+			return err
+		}
+		watched = append(watched, a)
+	}
+	rows.Close()
+	if len(watched) == 0 {
+		return nil
+	}
+
+	ch, err := store.OpenClickHouse(ctx)
+	if err != nil {
+		return err
+	}
+	defer ch.Close()
+	crows, err := ch.QueryContext(ctx, `
+		SELECT DISTINCT a FROM (
+			SELECT from_address AS a FROM edges_current WHERE chain = 'tron' AND from_address IN (?) AND to_address IN (?)
+			UNION ALL
+			SELECT to_address AS a FROM edges_by_to_current WHERE chain = 'tron' AND to_address IN (?) AND from_address IN (?)
+		)`, watched, fresh, watched, fresh)
+	if err != nil {
+		return err
+	}
+	var hit []string
+	for crows.Next() {
+		var a string
+		if err := crows.Scan(&a); err != nil {
+			crows.Close()
+			return err
+		}
+		hit = append(hit, a)
+	}
+	crows.Close()
+	if len(hit) == 0 {
+		return nil
+	}
+	n, err := pg.ExecContext(ctx, `UPDATE watches SET checked_at = NULL
+		WHERE chain = 'tron' AND address = ANY($1) AND removed_at IS NULL`, hit)
+	if err != nil {
+		return err
+	}
+	k, _ := n.RowsAffected()
+	log.Info("watches touching a newly frozen address made due", "addresses", len(hit), "watches", k)
+	return nil
 }

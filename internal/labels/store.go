@@ -413,3 +413,22 @@ func (s *Store) UnreviewedConflicts(ctx context.Context, limit int) ([]ConflictR
 	}
 	return out, rows.Err()
 }
+
+// CurrentAddresses is the set of addresses one source labels now.
+func (s *Store) CurrentAddresses(ctx context.Context, source, chainID string) (map[string]bool, error) {
+	rows, err := s.pg.QueryContext(ctx, `
+		SELECT address FROM labels WHERE source = $1 AND chain = $2 AND valid_to_snapshot IS NULL`, source, chainID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var a string
+		if err := rows.Scan(&a); err != nil {
+			return nil, err
+		}
+		out[a] = true
+	}
+	return out, rows.Err()
+}

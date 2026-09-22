@@ -8,6 +8,7 @@
 //	validate sample       write a stratified address list to screen in a competitor's tool
 //	validate verdict      verdict benchmark (-rounds N measures after follow-up)
 //	validate ring         what the screen's first-ring fetching buys
+//	validate freeze       how often Tether freezes a frozen wallet's counterparties
 //	validate all          every check
 //
 // SPEC.md §9 calls this a real harness rather than ad-hoc scripts, and makes a
@@ -142,6 +143,13 @@ func run(ctx context.Context, cmd, configDir, chainID string, limit int, compare
 
 	case "ring":
 		r, err := checkRing(ctx, cfg, ch, pg, chainID, limit)
+		if err != nil {
+			return 2, err
+		}
+		results = append(results, r)
+
+	case "freeze":
+		r, err := checkFreeze(ctx, cfg, ch, pg, chainID, limit)
 		if err != nil {
 			return 2, err
 		}

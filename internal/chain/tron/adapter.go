@@ -443,3 +443,14 @@ func (a *Adapter) FetchRange(ctx context.Context, from, to uint64) ([]chain.Tran
 		"tron: block-range backfill is not supported on the TronGrid free tier "+
 			"(requested %d-%d); ingestion is demand-driven per address", from, to)
 }
+
+// USDTWindowCursor starts a drain of address's USDT transfers between from
+// and to only, newest first. A measurement that needs a few weeks of a large
+// wallet's history reads one or two pages instead of the whole of it
+// (docs/DECISIONS.md D34). The history is partial, so a caller must not mark
+// the address fetched.
+func (a *Adapter) USDTWindowCursor(address string, from, to time.Time) chain.Cursor {
+	u := fmt.Sprintf("%s/v1/accounts/%s/transactions/trc20?limit=%d&only_confirmed=true&contract_address=%s&min_timestamp=%d&max_timestamp=%d",
+		a.client.baseURL, url.PathEscape(address), a.pageSize, USDTContract, from.UnixMilli(), to.UnixMilli())
+	return chain.Cursor{Value: encodeCursor(cursorState{TRC20Next: u, NativeDone: true})}
+}

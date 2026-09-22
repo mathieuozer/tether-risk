@@ -103,6 +103,7 @@ func run(ctx context.Context, addr, configDir string, fetch bool, log *slog.Logg
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /v1/screen", srv.handleScreen)
 	mux.HandleFunc("POST /v1/report", srv.handleReport)
+	mux.HandleFunc("POST /v1/presend", srv.handlePreSend)
 	mux.HandleFunc("GET /v1/address/{chain}/{address}", srv.handleCached)
 	mux.HandleFunc("GET /v1/health", srv.handleHealth)
 

@@ -106,6 +106,40 @@ daily-status: ## Show the schedule and the latest run's summary
 		else echo "no runs yet"; fi
 
 # ---------------------------------------------------------------------------
+# Tether blacklist refresh (scripts/tether.sh), every TETHER_INTERVAL seconds
+# ---------------------------------------------------------------------------
+
+TETHER_INTERVAL ?= 600
+TETHER_LABEL    := com.tether-risk.tether
+TETHER_PLIST    := $(HOME)/Library/LaunchAgents/$(TETHER_LABEL).plist
+
+.PHONY: tether-install
+tether-install: ## Refresh Tether's blacklist every TETHER_INTERVAL seconds (default 600)
+	@mkdir -p $(HOME)/Library/LaunchAgents .data/logs
+	@printf '%s\n' \
+		'<?xml version="1.0" encoding="UTF-8"?>' \
+		'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+		'<plist version="1.0"><dict>' \
+		'  <key>Label</key><string>$(TETHER_LABEL)</string>' \
+		'  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$(CURDIR)/scripts/tether.sh</string></array>' \
+		'  <key>WorkingDirectory</key><string>$(CURDIR)</string>' \
+		'  <key>RunAtLoad</key><true/>' \
+		'  <key>StartInterval</key><integer>$(TETHER_INTERVAL)</integer>' \
+		'  <key>StandardOutPath</key><string>$(CURDIR)/.data/logs/tether.log</string>' \
+		'  <key>StandardErrorPath</key><string>$(CURDIR)/.data/logs/tether.log</string>' \
+		'</dict></plist>' > $(TETHER_PLIST)
+	@launchctl bootout gui/$$(id -u)/$(TETHER_LABEL) 2>/dev/null || true
+	@while launchctl print gui/$$(id -u)/$(TETHER_LABEL) >/dev/null 2>&1; do sleep 1; done
+	@launchctl bootstrap gui/$$(id -u) $(TETHER_PLIST)
+	@echo "tether blacklist refresh every $(TETHER_INTERVAL)s; log in .data/logs/tether.log"
+
+.PHONY: tether-uninstall
+tether-uninstall: ## Remove the blacklist refresh schedule
+	@launchctl bootout gui/$$(id -u)/$(TETHER_LABEL) 2>/dev/null || true
+	@rm -f $(TETHER_PLIST)
+	@echo "tether blacklist refresh removed"
+
+# ---------------------------------------------------------------------------
 # Ingest worker (scripts/worker.sh), kept alive by launchd
 # ---------------------------------------------------------------------------
 
