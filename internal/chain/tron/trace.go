@@ -2,6 +2,7 @@ package tron
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net/url"
@@ -319,4 +320,55 @@ func sortMovements(m []Movement) {
 		}
 		return m[i].TxID < m[j].TxID
 	})
+}
+
+// LastEventBefore returns a contract's latest confirmed event of one name
+// strictly before `before`, or nil when there is none. One request, for
+// reading a pool's state at a point in time (docs/DECISIONS.md D41).
+func (c *Client) LastEventBefore(ctx context.Context, contract, event string, before time.Time) (*ContractEvent, error) {
+	u := fmt.Sprintf("%s/v1/contracts/%s/events?event_name=%s&only_confirmed=true&limit=1&order_by=block_timestamp,desc&max_block_timestamp=%d",
+		c.baseURL, url.PathEscape(contract), url.QueryEscape(event), before.UnixMilli()-1)
+	var resp struct {
+		Data []struct {
+			TransactionID  string            `json:"transaction_id"`
+			BlockNumber    int64             `json:"block_number"`
+			BlockTimestamp int64             `json:"block_timestamp"`
+			EventName      string            `json:"event_name"`
+			Result         map[string]string `json:"result"`
+		} `json:"data"`
+		Success bool   `json:"success"`
+		Error   string `json:"error"`
+	}
+	if err := c.get(ctx, u, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.Success {
+		return nil, fmt.Errorf("tron: %s events: %s", event, resp.Error)
+	}
+	if len(resp.Data) == 0 {
+		return nil, nil
+	}
+	d := resp.Data[0]
+	return &ContractEvent{TxID: d.TransactionID, Block: d.BlockNumber,
+		Time: time.UnixMilli(d.BlockTimestamp).UTC(), Name: d.EventName, Result: d.Result}, nil
+}
+
+// ConstantCall runs a read-only contract call and returns the first 32-byte
+// result word as hex. Used to check a price pool's token before trusting it.
+func (c *Client) ConstantCall(ctx context.Context, contract, selector string) (string, error) {
+	body, err := json.Marshal(map[string]any{"owner_address": contract, "contract_address": contract,
+		"function_selector": selector, "visible": true})
+	if err != nil {
+		return "", err
+	}
+	var resp struct {
+		ConstantResult []string `json:"constant_result"`
+	}
+	if err := c.post(ctx, c.baseURL+"/wallet/triggerconstantcontract", body, &resp); err != nil {
+		return "", err
+	}
+	if len(resp.ConstantResult) == 0 {
+		return "", fmt.Errorf("tron: %s %s returned nothing", contract, selector)
+	}
+	return resp.ConstantResult[0], nil
 }

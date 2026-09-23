@@ -115,7 +115,7 @@ func TestEveryIngestibleSourceIsRanked(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, s := range c.Sources.Sources {
-		if !s.Ingestible() {
+		if !s.Ingestible() || !s.ProducesLabels() {
 			continue
 		}
 		if c.SourcePriority(s.ID) >= len(c.Weights.Labels.SourcePriority) {

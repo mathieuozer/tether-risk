@@ -76,7 +76,11 @@ step() {
 	fi
 }
 
-step "price load TRX"         bin/price -chain tron load TRX
+# Daily closes from each chain's own DEX pool (D41), continuing from the last
+# day read.
+step "price load TRX"         bin/price load TRX
+[ -n "${ETH_RPC_URL:-}" ] && step "price load ETH" bin/price load ETH
+[ -n "${BSC_RPC_URL:-}" ] && step "price load BNB" bin/price load BNB
 step "labeler ingest"         bin/labeler ingest
 step "price backfill"         bin/price -chain tron backfill
 step "labeler derive-services" bin/labeler -chain tron derive-services

@@ -21,9 +21,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/mozer/tether-risk/internal/chain/evm"
+	"github.com/mozer/tether-risk/internal/chain/tron"
 	"github.com/mozer/tether-risk/internal/config"
 	"github.com/mozer/tether-risk/internal/pricing"
 	"github.com/mozer/tether-risk/internal/store"
@@ -158,10 +161,11 @@ func main() {
 		configDir = flag.String("config", "config", "configuration directory")
 		chainID   = flag.String("chain", "tron", "chain to reprice")
 		days      = flag.Int("days", 365, "days of history (coingecko source only)")
-		source    = flag.String("source", "binance",
-			"price source: binance (daily closes back to 2018, no key) or coingecko (365 days max)")
+		source    = flag.String("source", pricing.SourceOnChain,
+			"price source: onchain (DEX pools in weights.yaml, no licence needed), or binance or coingecko, whose terms do not allow this use (D40)")
 		from = flag.String("from", "",
 			"earliest date to load, YYYY-MM-DD; default is the earliest unpriced transfer held")
+		until = flag.String("until", "", "onchain: last date to load, YYYY-MM-DD; default yesterday")
 	)
 	flag.Parse()
 
@@ -176,13 +180,13 @@ func main() {
 		os.Exit(2)
 	}
 
-	if err := run(ctx, cmd, *configDir, *chainID, *days, *source, *from, log); err != nil {
+	if err := run(ctx, cmd, *configDir, *chainID, *days, *source, *from, *until, log); err != nil {
 		log.Error("failed", "command", cmd, "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, cmd, configDir, chainID string, days int, source, from string, log *slog.Logger) error {
+func run(ctx context.Context, cmd, configDir, chainID string, days int, source, from, until string, log *slog.Logger) error {
 	cfg, err := config.Load(configDir)
 	if err != nil {
 		return err
@@ -200,7 +204,7 @@ func run(ctx context.Context, cmd, configDir, chainID string, days int, source, 
 		if asset == "" {
 			return fmt.Errorf("load needs an asset, e.g. TRX")
 		}
-		return loadPrices(ctx, pg, asset, days, source, from, chainID, log)
+		return loadPrices(ctx, pg, cfg, asset, days, source, from, until, chainID, log)
 
 	case "backfill":
 		// Reads every unpriced transfer: a batch job, which the 60 s
@@ -239,15 +243,23 @@ func run(ctx context.Context, cmd, configDir, chainID string, days int, source, 
 //
 // No API key is required and the rate limit is low, so this is a one-off
 // backfill rather than anything on the query path.
-func loadPrices(ctx context.Context, pg *sql.DB, asset string, days int,
-	source, from, chainID string, log *slog.Logger) error {
+func loadPrices(ctx context.Context, pg *sql.DB, cfg *config.Config, asset string, days int,
+	source, from, until, chainID string, log *slog.Logger) error {
 
 	var (
 		points []pricing.PricePoint
 		err    error
 	)
 
+	// A source sources.yaml blocks is refused here, not only recorded there.
+	if src, ok := cfg.Source("price:" + source); ok && !src.Ingestible() {
+		return fmt.Errorf("price source %s is %s: %s", source, src.Status, strings.TrimSpace(src.BlockedReason))
+	}
+
 	switch source {
+	case pricing.SourceOnChain:
+		return loadOnChain(ctx, pg, cfg, asset, from, until, log)
+
 	case "binance":
 		start, serr := resolveStart(ctx, from, asset, chainID)
 		if serr != nil {
@@ -309,7 +321,7 @@ func resolveStart(ctx context.Context, from, asset, chainID string) (time.Time, 
 
 	var earliest time.Time
 	err = ch.QueryRowContext(ctx, `
-		SELECT min(block_time) FROM transfers FINAL WHERE chain = ? AND asset = ?`,
+		SELECT min(block_time) FROM transfers WHERE chain = ? AND asset = ?`,
 		chainID, asset).Scan(&earliest)
 	if err != nil || earliest.IsZero() || earliest.Year() < 2009 {
 		return time.Now().AddDate(-5, 0, 0), nil
@@ -400,4 +412,97 @@ func fetchDailyCloses(ctx context.Context, asset string, days int) ([]pricing.Pr
 		out = append(out, pricing.PricePoint{Asset: asset, Date: day, USD: usd})
 	}
 	return out, nil
+}
+
+// loadOnChain loads daily closes from the asset's pool (docs/DECISIONS.md
+// D41), up to yesterday, writing every 30 days so an interrupted load keeps
+// what it read.
+func loadOnChain(ctx context.Context, pg *sql.DB, cfg *config.Config, asset, from, until string, log *slog.Logger) error {
+	var pool *config.PricePool
+	for i := range cfg.Weights.Pricing.Pools {
+		if cfg.Weights.Pricing.Pools[i].Asset == asset {
+			pool = &cfg.Weights.Pricing.Pools[i]
+		}
+	}
+	if pool == nil {
+		return fmt.Errorf("no price pool configured for %s", asset)
+	}
+	// Without -from, carry on from the last close already read from the
+	// pool, so the nightly run reads a day, not years (D41). A first load
+	// starts at the earliest transfer held.
+	start := time.Time{}
+	if from == "" {
+		var last sql.NullTime
+		if err := pg.QueryRowContext(ctx, `SELECT max(price_date) FROM prices WHERE asset = $1 AND source = $2`,
+			asset, pricing.SourceOnChain).Scan(&last); err != nil {
+			return err
+		}
+		if last.Valid {
+			start = last.Time.AddDate(0, 0, 1)
+		}
+	}
+	if start.IsZero() {
+		s, err := resolveStart(ctx, from, asset, pool.Chain)
+		if err != nil {
+			return err
+		}
+		start = s
+	}
+	today := time.Now().UTC().Truncate(24 * time.Hour)
+	if until != "" {
+		u, err := time.Parse("2006-01-02", until)
+		if err != nil {
+			return fmt.Errorf("invalid -until %q: %w", until, err)
+		}
+		if next := u.AddDate(0, 0, 1); next.Before(today) {
+			today = next
+		}
+	}
+
+	var read func(from, to time.Time) ([]pricing.PricePoint, error)
+	switch pool.Kind {
+	case "justswap":
+		chainCfg, ok := cfg.Chain(pool.Chain)
+		if !ok {
+			return fmt.Errorf("chain %s is not declared", pool.Chain)
+		}
+		key := os.Getenv("TRONGRID_API_KEY")
+		// Two a second, like the blacklist refresh: the worker shares the key.
+		c := tron.NewClient(tron.Options{BaseURL: chainCfg.URL, APIKey: key, RequestsPerSecond: 2, MaxRetries: 12, Logger: log})
+		read = func(f, t time.Time) ([]pricing.PricePoint, error) { return pricing.TronCloses(ctx, c, *pool, f, t) }
+	case "uniswap_v2":
+		env := map[string]string{"ethereum": "ETH_RPC_URL", "bsc": "BSC_RPC_URL"}[pool.Chain]
+		url := os.Getenv(env)
+		if url == "" {
+			return fmt.Errorf("%s is not set; %s prices need an archive endpoint", env, pool.Chain)
+		}
+		c := evm.NewClient(evm.Options{URL: url, RequestsPerSecond: 10, Logger: log})
+		read = func(f, t time.Time) ([]pricing.PricePoint, error) { return pricing.EVMCloses(ctx, c, *pool, f, t) }
+	default:
+		return fmt.Errorf("pool kind %q is not supported", pool.Kind)
+	}
+
+	log.Info("loading daily closes", "source", pricing.SourceOnChain, "asset", asset, "pool", pool.Pool,
+		"from", start.Format("2006-01-02"))
+	total := 0
+	for f := start; f.Before(today); f = f.AddDate(0, 0, 30) {
+		t := f.AddDate(0, 0, 30)
+		if t.After(today) {
+			t = today
+		}
+		points, err := read(f, t)
+		if len(points) > 0 {
+			n, lerr := pricing.LoadPrices(ctx, pg, pricing.SourceOnChain, points)
+			if lerr != nil {
+				return lerr
+			}
+			total += n
+		}
+		if err != nil {
+			return err
+		}
+		log.Info("closes loaded", "asset", asset, "through", t.AddDate(0, 0, -1).Format("2006-01-02"), "total", total)
+	}
+	fmt.Printf("loaded %d daily closes for %s from %s\n", total, asset, pool.Pool)
+	return nil
 }

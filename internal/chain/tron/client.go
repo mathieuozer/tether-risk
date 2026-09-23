@@ -1,6 +1,7 @@
 package tron
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -99,6 +100,15 @@ var ErrNotFound = errors.New("tron: not found")
 // opaque `links.next`, and following it verbatim is more robust than
 // reconstructing query parameters ourselves.
 func (c *Client) get(ctx context.Context, url string, out any) error {
+	return c.request(ctx, http.MethodGet, url, nil, out)
+}
+
+// post is get with a JSON body, for TronGrid's /wallet endpoints.
+func (c *Client) post(ctx context.Context, url string, body []byte, out any) error {
+	return c.request(ctx, http.MethodPost, url, body, out)
+}
+
+func (c *Client) request(ctx context.Context, method, url string, body []byte, out any) error {
 	var lastErr error
 
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
@@ -120,9 +130,9 @@ func (c *Client) get(ctx context.Context, url string, out any) error {
 			return fmt.Errorf("rate limiter: %w", err)
 		}
 
-		body, retryable, err := c.doOnce(ctx, url)
+		resp, retryable, err := c.doOnce(ctx, method, url, body)
 		if err == nil {
-			if err := json.Unmarshal(body, out); err != nil {
+			if err := json.Unmarshal(resp, out); err != nil {
 				return fmt.Errorf("decode trongrid response: %w", err)
 			}
 			return nil
@@ -137,12 +147,19 @@ func (c *Client) get(ctx context.Context, url string, out any) error {
 
 // doOnce performs a single request. The second return value reports whether
 // the error is worth retrying.
-func (c *Client) doOnce(ctx context.Context, url string) ([]byte, bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+func (c *Client) doOnce(ctx context.Context, method, url string, reqBody []byte) ([]byte, bool, error) {
+	var rd io.Reader
+	if reqBody != nil {
+		rd = bytes.NewReader(reqBody)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, rd)
 	if err != nil {
 		return nil, false, err
 	}
 	req.Header.Set("Accept", "application/json")
+	if reqBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if c.apiKey != "" {
 		req.Header.Set("TRON-PRO-API-KEY", c.apiKey)
 	}

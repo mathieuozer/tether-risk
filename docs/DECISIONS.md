@@ -1703,3 +1703,54 @@ than hidden (D16). The choice of price source is the owner's (see Open).
 licence is prices read from the chains themselves: daily closes from the
 TRX/USDT, WETH/USDT and WBNB/USDT pools of the largest DEX on each chain.
 These are public chain data, like everything else here.
+
+---
+
+## D41 — prices read from the chains themselves
+
+**Date:** 2026-09-23 · **Status:** active · **Supersedes:** PLAN F3's price feed · **Follows:** D40
+
+D40 found that neither price source had a licence for this use. The owner
+chose the option that needs none. Every USD value now rests on public
+chain data, like every other fact in this engine.
+
+**How.** The close for a UTC day is a pool's price at its last state before
+midnight: the stablecoin side's balance over the asset's.
+
+| Asset | Pool | Read as |
+|---|---|---|
+| TRX | JustSwap TRX-USDT exchange `TQn9Y2…bLSE` | its last `Snapshot(trx_balance, token_balance)` event before midnight: one TronGrid request a day |
+| ETH | Uniswap v2 WETH/USDT `0x0d4a11…1852` | `getReserves()` at the last block before midnight, found by binary search |
+| BNB | PancakeSwap v2 WBNB/USDT `0x16b9a8…0dae` | as ETH |
+
+Each pool was checked on chain before use, not recalled. JustSwap's
+`tokenAddress()` is Tether's contract. Each EVM pair's factory `getPair`
+returns that pair, and its tokens' `symbol()` and `decimals()` are WETH/18
+with USDT/6, and USDT/18 with WBNB/18. The BNB pair address first tried from
+memory held no contract; the right one came from PancakeSwap's router, its
+`factory()` and `getPair`. A load repeats the token check and reads nothing
+from a pool whose tokens differ from `weights.yaml`. A pool state more than
+48 hours old does not price a day.
+
+**Checked against the earlier series.** Over four 30-day windows (June 2021,
+June 2023, June 2025, and 20 August to 18 September 2026), the TRX closes
+differed from the old ones by a median of 0.16–0.24%, at most 0.43%, with
+no bias. Recent ETH and BNB closes agree with the live pools (about $2,777
+and $793).
+
+**Cost.** TRX: one request a day, about 20 minutes for 2020–2026. EVM: at
+first a binary search up to the chain head each day, about 25 calls and 10
+s a day, which would have taken over 5 hours. Guessing the upper bound from
+the block rate seen so far brought it to about 3 s a day. Nightly, `price
+load` continues from the last close read.
+
+**What changes.** `price load` defaults to `onchain`. Binance and CoinGecko
+are `blocked` in `sources.yaml` with their clauses, and the loader refuses
+them. Days before a pool existed (TRX before 2020-08-15) have no close:
+3,008 of 10.7 million stored TRX transfers ($548k) fall there, and will show
+as unpriced once repriced (see Open).
+
+**Open:** TRX transfers already stored keep USD values computed from the
+earlier series, about 0.2% away. Rewriting 10.7 million of them and
+rebuilding edges is a maintenance job for a quiet hour, not something to run
+beside live screens.

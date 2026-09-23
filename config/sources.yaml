@@ -379,6 +379,46 @@ sources:
       recorded in docs/METHODOLOGY.md and must be re-measured whenever the
       thresholds change.
 
+  # -------------------------------------------------------------------------
+  # Price sources. Every USD value in a report rests on these (D40, D41).
+  # -------------------------------------------------------------------------
+  - id: "price:onchain"
+    name: "Daily closes from DEX pools (weights.yaml pricing.pools)"
+    status: allowed
+    confidence: 1.0
+    schedule: daily
+    licence: "Public blockchain data"
+    redistribution: permitted
+    checked: 2026-09-23
+    notes: >
+      The price at the last pool state before each UTC midnight: JustSwap's
+      TRX-USDT exchange on TRON, Uniswap v2 WETH/USDT on Ethereum, PancakeSwap
+      v2 WBNB/USDT on BSC. Measured against the earlier series over four
+      30-day windows (2021, 2023, 2025, 2026): median difference 0.16-0.24%,
+      at most 0.43%, no bias (docs/DECISIONS.md D41).
+
+  - id: "price:coingecko"
+    name: "CoinGecko public API"
+    status: blocked
+    confidence: 1.0
+    checked: 2026-09-23
+    blocked_reason: >
+      API Terms (2025-09-05) allow a paid product incorporating the API but
+      require "Powered by CoinGecko" on display (§4.4) and forbid storing the
+      data beyond a cache refreshed every 24 hours, to be deleted on
+      termination (§6.1-6.2). A daily close series kept for years is storage.
+
+  - id: "price:binance"
+    name: "Binance spot klines"
+    status: blocked
+    confidence: 1.0
+    checked: 2026-09-23
+    blocked_reason: >
+      Binance's Terms of Use forbid obtaining platform data by "web crawlers,
+      bots ... or other automatic devices" (quoted in D19), and no licence
+      for keeping or reusing its market data was found. It supplied the TRX
+      series until D41.
+
 # ---------------------------------------------------------------------------
 # Chain data sources, as distinct from label sources.
 # ---------------------------------------------------------------------------

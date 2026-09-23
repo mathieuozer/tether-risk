@@ -80,6 +80,25 @@ type Pricing struct {
 	Pinned map[string]float64 `yaml:"pinned"`
 	// DailyClose lists assets valued from the daily close series.
 	DailyClose []string `yaml:"daily_close"`
+	// Pools are where each daily close is read from: public chain data, so
+	// no price vendor's licence applies (docs/DECISIONS.md D41).
+	Pools []PricePool `yaml:"pools"`
+}
+
+// PricePool is a DEX pool quoting an asset in a stablecoin. The tokens are
+// checked against the pool on chain before any price is read from it.
+type PricePool struct {
+	Asset string `yaml:"asset"`
+	Chain string `yaml:"chain"`
+	// Kind: justswap (TRON, Snapshot events) or uniswap_v2 (EVM reserves).
+	Kind string `yaml:"kind"`
+	Pool string `yaml:"pool"`
+	// Base is the asset's wrapped token (uniswap_v2 only); Quote the
+	// stablecoin, valued at 1 like everywhere else.
+	Base  string `yaml:"base"`
+	Quote string `yaml:"quote"`
+	// Since is the first day the pool can price.
+	Since string `yaml:"since"`
 }
 
 type Category struct {
@@ -517,7 +536,7 @@ func (c *Config) Validate() error {
 		ranked[id] = true
 	}
 	for _, s := range c.Sources.Sources {
-		if s.Ingestible() && !ranked[s.ID] {
+		if s.Ingestible() && s.ProducesLabels() && !ranked[s.ID] {
 			bad("labels.source_priority: ingestible source %q is unranked, leaving tie-breaks undefined", s.ID)
 		}
 	}
@@ -650,6 +669,10 @@ func (c *Config) Chain(id string) (ChainSource, bool) {
 	}
 	return ChainSource{}, false
 }
+
+// ProducesLabels is false for a price source, which values transfers and
+// has no label tie to break (docs/DECISIONS.md D41).
+func (s LabelSource) ProducesLabels() bool { return !strings.HasPrefix(s.ID, "price:") }
 
 // Source returns the label source entry for id.
 func (c *Config) Source(id string) (LabelSource, bool) {

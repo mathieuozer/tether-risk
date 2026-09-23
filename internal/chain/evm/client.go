@@ -31,6 +31,7 @@ import (
 	"math/big"
 	"math/rand"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -300,4 +301,41 @@ func hexToBig(s string) (*big.Int, error) {
 		return nil, fmt.Errorf("invalid hex value %q", s)
 	}
 	return n, nil
+}
+
+// Latest returns the newest block number.
+func (c *Client) Latest(ctx context.Context) (uint64, error) {
+	var h string
+	if err := c.call(ctx, "eth_blockNumber", []any{}, &h); err != nil {
+		return 0, err
+	}
+	return parseHexUint(h)
+}
+
+// BlockTime returns a block's timestamp.
+func (c *Client) BlockTime(ctx context.Context, n uint64) (time.Time, error) {
+	var b struct {
+		Timestamp string `json:"timestamp"`
+	}
+	if err := c.call(ctx, "eth_getBlockByNumber", []any{fmt.Sprintf("0x%x", n), false}, &b); err != nil {
+		return time.Time{}, err
+	}
+	ts, err := parseHexUint(b.Timestamp)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("block %d timestamp: %w", n, err)
+	}
+	return time.Unix(int64(ts), 0).UTC(), nil
+}
+
+// CallAt runs a read-only call against a contract as of a block, and returns
+// the hex result. Past blocks need an archive endpoint, which Alchemy is
+// (docs/DECISIONS.md D41).
+func (c *Client) CallAt(ctx context.Context, to, data string, block uint64) (string, error) {
+	var out string
+	err := c.call(ctx, "eth_call", []any{map[string]string{"to": to, "data": data}, fmt.Sprintf("0x%x", block)}, &out)
+	return out, err
+}
+
+func parseHexUint(h string) (uint64, error) {
+	return strconv.ParseUint(strings.TrimPrefix(h, "0x"), 16, 64)
 }

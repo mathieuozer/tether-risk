@@ -317,6 +317,36 @@ pricing:
     - ETH
     - BNB
 
+  # Where each daily close comes from: the largest stablecoin pool of the
+  # asset's own chain, read from public chain data (D41). Each pool was
+  # verified on 2026-09-23: its tokens are the ones below, and for the EVM
+  # pools the factory's getPair returns this pool. A load checks the tokens
+  # again before reading any price.
+  pools:
+    - asset: TRX
+      chain: tron
+      kind: justswap
+      # JustSwap/SunSwap v1 TRX-USDT exchange; tokenAddress() is USDT.
+      pool: TQn9Y2khEsLJW1ChVWFMSMeRDow5KcbLSE
+      quote: TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t
+      since: "2020-08-15"
+    - asset: ETH
+      chain: ethereum
+      kind: uniswap_v2
+      # Uniswap v2 WETH/USDT, the factory's canonical pair.
+      pool: "0x0d4a11d5eeaac28ec3f61d100daf4d40471f1852"
+      base: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2"
+      quote: "0xdac17f958d2ee523a2206206994597c13d831ec7"
+      since: "2020-05-06"
+    - asset: BNB
+      chain: bsc
+      kind: uniswap_v2
+      # PancakeSwap v2 WBNB/USDT, the factory's canonical pair.
+      pool: "0x16b9a82891338f9ba80e2d6970fdda79d1eb0dae"
+      base: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"
+      quote: "0x55d398326f99059ff775485246999027b3197955"
+      since: "2021-04-24"
+
   # An asset in neither list contributes no USD value and is counted as
   # unpriced. It is never assumed to be worth zero — `unpriced_count` on each
   # edge carries that forward so coverage can reflect it.
