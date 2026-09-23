@@ -43,6 +43,9 @@
     view: 'screen', // screen | result | history | watches | account
     input: '',
     chain: '',
+    mode: 'screen', // screen | send: check a payment before sending it (D34)
+    from: '',       // send mode: the paying wallet, optional
+    presend: null,  // the last payment check, shown above its recipient's result
     screening: false,
     screenStarted: 0,
     screenError: null,
@@ -249,7 +252,8 @@
     help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 0 1 5 .3c0 1.6-2.5 2-2.5 3.5"/><path d="M12 17h.01"/>',
     list: '<path d="M9 6h12M9 12h12M9 18h12"/><path d="M4 6h.01M4 12h.01M4 18h.01"/>',
     shield: '<path d="M12 3 4.5 6v5.5c0 4.8 3.2 8.2 7.5 9.5 4.3-1.3 7.5-4.7 7.5-9.5V6z"/>',
-    doc: '<path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6M9 16h3"/>'
+    doc: '<path d="M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M9 8h6M9 12h6M9 16h3"/>',
+    send: '<path d="M21 3 10 14"/><path d="M21 3 14.5 21l-4.5-7-7-4.5z"/>'
   };
 
   function spinner(cls) { return '<span class="spinner' + (cls ? ' ' + cls : '') + '" aria-hidden="true"></span>'; }
@@ -304,7 +308,7 @@
     if (!mb) return;
     var show = S.boot === 'ready' && S.view === 'screen' && !S.sheet && !S.screening && S.input.trim() !== '';
     if (show) {
-      mb.setText(t('screen_btn'));
+      mb.setText(t(S.mode === 'send' ? 'send_btn' : 'screen_btn'));
       mb.enable();
       mb.show();
     } else {
@@ -563,10 +567,12 @@
     window.scrollTo(0, 0);
     tickProgress();
     progressTimer = setInterval(tickProgress, 1000);
-    var body = { address: address };
+    var send = S.mode === 'send';
+    var body = send ? { to: address, from: S.from.trim() } : { address: address };
     if (chain) body.chain = chain;
-    api('POST', '/screen', body, SCREEN_TIMEOUT).then(function (data) {
+    api('POST', send ? '/presend' : '/screen', body, SCREEN_TIMEOUT).then(function (data) {
       S.result = data.result;
+      S.presend = send ? data.presend : null;
       // The bot keeps tracing an unfinished screen and sends the final result to the chat.
       S.followUp = !!data.follow_up;
       if (data.usage && S.me) S.me.usage.screens_today = data.usage.screens_today;
@@ -599,6 +605,7 @@
   }
 
   function rescreen(address, chain, ask) {
+    S.mode = 'screen';
     if (!ask) { S.chain = ''; runScreen(address, chain); return; }
     confirmDialog(t('confirm_rescreen', { addr: short(address) })).then(function (ok) {
       if (ok) { S.chain = ''; runScreen(address, chain); }
@@ -882,6 +889,7 @@
       updateScreenForm();
     },
     chain: function (el) { S.chain = el.getAttribute('data-chain'); haptic('select'); render(); },
+    mode: function (el) { S.mode = el.getAttribute('data-mode'); S.screenError = null; haptic('select'); render(); },
     rescreen: function (el) { rescreen(el.getAttribute('data-address'), el.getAttribute('data-chain'), el.getAttribute('data-confirm') === '1'); },
     retryScreen: submitScreen,
     retryBoot: boot,
@@ -1084,16 +1092,28 @@
       ? '<button type="button" class="input-btn" data-act="clear" id="addr-btn" aria-label="' + tt('clear') + '"' + (S.screening ? ' disabled' : '') + '>' + icon('x') + '</button>'
       : canPaste ? '<button type="button" class="input-btn" data-act="paste" id="addr-btn" aria-label="' + tt('paste') + '">' + icon('paste') + '<span>' + tt('paste') + '</span></button>' : '';
 
-    var html = pageHead(t('screen_title'), t('screen_sub'));
+    var send = S.mode === 'send';
+    var modeBtn = function (id) {
+      var on = S.mode === id;
+      return '<button type="button" class="seg-btn" data-act="mode" data-mode="' + id + '" aria-pressed="' + on + '"' +
+        (S.screening ? ' disabled' : '') + '>' + icon(id === 'send' ? 'send' : 'search') + '<span>' + tt('mode_' + id) + '</span></button>';
+    };
+    var fromUI = send ? '<label class="label" for="from">' + tt('send_from_label') + '</label>' +
+      '<div class="input-wrap"><input id="from" class="input mono" data-bind="from" value="' + esc(S.from) + '" placeholder="' + tt('send_from_ph') +
+      '" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"' + (S.screening ? ' disabled' : '') + '></div>' +
+      '<p class="hint small">' + tt('send_from_hint') + '</p>' : '';
+
+    var html = pageHead(t(send ? 'send_title' : 'screen_title'), t(send ? 'send_sub' : 'screen_sub'));
     if (!me.access) html += noPlanNote();
+    html += '<div class="seg" role="group" aria-label="' + tt('mode_label') + '">' + modeBtn('screen') + modeBtn('send') + '</div>';
     html += '<form class="card form" data-form="screen" novalidate>' +
-      '<label class="label" for="addr">' + tt('address_label') + '</label>' +
+      '<label class="label" for="addr">' + tt(send ? 'send_to_label' : 'address_label') + '</label>' +
       '<div class="input-wrap">' +
       '<input id="addr" class="input mono" data-bind="input" value="' + esc(S.input) + '" placeholder="' + tt('address_ph') +
       '" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go"' + (S.screening ? ' disabled' : '') + '>' +
-      inputBtn + '</div>' + chainUI +
+      inputBtn + '</div>' + fromUI + chainUI +
       '<button type="submit" class="btn primary block" id="screen-btn"' + (!filled || S.screening ? ' disabled' : '') + '>' +
-      (S.screening ? spinner('on-accent') + tt('screening') : icon('search') + tt('screen_btn')) + '</button>' +
+      (S.screening ? spinner('on-accent') + tt('screening') : send ? icon('send') + tt('send_btn') : icon('search') + tt('screen_btn')) + '</button>' +
       usageBlock() + '</form>';
 
     if (S.screening) html += progressCard();
@@ -1143,6 +1163,7 @@
       html += '<button type="button" class="back-link" data-act="back">' + icon('left') + tt('back') + '</button>';
     }
     html += mockBadge();
+    if (S.presend && S.presend.to === r.address) html += presendCard(S.presend);
     html += resultBanners(r);
     html += verdictCard(r);
     html += summaryCard(r);
@@ -1157,6 +1178,21 @@
     // The API's disclaimer is English; show its meaning in the reader's language.
     if (r.disclaimer) html += '<p class="disclaimer">' + esc(tt('disclaimer')) + '</p>';
     return html;
+  }
+
+  // The answer to "may I send this": above everything else about the recipient.
+  function presendCard(p) {
+    var no = p.decision === 'do_not_send';
+    var lines = [];
+    if (p.lookalike_of) lines.push(tt('ps_lookalike', { addr: short(p.lookalike_of), amt: fmtUSD(p.lookalike_usd || 0) }));
+    else if (no) lines.push(tt('ps_risky'));
+    if (!p.sender_known) lines.push(tt('ps_no_sender'));
+    else if (p.first_payment && !p.lookalike_of) lines.push(tt('ps_first'));
+    else if (!p.first_payment) lines.push(tt('ps_paid_before', { amt: fmtUSD(p.paid_before_usd || 0) }));
+    return '<section class="card verdict presend verdict-' + (no ? 'high_risk' : 'clear') + '" role="' + (no ? 'alert' : 'status') + '" aria-labelledby="ps-title">' +
+      '<div class="verdict-head"><span class="verdict-dot" aria-hidden="true"></span>' +
+      '<h2 id="ps-title">' + tt(no ? 'ps_no' : 'ps_yes') + '</h2></div>' +
+      '<ul class="verdict-reasons">' + lines.map(function (l) { return '<li>' + l + '</li>'; }).join('') + '</ul></section>';
   }
 
   function resultBanners(r) {
@@ -2008,7 +2044,7 @@
   function mockApi(method, path, body) {
     if (!M) mockInit();
     body = body || {};
-    var delay = path === '/screen' ? 1800 : path === '/report' ? 1200 : 350;
+    var delay = path === '/screen' || path === '/presend' ? 1800 : path === '/report' ? 1200 : 350;
     return new Promise(function (resolve) { setTimeout(resolve, delay); }).then(function () {
       var lim = mockLimits();
       var route = method + ' ' + path.split('?')[0];
@@ -2016,6 +2052,20 @@
       if (route === 'GET /me') return mockMe();
       if (route === 'POST /lang') { M.lang = body.lang; return { lang: body.lang }; }
       if (route === 'GET /history') return { items: M.history.slice() };
+
+      if (route === 'POST /presend') {
+        // A payer ending in the same four characters as the recipient stands in for a look-alike.
+        var to = String(body.to || '').trim(), from = String(body.from || '').trim();
+        if (from && !mockDetect(from)) throw mockErr('bad_address', 400);
+        return mockApi('POST', '/screen', { address: to, chain: body.chain }).then(function (d) {
+          var copy = !!from && from !== to && from.slice(-4) === to.slice(-4);
+          var risky = d.result.verdict && d.result.verdict.level === 'high_risk';
+          d.presend = { to: to, from: from, decision: copy || risky ? 'do_not_send' : 'send',
+            lookalike_of: copy ? from : '', lookalike_usd: copy ? 150000 : 0,
+            paid_before_usd: 0, first_payment: true, sender_known: !!from };
+          return d;
+        });
+      }
 
       if (route === 'POST /screen' || route === 'POST /report') {
         if (!M.access && !M.admin) throw mockErr('no_plan', 402);

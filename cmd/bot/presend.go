@@ -23,6 +23,10 @@ type preSendResponse struct {
 	SenderKnown   bool           `json:"sender_known"`
 	Recipient     screenResponse `json:"recipient"`
 	Detail        string         `json:"detail"`
+
+	// RecipientRaw is the recipient's screen as the API sent it, for the
+	// Mini App, which reads fields this mirror does not.
+	RecipientRaw json.RawMessage `json:"-"`
 }
 
 func (b *bot) preSend(ctx context.Context, chain, from, to string) (*preSendResponse, error) {
@@ -47,6 +51,12 @@ func (b *bot) preSend(ctx context.Context, chain, from, to string) (*preSendResp
 	var out preSendResponse
 	if err := json.Unmarshal(raw, &out); err != nil {
 		return nil, fmt.Errorf("unexpected response from the screening service: %w", err)
+	}
+	var aux struct {
+		Recipient json.RawMessage `json:"recipient"`
+	}
+	if err := json.Unmarshal(raw, &aux); err == nil {
+		out.RecipientRaw = aux.Recipient
 	}
 	if resp.StatusCode != http.StatusOK {
 		if out.Detail != "" {

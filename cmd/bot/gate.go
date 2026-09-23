@@ -183,7 +183,7 @@ func (b *bot) gate(ctx context.Context, r screenRequest) (*screenOutcome, error)
 	case kindPreSend:
 		out.PreSend, err = b.preSend(ctx, chain, strings.TrimSpace(r.From), address)
 		if err == nil {
-			out.Result = &out.PreSend.Recipient
+			out.Result, out.Raw = &out.PreSend.Recipient, out.PreSend.RecipientRaw
 		}
 	default:
 		out.Result, out.Raw, err = b.screen(ctx, chain, address)

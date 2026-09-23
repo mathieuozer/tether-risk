@@ -87,6 +87,26 @@ confidence, reasons[] {code, category?, pct?, flag?}}`, where `level` is
 response adds `follow_up: true` when the bot will send the final result to
 the chat after further tracing.
 
+### `POST /app/api/presend`
+
+Checks a payment before it is sent (docs/DECISIONS.md D34). Request
+`{"to": "T...", "from": "T...", "chain": "tron"}`; `from`, the paying wallet,
+and `chain` are optional. Uses one daily screen.
+
+```json
+{"presend": {"to": "T...", "from": "T...", "decision": "do_not_send",
+  "lookalike_of": "T...", "lookalike_usd": 150000, "paid_before_usd": 0,
+  "first_payment": true, "sender_known": true},
+ "result": { ...the recipient's screen, as for screen... },
+ "usage": {"screens_today": 5, "daily_screens": 200}}
+```
+
+`decision` is `do_not_send` when the recipient is risky or imitates a real
+counterparty of `from` (`lookalike_of`, an address-poisoning copy), and
+`send` otherwise. `sender_known` is false when `from` was not given or its
+history could not be read; the look-alike and first-payment checks did not
+run then. An invalid `from` is refused with `bad_address`.
+
 ### `POST /app/api/report`
 
 Request as for screen. Needs the plan's `pdf`. The PDF is sent to the user's

@@ -168,6 +168,22 @@ func TestAppMeScreenAndHistory(t *testing.T) {
 		t.Errorf("report on basic: %d %v", code, body)
 	}
 
+	// A payment check: the decision, and the recipient's full screen beside it.
+	code, ps, _ := a.do("POST", "/app/api/presend", auth, map[string]string{"to": addrA, "from": addrB})
+	if code != 200 {
+		t.Fatalf("presend: %d %v", code, ps)
+	}
+	if p := ps["presend"].(map[string]any); p["decision"] != "do_not_send" || p["lookalike_of"] != addrB || p["to"] != addrA {
+		t.Errorf("presend = %v", p)
+	}
+	if r := ps["result"].(map[string]any); r["address"] != addrA || r["band"] != "low" {
+		t.Errorf("presend recipient = %v", r)
+	}
+	code, body, _ = a.do("POST", "/app/api/presend", auth, map[string]string{"to": addrA, "from": "nonsense"})
+	if code != 400 || body["error"] != "bad_address" {
+		t.Errorf("presend with an invalid payer: %d %v", code, body)
+	}
+
 	// An unsupported chain is named, not treated as a typo.
 	code, body, _ = a.do("POST", "/app/api/screen", auth, map[string]string{"address": "0x" + strings.Repeat("a", 40)})
 	if code != 400 || body["error"] != "chain_unavailable" {

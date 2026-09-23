@@ -55,6 +55,7 @@ func (b *bot) routes() http.Handler {
 	mux.HandleFunc("GET /app/api/me", app(b.apiMe))
 	mux.HandleFunc("POST /app/api/screen", app(b.apiAppScreen))
 	mux.HandleFunc("POST /app/api/report", app(b.apiAppReport))
+	mux.HandleFunc("POST /app/api/presend", app(b.apiAppPreSend))
 	mux.HandleFunc("GET /app/api/history", app(b.apiHistory))
 	mux.HandleFunc("GET /app/api/watches", app(b.apiWatches))
 	mux.HandleFunc("POST /app/api/watches", app(b.apiAddWatch))
@@ -376,6 +377,46 @@ func (b *bot) apiAppScreen(w http.ResponseWriter, r *http.Request, u appUser) {
 	}
 	following := b.startFollowUp(u.ID, u.Lang, out.Chain, out.Address, out.Result)
 	writeJSON(w, http.StatusOK, map[string]any{
+		"result":    json.RawMessage(out.Raw),
+		"usage":     map[string]int{"screens_today": out.Used, "daily_screens": out.Limit},
+		"follow_up": following,
+	})
+}
+
+// apiAppPreSend checks a payment before it is sent (docs/DECISIONS.md D34):
+// the recipient's screen, and with the paying wallet, whether the recipient
+// imitates one of its real counterparties.
+func (b *bot) apiAppPreSend(w http.ResponseWriter, r *http.Request, u appUser) {
+	var req struct {
+		To    string `json:"to"`
+		From  string `json:"from"`
+		Chain string `json:"chain"`
+	}
+	if err := decode(r, &req); err != nil {
+		writeErr(w, err, u.Lang)
+		return
+	}
+	from := strings.TrimSpace(req.From)
+	if from != "" {
+		if _, _, err := b.parseTarget(from, req.Chain); err != nil {
+			writeErr(w, &gateError{Code: "bad_address", Status: http.StatusBadRequest}, u.Lang)
+			return
+		}
+	}
+	out, err := b.gate(r.Context(), screenRequest{UserID: u.ID, Text: req.To, From: from, Chain: req.Chain,
+		Kind: kindPreSend, Channel: u.Channel})
+	if err != nil {
+		writeErr(w, err, u.Lang)
+		return
+	}
+	following := b.startFollowUp(u.ID, u.Lang, out.Chain, out.Address, out.Result)
+	ps := out.PreSend
+	writeJSON(w, http.StatusOK, map[string]any{
+		"presend": map[string]any{
+			"to": out.Address, "from": from, "decision": ps.Decision,
+			"lookalike_of": ps.LookalikeOf, "lookalike_usd": ps.LookalikeUSD,
+			"paid_before_usd": ps.PaidBeforeUSD, "first_payment": ps.FirstPayment, "sender_known": ps.SenderKnown,
+		},
 		"result":    json.RawMessage(out.Raw),
 		"usage":     map[string]int{"screens_today": out.Used, "daily_screens": out.Limit},
 		"follow_up": following,
