@@ -36,7 +36,17 @@ if [ $status -eq 0 ]; then
 	bin/ingest -chain tron audit-edges >>"$LOG" 2>&1 || status=1
 fi
 
-log "starting writers"
-for s in $SERVICES; do launchctl bootstrap "$U" "$HOME/Library/LaunchAgents/$s.plist" 2>/dev/null; done
-[ $status -eq 0 ] && log "done" || log "FAILED; see $LOG"
+# Only a finished rebuild and a clean audit bring the writers back. On
+# 2026-09-23 the rebuild failed after truncating `edges` and this script
+# started the API anyway, which then answered from an empty edge table: a
+# wrong answer is worse than none. On failure they stay stopped until the
+# edges are rebuilt by hand (bin/ingest rebuild-edges, then audit-edges).
+if [ $status -eq 0 ]; then
+	log "starting writers"
+	for s in $SERVICES; do launchctl bootstrap "$U" "$HOME/Library/LaunchAgents/$s.plist" 2>/dev/null; done
+	log "done"
+else
+	log "FAILED; the API, worker and blacklist refresh stay stopped. See $LOG"
+	osascript -e 'display notification "Maintenance failed; services stopped" with title "tether-risk"' >/dev/null 2>&1 || true
+fi
 exit $status

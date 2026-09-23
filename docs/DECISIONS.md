@@ -1750,7 +1750,29 @@ them. Days before a pool existed (TRX before 2020-08-15) have no close:
 3,008 of 10.7 million stored TRX transfers ($548k) fall there, and will show
 as unpriced once repriced (see Open).
 
-**Open:** TRX transfers already stored keep USD values computed from the
-earlier series, about 0.2% away. Rewriting 10.7 million of them and
-rebuilding edges is a maintenance job for a quiet hour, not something to run
-beside live screens.
+**Repricing what was stored (2026-09-23).** `scripts/maintenance-reprice.sh`
+stops the writers, runs `price reprice-all TRX`, rebuilds and audits the
+edges, and starts the writers again. The reprice joins the closes to the
+transfers inside ClickHouse: 11,046,958 transfers in 6 min 50 s. It also
+drops the 744 closes left from the earlier source.
+
+The first run failed at the rebuild, and it failed badly. `ingest
+rebuild-edges` opened ClickHouse with the 60 s interactive read timeout,
+the same mistake D37 fixed in `price backfill`. After three minutes the
+connection was cut, with `edges` already truncated and not yet refilled.
+The script then restarted the API regardless. For about five minutes it
+answered from an empty edge table; no customers use it yet. The writers
+were stopped again, and `rebuild-edges` now opens the batch pool. The rebuild
+then took 8 min 51 s. The script now leaves the writers stopped when any
+step fails: a wrong answer is worse than none.
+
+| | Before | After |
+|---|---|---|
+| TRX transfers, USD | $5,654,414,053 | $5,654,966,649 (+0.01%) |
+| TRX transfers unpriced | 974 | 3,965 (the days before the pool) |
+| Edges vs transfers, TRON, count | | 23,374,951 in both edge tables and in the deduplicated transfers |
+| Edges vs transfers, USD | | $1,816,717,054,576 vs $1,816,717,058,569 (2 parts in a billion) |
+
+The audit afterwards repaired 17 edges. The small dollar gap is
+consistent with duplicate rows that share an `ingested_at` second, which
+`FINAL` and `argMax` may resolve differently.

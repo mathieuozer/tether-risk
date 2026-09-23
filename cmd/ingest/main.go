@@ -134,8 +134,15 @@ func run(ctx context.Context, cmd, configDir, chainID string, workers, depth int
 		return fetchOne(ctx, address, depth, adapter, jobs, writer, opts, log)
 
 	case "rebuild-edges":
+		// A batch job: on 2026-09-23 the 60 s interactive read timeout cut
+		// it off after truncating `edges`, leaving the table empty (D41).
+		bch, err := store.OpenClickHouseBatch(ctx)
+		if err != nil {
+			return err
+		}
+		defer bch.Close()
 		started := time.Now()
-		if err := writer.RebuildEdges(ctx); err != nil {
+		if err := store.NewTransferWriter(bch, pg).RebuildEdges(ctx); err != nil {
 			return err
 		}
 		log.Info("edges rebuilt from deduplicated transfers", "duration", time.Since(started))
