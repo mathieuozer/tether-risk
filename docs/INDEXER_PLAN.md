@@ -102,41 +102,50 @@ keys stay comparable:
   `DestroyedBlackFunds`, and the JustSwap pool's `Snapshot`. With these, the
   blacklist refresh (D34) and the TRX price (D41) come from our own node too.
 
-## First measurement (2026-09-23, 20 blocks through TronGrid)
+## Measurement (2026-09-23, 300 blocks through Alchemy)
 
-`indexer measure -sample 20`, blocks 8,000,000 to 86,498,761. The sample is
-small, and phase 0 repeats it with 200 or more blocks:
+`indexer -source alchemy -sample 300 measure`: 300 blocks spread evenly over
+blocks 8,000,000 to 86,499,810 (USDT on TRON begins at about 8 M). A first
+20-block run through TronGrid gave the same picture (9.71 billion, 3.09 TB).
 
-| Year | tx/block | kept/block | TRX | USDT |
-|---|---|---|---|---|
-| 2019 | 83 | 4.7 | 4.7 | 0 |
-| 2021 | 206 | 96.7 | 71.0 | 25.7 |
-| 2023 | 300 | 240.0 | 155.0 | 85.0 |
-| 2025 | 299 | 213.7 | 143.3 | 70.3 |
-| 2026 | 368 | 221.0 | 138.0 | 83.0 |
+| Year | tx/block | kept/block | TRX | USDT | other stablecoins |
+|---|---|---|---|---|---|
+| 2019 | 71 | 4.8 | 4.7 | 0.1 | 0 |
+| 2020 | 47 | 7.1 | 6.8 | 0.3 | 0 |
+| 2021 | 125 | 59.9 | 33.1 | 26.7 | 0.1 |
+| 2022 | 204 | 161.2 | 110.9 | 49.6 | 0.5 |
+| 2023 | 230 | 176.0 | 108.7 | 66.7 | 0.6 |
+| 2024 | 203 | 148.8 | 81.6 | 67.0 | 0.1 |
+| 2025 | 299 | 206.8 | 132.0 | 74.8 | 0 |
+| 2026 | 406 | 243.7 | 165.2 | 78.4 | 0 |
 
-- **About 9.7 billion transfers** in scope, not "several billion". TRX is
-  about 60% of them.
+- **About 9.8 billion transfers** in scope, not "several billion". TRX is
+  about 64% of them (6.3 billion); USDT and the other stablecoins about 3.6
+  billion.
 - **About 3.1 TB in ClickHouse**, at the live database's own 318 bytes a
   transfer (transfers and edge tables together), not 0.5–1.5 TB. With the
-  node's 3.3 TB, that is about 7–8 TB.
-- **Backfilling through a hosted endpoint is impractical**: about 1 second a
-  block per stream, so 227 days with 4 streams. It needs the local node,
-  where a block should take milliseconds; phase 0 measures that.
+  node's 3.3 TB, that is about 7–8 TB. Stablecoins alone: about 1.15 TB.
+- **Backfilling through a hosted endpoint is impractical**: 1.19 seconds a
+  block (two requests), so about 270 days with 4 streams. It is also about
+  157 million requests, far beyond Alchemy's free monthly allowance. It
+  needs the local node, where a block should take milliseconds; phase 1
+  measures that.
+- Enabling TRON on an Alchemy app takes a few minutes to reach every
+  server: requests alternate between 200 and 403 until it has.
 
-Consequences for scope. USDT and the other stablecoins alone are about 40%
-of the rows, about 1.2 TB, and USDT is the product's subject. TRX could
+Consequences for scope. USDT and the other stablecoins alone are about 36%
+of the rows, about 1.15 TB, and USDT is the product's subject. TRX could
 follow later, or be kept above a threshold. Most TRX transfers are tiny, but
 address-poisoning dust (D32) is made of them, so a threshold costs that
 signal on TRX; the owner decides (see below).
 
-## Size (to be measured in phase 0, not assumed)
+## Size
 
 | Item | Estimate | Measured in |
 |---|---|---|
 | Blocks | ~86.5 M; USDT exists from about block 8 M (2019) | phase 0 |
-| Transfers in scope | several billion rows | phase 0, from a 100k-block sample |
-| ClickHouse on disk | roughly 0.5–1.5 TB for `transfers` and `transfers_by_to`, plus edges | phase 0 |
+| Transfers in scope | 9.8 billion (3.6 billion stablecoins) | measured, 300 blocks |
+| ClickHouse on disk | 3.1 TB with edges (1.15 TB stablecoins only) | measured, at today's 318 bytes a transfer |
 | Node | 3.3 TB, growing | snapshot size |
 | Backfill speed | unknown; needs to reach about 100 blocks/s across workers to finish in about 10 days | phase 0 |
 
@@ -246,7 +255,7 @@ the backfill running in the background.
    unless TronGrid quotes more than about $500 a month.
 2. Buying the server, about €250–350 a month (unconfirmed).
 3. The asset scope, in the light of the first measurement: USDT and
-   stablecoins first (about 1.2 TB, recommended), with TRX later or above a
+   stablecoins first (about 1.15 TB, recommended), with TRX later or above a
    threshold; or everything priced (about 3.1 TB).
 4. Whether TronGrid stays as a paid fallback after cutover, or the free
    tier is enough.
