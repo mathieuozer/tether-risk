@@ -1870,3 +1870,30 @@ Russia. It covers what to do with held payments, data protection and
 retention, liability for labels, and disputes. It also covers the attribution
 the UK list's Open Government Licence requires, which the product does not
 yet show.
+
+---
+
+## D44 — keeping a laptop's disk from filling
+
+**Date:** 2026-09-23 · **Status:** active (until the data moves to a server) · **Follows:** D35
+
+The stack ran on a MacBook Air with 228 GB of disk, 11 GB of it free.
+Background fetching was writing 12–15 million rows a day, about 3–4 GB, so
+the disk would have filled within days. ClickHouse's own diagnostic logs
+held 7.7 GB, more than the chain data: `text_log` 4.7 GB, `query_log`
+2.3 GB.
+
+- **`background_share` 0.6 → 0.15.** Background work gets 15,000 of the
+  key's 100,000 daily requests. Customers' screens and the blacklist refresh
+  are unaffected.
+- **Diagnostic logs keep three days** (`config/clickhouse/system-logs.xml`,
+  mounted into the container). The first attempt listed every log table.
+  ClickHouse refused to start, because tables whose default config gives an
+  `engine` cannot take a `ttl` setting. The list now holds the six large
+  ones. The renamed old copies (`text_log_0`, `trace_log_0`) were dropped,
+  and the rest were altered in place: 7.7 GB became 2.9 GB, and the rest
+  expires as it passes three days.
+- **Docker:** the owner cleared the build cache (14.5 GB).
+
+Free disk went from 11 GB to 32 GB. This buys time, not room: `docs/INDEXER_PLAN.md`
+and the go-live both need a server.

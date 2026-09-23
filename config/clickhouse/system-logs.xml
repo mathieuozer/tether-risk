@@ -1,0 +1,24 @@
+<!-- ClickHouse diagnostic logs keep three days (docs/DECISIONS.md D44).
+     On 2026-09-23 they held 7.7 GB, more than the chain data, on a laptop
+     disk with 11 GB free. Only tables without an engine of their own in the
+     default config take a ttl setting; the others are small. -->
+<clickhouse>
+    <query_log>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </query_log>
+    <text_log>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </text_log>
+    <trace_log>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </trace_log>
+    <part_log>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </part_log>
+    <processors_profile_log>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </processors_profile_log>
+    <query_views_log>
+        <ttl>event_date + INTERVAL 3 DAY DELETE</ttl>
+    </query_views_log>
+</clickhouse>

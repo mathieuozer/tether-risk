@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/mozer/tether-risk/pkg/tronindex"
 	"hash/fnv"
 	"math/big"
 	"net/url"
@@ -308,12 +309,9 @@ func assetForContract(contract string) string {
 // than invents flow — but it is a real undercount and is recorded in
 // docs/METHODOLOGY.md.
 func syntheticLogIndex(it trc20Item) uint32 {
-	h := fnv.New32a()
-	for _, part := range []string{it.From, it.To, it.TokenInfo.Address, it.Value} {
-		h.Write([]byte(part))
-		h.Write([]byte{0})
-	}
-	return h.Sum32()
+	// One formula for rows from TronGrid and rows from our own index
+	// (docs/INDEXER_PLAN.md), or the two would count a transfer twice.
+	return tronindex.TronGridIndex(it.From, it.To, it.TokenInfo.Address, it.Value)
 }
 
 // nativeTransfers extracts TRX transfers from a native transaction. The index

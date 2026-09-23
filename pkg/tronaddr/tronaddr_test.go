@@ -1,4 +1,4 @@
-package tron
+package tronaddr
 
 import (
 	"bytes"
