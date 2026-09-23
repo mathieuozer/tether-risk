@@ -559,3 +559,26 @@ func TestFinishedScreenHasNoFollowUp(t *testing.T) {
 		t.Errorf("follow-up on a finished screen: %d calls, %q", h.calls, h.tg.sent(102))
 	}
 }
+
+// A second freeze adds no category to a watch that already shows frozen
+// funds, but it is still news (docs/DECISIONS.md D35).
+func TestCompareAlertsOnNewFrozenContact(t *testing.T) {
+	prev := &billing.WatchState{Band: "low", RiskCategories: []string{"frozen_funds"}, FrozenContact: "TOld"}
+	cur := billing.WatchState{Band: "low", RiskCategories: []string{"frozen_funds"}, FrozenContact: "TNew", FrozenContactUSD: 25000}
+	w := compare(prev, cur)
+	if !w.NewFrozenContact || !w.any() {
+		t.Fatalf("new frozen contact not reported: %+v", w)
+	}
+	if compare(prev, *prev).any() {
+		t.Error("the same frozen contact alerted twice")
+	}
+	if compare(prev, billing.WatchState{Band: "low", RiskCategories: []string{"frozen_funds"}}).any() {
+		t.Error("the note expiring after three days alerted")
+	}
+	for _, lang := range []string{langEN, langTR, langRU} {
+		txt := alertText(lang, billing.Watch{Address: addrA}, prev, cur, w)
+		if !strings.Contains(txt, "TNew") || !strings.Contains(txt, "$25.0k") || strings.Contains(txt, "%!") {
+			t.Errorf("%s alert: %q", lang, txt)
+		}
+	}
+}

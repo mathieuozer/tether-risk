@@ -109,6 +109,10 @@ type WatchState struct {
 	Coverage       float64  `json:"coverage"`
 	RiskCategories []string `json:"risk_categories"`
 	Listed         bool     `json:"listed"`
+	// FrozenContact is a wallet Tether froze in the last three days that
+	// paid this one shortly before (docs/DECISIONS.md D34, D35).
+	FrozenContact    string  `json:"frozen_contact,omitempty"`
+	FrozenContactUSD float64 `json:"frozen_contact_usd,omitempty"`
 }
 
 // Watch is a watched address.

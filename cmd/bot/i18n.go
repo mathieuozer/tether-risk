@@ -407,7 +407,12 @@ Bu fatura %[6]d dakika geçerli. Ödeme onaylanır onaylanmaz, genellikle 2 daki
 	"alert_band":     {"• Band: %s → %s (score %.1f → %.1f)\n", "• Seviye: %s → %s (puan %.1f → %.1f)\n", "• Уровень: %s → %s (балл %.1f → %.1f)\n"},
 	"alert_category": {"• New exposure: %s\n", "• Yeni maruziyet: %s\n", "• Новая связь с категорией: %s\n"},
 	"alert_listed":   {"• The address itself is now directly listed\n", "• Adresin kendisi artık doğrudan listede\n", "• Сам адрес теперь напрямую внесён в список\n"},
-	"alert_footer":   {"\nSend the address to see the full result.", "\nTam sonucu görmek için adresi gönderin.", "\nОтправьте адрес, чтобы увидеть полный результат."},
+	"alert_frozen_contact": {
+		"• Tether has just frozen %s, which paid this address %s shortly before. Tether freezes in clusters: in the next few days, wallets in this position are frozen far more often than others.\n",
+		"• Tether, bu adrese kısa süre önce %[2]s göndermiş olan %[1]s adresini az önce dondurdu. Tether kümeler hâlinde dondurur: önümüzdeki birkaç gün bu durumdaki cüzdanlar diğerlerinden çok daha sık dondurulur.\n",
+		"• Tether только что заморозил %s, который незадолго до этого отправил на этот адрес %s. Tether замораживает кластерами: в ближайшие дни такие кошельки замораживают гораздо чаще остальных.\n",
+	},
+	"alert_footer": {"\nSend the address to see the full result.", "\nTam sonucu görmek için adresi gönderin.", "\nОтправьте адрес, чтобы увидеть полный результат."},
 
 	// --- history ---
 	"history_none":  {"No screens yet. Send an address to start.", "Henüz tarama yok. Başlamak için bir adres gönderin.", "Проверок пока нет. Отправьте адрес, чтобы начать."},

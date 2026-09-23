@@ -1471,3 +1471,11 @@ keep the other 40,000. Background work resumes at midnight UTC.
 The budget does not make the quota bigger. A paid TronGrid plan or our own
 node remains a go-live requirement (D34). The budget only decides who goes
 without when the quota runs out.
+
+**Watches hear of every fresh freeze.** A watch alerted only on a worse band,
+a new risk category or a direct listing. A watched wallet that already
+showed frozen funds gained nothing new when Tether froze a second wallet
+that had paid it. Yet D34 measured the following days as the most
+dangerous. The watch state now keeps the `frozen_contact` note's wallet, and
+a different one alerts (`TestCompareAlertsOnNewFrozenContact`). The note
+lapsing after three days does not.

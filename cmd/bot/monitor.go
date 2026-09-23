@@ -42,6 +42,11 @@ func stateOf(r *screenResponse) billing.WatchState {
 		}
 	}
 	slices.Sort(st.RiskCategories)
+	for _, f := range r.Flags {
+		if f.Code == "frozen_contact" {
+			st.FrozenContact, st.FrozenContactUSD = f.Address, f.AmountUSD
+		}
+	}
 	return st
 }
 
@@ -50,9 +55,16 @@ type worsening struct {
 	BandUp        bool
 	NewCategories []string
 	NewlyListed   bool
+	// NewFrozenContact: Tether has just frozen a wallet that paid this one.
+	// A watch that already showed frozen funds gains no new category from a
+	// second freeze, yet the days after one are when the watcher is most at
+	// risk (docs/DECISIONS.md D35).
+	NewFrozenContact bool
 }
 
-func (w worsening) any() bool { return w.BandUp || len(w.NewCategories) > 0 || w.NewlyListed }
+func (w worsening) any() bool {
+	return w.BandUp || len(w.NewCategories) > 0 || w.NewlyListed || w.NewFrozenContact
+}
 
 // compare decides whether a new state warrants an alert. Only worsening
 // counts: an address getting cleaner, or more of its value being traced, is
@@ -70,6 +82,7 @@ func compare(prev *billing.WatchState, cur billing.WatchState) worsening {
 		}
 	}
 	w.NewlyListed = cur.Listed && !prev.Listed
+	w.NewFrozenContact = cur.FrozenContact != "" && cur.FrozenContact != prev.FrozenContact
 	return w
 }
 
@@ -168,6 +181,9 @@ func alertText(lang string, w billing.Watch, prev *billing.WatchState, cur billi
 	}
 	if ch.NewlyListed {
 		sb.WriteString(t(lang, "alert_listed"))
+	}
+	if ch.NewFrozenContact {
+		sb.WriteString(t(lang, "alert_frozen_contact", shortAddr(cur.FrozenContact), usdShort(cur.FrozenContactUSD)))
 	}
 	sb.WriteString(t(lang, "alert_footer"))
 	return sb.String()
