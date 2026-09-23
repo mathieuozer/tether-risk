@@ -411,3 +411,42 @@ func TestCanonicalTokensAreNormalised(t *testing.T) {
 		}
 	}
 }
+
+// A single-page address fetched again after a new transfer must yield a new
+// page key, or the ingest ledger takes the page for a replay and drops the
+// transfer. It did, from 2026-09-22 until D42: TZC67v…zkn lost a 50,198.5
+// USDT deposit that way.
+func TestSinglePageKeyChangesWithContent(t *testing.T) {
+	item := func(tx string) string {
+		return `{"transaction_id":"` + tx + `","token_info":{"symbol":"USDT","address":"TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t","decimals":6},` +
+			`"block_timestamp":1789931328000,"from":"TZ8Ksz21Hk1tQuztCKCUJBRXStCav9uyjM","to":"TWiZJrAmU9jgu64LqstWVnq7xNWHMqxGTS","type":"Transfer","value":"1000000"}`
+	}
+	body := `{"success":true,"meta":{"page_size":1},"data":[` + item(strings.Repeat("a", 64)) + `]}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+	a := testAdapter(t, srv.URL)
+	ctx := context.Background()
+
+	first, err := a.FetchAddress(ctx, "TZ8Ksz21Hk1tQuztCKCUJBRXStCav9uyjM", chain.Cursor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := a.FetchAddress(ctx, "TZ8Ksz21Hk1tQuztCKCUJBRXStCav9uyjM", chain.Cursor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.PageKey != again.PageKey {
+		t.Error("the same page fetched twice must keep its key, so a replay is still skipped")
+	}
+	body = `{"success":true,"meta":{"page_size":2},"data":[` + item(strings.Repeat("b", 64)) + `,` + item(strings.Repeat("a", 64)) + `]}`
+	later, err := a.FetchAddress(ctx, "TZ8Ksz21Hk1tQuztCKCUJBRXStCav9uyjM", chain.Cursor{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if later.PageKey == first.PageKey {
+		t.Error("a page with a new transfer kept the old key; the ledger would skip it")
+	}
+}

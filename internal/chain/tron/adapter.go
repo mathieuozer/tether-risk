@@ -160,7 +160,7 @@ func (a *Adapter) fetchTRC20(ctx context.Context, addr string, state cursorState
 			Value: encodeCursor(next),
 			Done:  next.TRC20Done && next.NativeDone,
 		},
-		PageKey: pageKey("trc20", addr, state.TRC20Next, resp.Meta.Fingerprint),
+		PageKey: pageKey("trc20", addr, state.TRC20Next, resp.Meta.Fingerprint+"|"+chain.ContentKey(transfers)),
 	}, nil
 }
 
@@ -200,7 +200,7 @@ func (a *Adapter) fetchNative(ctx context.Context, addr string, state cursorStat
 			Value: encodeCursor(next),
 			Done:  next.TRC20Done && next.NativeDone,
 		},
-		PageKey: pageKey("native", addr, state.NativeNext, resp.Meta.Fingerprint),
+		PageKey: pageKey("native", addr, state.NativeNext, resp.Meta.Fingerprint+"|"+chain.ContentKey(transfers)),
 	}, nil
 }
 

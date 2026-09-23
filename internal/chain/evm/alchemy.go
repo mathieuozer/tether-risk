@@ -194,7 +194,7 @@ func (a *AlchemyAdapter) fetchDirection(ctx context.Context, addr string, state 
 			Value: encodeAlchemyCursor(next),
 			Done:  next.OutDone && next.InDone,
 		},
-		PageKey: fmt.Sprintf("alchemy:%s:%s:%s", a.chainID, dirLabel, pageKeyOrStart(pageKey)),
+		PageKey: fmt.Sprintf("alchemy:%s:%s:%s:%s", a.chainID, dirLabel, pageKeyOrStart(pageKey), chain.ContentKey(transfers)),
 	}, nil
 }
 

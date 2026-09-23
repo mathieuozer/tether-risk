@@ -1776,3 +1776,44 @@ step fails: a wrong answer is worse than none.
 The audit afterwards repaired 17 edges. The small dollar gap is
 consistent with duplicate rows that share an `ingested_at` second, which
 `FINAL` and `argMax` may resolve differently.
+
+---
+
+## D42 — a re-fetched small wallet recorded nothing new
+
+**Date:** 2026-09-23 · **Status:** active · **Follows:** D2
+
+Asked to look again at TZC67v…zkn, the report showed $874.3k sent against
+$824.1k received. An address cannot send more USDT than it received, and
+TronGrid showed a balance of zero. Comparing TronGrid's full history with
+ours found one missing transfer: 50,198.5 USDT from TDqSqu…hSCf (a hub with
+$29B of volume) at 11:47 UTC on 2026-09-22.
+
+**Cause.** The ingest ledger (D2) skips a page whose key it has already
+written, so that a replayed page is not inserted twice. The key came from
+the page's position: the cursor that led to it and the response's
+fingerprint. A wallet with fewer than 200 transfers has one page per
+endpoint, with no cursor and no fingerprint, so its key never changed. The
+address was fetched at 10:21 and again at 16:31. The second fetch's page held
+the new deposit, carried the old key, was taken for a replay and skipped:
+nothing was inserted. From its first fetch onwards, every such wallet,
+which covers most customers' wallets and every watched one of that size,
+recorded nothing new. The Alchemy adapter had the same fault: its first page
+was keyed "start".
+
+**Fix.** A page's key now also carries a digest of the transfers it holds
+(`chain.ContentKey`). The same page fetched twice keeps its key and is still
+skipped, and a page with a new transfer gets a new one.
+`TestSinglePageKeyChangesWithContent` fails on the old code and passes on
+the new. Deduplication by `(tx_hash, log_index)` (D37) still stops a
+changed page from inserting what is already stored.
+
+**Repair.** A wallet whose last fetch came after its last ledger write had
+been re-fetched without writing anything. 60 of 17,972 fetched wallets were
+in that state, few because the system is two days old and history is
+fetched again only after 24 hours. They were marked stale and queued at
+customer priority.
+
+Result: the 60 were fetched again within minutes. 10 of them had missed
+transfers, 52 in all, now stored. TZC67v…zkn now shows 874,267 USDT in and
+874,267 out over 27 transfers, as TronGrid does.

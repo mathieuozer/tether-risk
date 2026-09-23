@@ -5,7 +5,10 @@ package chain
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"math/big"
+	"sort"
+	"strconv"
 	"time"
 )
 
@@ -118,4 +121,23 @@ type Adapter interface {
 	// FetchAddress returns one page of an address's transfer history.
 	// Callers iterate until Next.Done.
 	FetchAddress(ctx context.Context, address string, cur Cursor) (AddressPage, error)
+}
+
+// ContentKey digests which transfers a page holds, for its ingest-ledger
+// key. A page's position alone is not enough: an address with one page has
+// the same position on every fetch, so a later fetch that found new
+// transfers was taken for a replay and skipped. From 2026-09-22 until D42,
+// no single-page address recorded anything after its first fetch.
+func ContentKey(ts []Transfer) string {
+	keys := make([]string, len(ts))
+	for i, t := range ts {
+		keys[i] = t.TxHash + "/" + strconv.FormatUint(uint64(t.LogIndex), 10)
+	}
+	sort.Strings(keys)
+	h := fnv.New64a()
+	for _, k := range keys {
+		h.Write([]byte(k))
+		h.Write([]byte{0})
+	}
+	return strconv.FormatUint(h.Sum64(), 16)
 }
