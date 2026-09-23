@@ -235,6 +235,17 @@ func (w *TransferWriter) filterExisting(ctx context.Context, chainID string, tra
 	return out, nil
 }
 
+// InsertRaw writes transfers without the duplicate check or the ingest
+// ledger. It is for a source that guarantees uniqueness itself: our own
+// index writes each block once, checked against indexed_blocks
+// (docs/INDEXER_PLAN.md). Anything else must use WritePage.
+func (w *TransferWriter) InsertRaw(ctx context.Context, transfers []chain.Transfer) error {
+	if len(transfers) == 0 {
+		return nil
+	}
+	return w.insert(ctx, transfers)
+}
+
 func (w *TransferWriter) insert(ctx context.Context, transfers []chain.Transfer) error {
 	tx, err := w.ch.BeginTx(ctx, nil)
 	if err != nil {

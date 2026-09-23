@@ -280,6 +280,19 @@ var canonicalTokens = map[string]string{
 	"TPYmHEhy5n8TCEfYGqW2rPxsghSfzghPDn": "USDD", // Decentralized USD, first contract
 }
 
+// AssetForContract names the asset a TRC-20 contract carries, as the
+// adapter does; the indexer names its rows the same way.
+func AssetForContract(contract string) string { return assetForContract(contract) }
+
+// CanonicalTokens lists the TRC-20 contracts we recognise, by contract.
+func CanonicalTokens() map[string]string {
+	out := make(map[string]string, len(canonicalTokens))
+	for k, v := range canonicalTokens {
+		out[k] = v
+	}
+	return out
+}
+
 // assetForContract names the asset a TRC-20 contract carries. Any
 // contract not in canonicalTokens is identified by its own address, which
 // the pricer does not recognise, so it stays unpriced. That is the same rule

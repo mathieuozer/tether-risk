@@ -1,6 +1,6 @@
 # Plan: our own TRON index
 
-Status: proposal, 2026-09-23. Nothing here is built yet.
+Status: 2026-09-23. The indexer (pkg/tronindex, cmd/indexer) is built and tested; the node and the server are not.
 
 ## Why
 
@@ -102,6 +102,34 @@ keys stay comparable:
   `DestroyedBlackFunds`, and the JustSwap pool's `Snapshot`. With these, the
   blacklist refresh (D34) and the TRX price (D41) come from our own node too.
 
+## First measurement (2026-09-23, 20 blocks through TronGrid)
+
+`indexer measure -sample 20`, blocks 8,000,000 to 86,498,761. The sample is
+small, and phase 0 repeats it with 200 or more blocks:
+
+| Year | tx/block | kept/block | TRX | USDT |
+|---|---|---|---|---|
+| 2019 | 83 | 4.7 | 4.7 | 0 |
+| 2021 | 206 | 96.7 | 71.0 | 25.7 |
+| 2023 | 300 | 240.0 | 155.0 | 85.0 |
+| 2025 | 299 | 213.7 | 143.3 | 70.3 |
+| 2026 | 368 | 221.0 | 138.0 | 83.0 |
+
+- **About 9.7 billion transfers** in scope, not "several billion". TRX is
+  about 60% of them.
+- **About 3.1 TB in ClickHouse**, at the live database's own 318 bytes a
+  transfer (transfers and edge tables together), not 0.5–1.5 TB. With the
+  node's 3.3 TB, that is about 7–8 TB.
+- **Backfilling through a hosted endpoint is impractical**: about 1 second a
+  block per stream, so 227 days with 4 streams. It needs the local node,
+  where a block should take milliseconds; phase 0 measures that.
+
+Consequences for scope. USDT and the other stablecoins alone are about 40%
+of the rows, about 1.2 TB, and USDT is the product's subject. TRX could
+follow later, or be kept above a threshold. Most TRX transfers are tiny, but
+address-poisoning dust (D32) is made of them, so a threshold costs that
+signal on TRX; the owner decides (see below).
+
 ## Size (to be measured in phase 0, not assumed)
 
 | Item | Estimate | Measured in |
@@ -113,7 +141,8 @@ keys stay comparable:
 | Backfill speed | unknown; needs to reach about 100 blocks/s across workers to finish in about 10 days | phase 0 |
 
 The server has to hold the node and the index: 16 or more cores, 128 GB RAM,
-at least 2 × 7.68 TB NVMe. A Hetzner AX102 class machine is about €250–350 a
+and, after the first measurement, about 5 TB for USDT and stablecoins or
+about 8 TB with TRX: 2 × 7.68 TB NVMe at least. A Hetzner AX102 class machine is about €250–350 a
 month (unconfirmed). Split into a node server and a database server if one
 machine cannot keep up.
 
@@ -216,6 +245,8 @@ the backfill running in the background.
 1. When to start: before or after go-live. The recommendation is after,
    unless TronGrid quotes more than about $500 a month.
 2. Buying the server, about €250–350 a month (unconfirmed).
-3. The asset scope: priced assets only (recommended), or every TRC-20 token.
+3. The asset scope, in the light of the first measurement: USDT and
+   stablecoins first (about 1.2 TB, recommended), with TRX later or above a
+   threshold; or everything priced (about 3.1 TB).
 4. Whether TronGrid stays as a paid fallback after cutover, or the free
    tier is enough.
