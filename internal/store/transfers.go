@@ -335,7 +335,10 @@ func (w *TransferWriter) RebuildEdges(ctx context.Context) error {
 				min(block_time)                           AS first_seen,
 				max(block_time)                           AS last_seen
 			FROM transfers FINAL
-			GROUP BY chain, from_address, to_address, asset`, spec.table)
+			GROUP BY chain, from_address, to_address, asset
+			-- 17 million transfers group past the 6.9 GB memory limit;
+			-- spill to disk instead (D41).
+			SETTINGS max_bytes_before_external_group_by = 2000000000`, spec.table)
 		if _, err := w.ch.ExecContext(ctx, q); err != nil {
 			return fmt.Errorf("rebuild %s: %w", spec.table, err)
 		}

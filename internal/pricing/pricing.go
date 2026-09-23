@@ -307,3 +307,94 @@ func LoadPrices(ctx context.Context, pg *sql.DB, source string, points []PricePo
 	}
 	return n, tx.Commit()
 }
+
+// RepriceAll revalues every stored transfer of one asset from the current
+// daily closes, inside ClickHouse: the closes go into a scratch table and one
+// INSERT ... SELECT joins them on the day. A day without a close leaves the
+// transfer unpriced. The rewrite is summed a second time by the edge views,
+// so the edges must be rebuilt afterwards, with nothing else writing: this is
+// a maintenance job (docs/DECISIONS.md D41).
+func (p *Pricer) RepriceAll(ctx context.Context, ch *sql.DB, chainID, asset string) (int64, error) {
+	dec, ok := assetDecimals[asset]
+	if !ok || !p.daily[asset] {
+		return 0, fmt.Errorf("%s is not valued from daily closes", asset)
+	}
+	rows, err := p.pg.QueryContext(ctx, `SELECT price_date, usd FROM prices WHERE asset = $1 ORDER BY price_date`, asset)
+	if err != nil {
+		return 0, err
+	}
+	type close struct {
+		day time.Time
+		usd decimal.Decimal
+	}
+	var closes []close
+	for rows.Next() {
+		var c close
+		if err := rows.Scan(&c.day, &c.usd); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		closes = append(closes, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	for _, q := range []string{
+		`DROP TABLE IF EXISTS reprice_closes`,
+		`CREATE TABLE reprice_closes (day Date, usd Decimal(38, 12)) ENGINE = Memory`,
+	} {
+		if _, err := ch.ExecContext(ctx, q); err != nil {
+			return 0, err
+		}
+	}
+	defer ch.ExecContext(context.WithoutCancel(ctx), `DROP TABLE IF EXISTS reprice_closes`)
+	tx, err := ch.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO reprice_closes (day, usd)`)
+	if err != nil {
+		tx.Rollback()
+		return 0, err
+	}
+	for _, c := range closes {
+		if _, err := stmt.ExecContext(ctx, c.day, c.usd); err != nil {
+			tx.Rollback()
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	var n int64
+	if err := ch.QueryRowContext(ctx, `SELECT count() FROM transfers WHERE chain = ? AND asset = ?`, chainID, asset).Scan(&n); err != nil {
+		return 0, err
+	}
+	_, err = ch.ExecContext(ctx, fmt.Sprintf(`
+		INSERT INTO transfers
+			(chain, tx_hash, log_index, block_number, block_time,
+			 from_address, to_address, asset, raw_value, usd_value, price_basis)
+		SELECT t.chain, t.tx_hash, t.log_index, t.block_number, t.block_time,
+		       t.from_address, t.to_address, t.asset, t.raw_value,
+		       if(isNull(c.usd), NULL,
+		          toDecimal128(toDecimal256(t.raw_value, 0) * toDecimal256(c.usd, 12) / toDecimal256(%d, 0), 6)),
+		       if(isNull(c.usd), '%s', '%s')
+		FROM (SELECT * FROM transfers FINAL WHERE chain = ? AND asset = ?) AS t
+		LEFT JOIN reprice_closes AS c ON toDate(t.block_time) = c.day
+		SETTINGS join_use_nulls = 1`, pow10(dec), BasisUnpriced, BasisDailyClose), chainID, asset)
+	if err != nil {
+		return 0, fmt.Errorf("reprice %s: %w", asset, err)
+	}
+	return n, nil
+}
+
+func pow10(n int32) int64 {
+	v := int64(1)
+	for i := int32(0); i < n; i++ {
+		v *= 10
+	}
+	return v
+}

@@ -231,6 +231,33 @@ func run(ctx context.Context, cmd, configDir, chainID string, days int, source, 
 		fmt.Printf("edges repaired: %d\n", res.Edges)
 		return nil
 
+	case "reprice-all":
+		// Maintenance, with nothing else writing: revalue every stored
+		// transfer of an asset from the on-chain closes, dropping closes
+		// from other sources first. Run `ingest rebuild-edges` afterwards
+		// (scripts/maintenance-reprice.sh does both; D41).
+		asset := flag.Arg(1)
+		if asset == "" {
+			return fmt.Errorf("reprice-all needs an asset, e.g. TRX")
+		}
+		res, err := pg.ExecContext(ctx, `DELETE FROM prices WHERE asset = $1 AND source <> $2`, asset, pricing.SourceOnChain)
+		if err != nil {
+			return err
+		}
+		dropped, _ := res.RowsAffected()
+		ch, err := store.OpenClickHouseBatch(ctx)
+		if err != nil {
+			return err
+		}
+		defer ch.Close()
+		started := time.Now()
+		n, err := pricing.New(cfg, pg).RepriceAll(ctx, ch, chainID, asset)
+		if err != nil {
+			return err
+		}
+		log.Info("repriced", "asset", asset, "transfers", n, "closes_dropped", dropped, "duration", time.Since(started))
+		return nil
+
 	case "status":
 		return status(ctx, pg)
 
