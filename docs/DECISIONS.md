@@ -1585,3 +1585,23 @@ worker while the audit read them. In the same run, CryptoScamDB's download
 failed. The log said its labels were "missing from this snapshot", but
 nothing retires them, and all 2,987 were still current. The message now
 says the previous labels stand.
+
+---
+
+## D38 — a cold screen answers in about ten seconds
+
+**Date:** 2026-09-23 · **Status:** active · **Follows:** D17, D31, D37
+
+A never-seen address took 31 s to screen. Its own history took 5.5 s. The
+first ring (D31) fetched its largest counterparties one at a time, and the
+first of them, a 4,103-transfer wallet, used its whole 8 s without
+finishing. Only then came four that took 1 to 5 s each. The ring now runs
+three fetches at once (`ringParallel`), largest first. D17's finding that
+TronGrid penalises concurrency was measured without an API key. With one,
+it allows 15 requests a second, and a stream makes about one.
+
+Together with D37's duplicate lookup (4.5 s to 0.98 s a page), five cold
+addresses then screened in 1, 3, 9, 10 and 12 s. These are different
+addresses from the 31 s one, not a controlled comparison. The API's depth
+block also gains `ring_fetched`. It was computed but never returned, which
+made a ring that had fetched four wallets look as if it had fetched none.

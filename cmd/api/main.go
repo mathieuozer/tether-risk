@@ -290,6 +290,9 @@ type depthResponse struct {
 	Traced              int    `json:"traced"`
 	TotalCounterparties int    `json:"total_counterparties"`
 	Complete            bool   `json:"complete"`
+	// RingFetched is how many of the largest unknown counterparties the
+	// screen fetched itself before answering (D31, D38).
+	RingFetched int `json:"ring_fetched"`
 }
 
 type assetResponse struct {
@@ -554,6 +557,7 @@ func toDepth(d *scoring.DepthStatus) *depthResponse {
 		FrontierPending: d.FrontierPending, FrontierQueued: d.FrontierQueued, FrontierEnded: d.FrontierEnded,
 		Counterparties: d.Counterparties, Traced: d.Traced,
 		TotalCounterparties: d.TotalCounterparties, Complete: d.Complete(),
+		RingFetched: d.RingFetched,
 	}
 }
 

@@ -2,6 +2,7 @@ package screen
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -11,9 +12,8 @@ import (
 // until the worker fetches it, which a customer sees only on a rescreen.
 // Coverage is decided mostly by the few largest counterparties, so the
 // screen fetches those itself before answering, largest first, until its
-// budget runs out. TronGrid serves about one request a second to a serial
-// stream and penalises concurrency, so this is serial and bounded in time,
-// not in count. Labelled counterparties are skipped: traversal stops at a
+// budget runs out. TronGrid serves about one request a second to a stream;
+// a few streams run at once (D38), bounded in time, not in count. Labelled counterparties are skipped: traversal stops at a
 // label, so fetching one changes nothing.
 
 // ringBudget is how long a screen spends on its first ring. Zero disables it.
@@ -27,6 +27,11 @@ const ringCandidates = 20
 // fetching every unknown counterparty raised mean coverage from 12.0% to
 // 15.4% for 20 s a screen, almost all of it from the few large ones.
 const ringMinShare = 5.0
+
+// ringParallel is how many counterparties are fetched at once. With an API
+// key TronGrid allows 15 requests a second, and each stream makes about one;
+// D17's finding that concurrency was penalised was made without a key.
+const ringParallel = 3
 
 // ringPerAddress bounds one counterparty's fetch. An ordinary wallet takes a
 // few requests; one that takes longer is too large to finish within the
@@ -102,7 +107,12 @@ func (s *Service) fetchFirstRing(ctx context.Context, p Prefetcher, chainID, add
 		return 0
 	}
 
-	var n int
+	// Up to ringParallel fetches at once, largest first. Serially, one
+	// counterparty too large to finish held the others back for its whole
+	// 8 s: a screen on 2026-09-23 spent 8 of its 20 s on a 4,103-transfer
+	// wallet it could not finish before reaching four that took 1-5 s each
+	// (D38).
+	var todo []string
 	for _, a := range cands {
 		if value[a]*100/total < ringMinShare {
 			break // ordered by value: the rest are smaller still
@@ -110,18 +120,40 @@ func (s *Service) fetchFirstRing(ctx context.Context, p Prefetcher, chainID, add
 		if fetched[a] || len(labelled[a]) > 0 {
 			continue
 		}
-		left := time.Until(deadline)
-		if left < 2*time.Second {
+		todo = append(todo, a)
+	}
+	var (
+		mu  sync.Mutex
+		n   int
+		wg  sync.WaitGroup
+		sem = make(chan struct{}, ringParallel)
+	)
+	for _, a := range todo {
+		if time.Until(deadline) < 2*time.Second {
 			break
 		}
-		fctx, cancel := context.WithTimeout(ctx, min(left, ringPerAddress))
-		_, err := p.FetchAddress(fctx, a, 0)
-		cancel()
-		if err == nil {
-			n++
-		} else if fctx.Err() != nil && ctx.Err() == nil {
-			_ = p.Queue(ctx, a, 0)
+		sem <- struct{}{}
+		left := time.Until(deadline)
+		if left < 2*time.Second {
+			<-sem
+			break
 		}
+		wg.Add(1)
+		go func(a string, left time.Duration) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			fctx, cancel := context.WithTimeout(ctx, min(left, ringPerAddress))
+			_, err := p.FetchAddress(fctx, a, 0)
+			cancel()
+			if err == nil {
+				mu.Lock()
+				n++
+				mu.Unlock()
+			} else if fctx.Err() != nil && ctx.Err() == nil {
+				_ = p.Queue(ctx, a, 0)
+			}
+		}(a, left)
 	}
+	wg.Wait()
 	return n
 }
