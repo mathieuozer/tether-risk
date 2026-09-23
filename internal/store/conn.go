@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -86,6 +87,17 @@ func OpenClickHouseBatch(ctx context.Context) (*sql.DB, error) {
 		dsn = strings.Replace(dsn, "read_timeout=60s", "read_timeout=15m", 1)
 	}
 	return openClickHouse(ctx, dsn)
+}
+
+// OpenClickHouseDatabase opens a pool on another database of the same
+// server, such as the TRON index (docs/INDEXER_PLAN.md), beside the main one.
+func OpenClickHouseDatabase(ctx context.Context, db string) (*sql.DB, error) {
+	u, err := url.Parse(ClickHouseDSN())
+	if err != nil {
+		return nil, fmt.Errorf("clickhouse dsn: %w", err)
+	}
+	u.Path = "/" + db
+	return openClickHouse(ctx, u.String())
 }
 
 func openClickHouse(ctx context.Context, dsn string) (*sql.DB, error) {

@@ -1946,3 +1946,69 @@ that will run on the server; only `-source` changes when a node exists.
 Moving to a node (a Lite FullNode on an external SSD, or the server) is a
 change of `INDEXER_SOURCE`. A Lite node serves `/walletsolidity` on its own
 port, 8091 by default.
+
+---
+
+## D46 — the blacklist and watches in real time, from the index
+
+**Date:** 2026-09-23 · **Status:** active · **Follows:** D34, D35, D45
+
+**The blacklist.** The refresh read every blacklist event since 2017 from
+TronGrid every ten minutes: about 34 seconds and dozens of requests each
+time, and it failed for four hours when the key's quota ran out (D35). Now
+`labeler tether` runs every minute and, between daily full reads, applies
+only the events the index caught since the last one. That takes 0.03 s and
+makes no TronGrid request.
+
+- It is exact when the index holds every block since the full read: for
+  each address the latest event decides, and that event is either before
+  the read (and in the list) or after it (and in the index). That condition
+  is checked on every run. If a block is missing, the index is more than
+  five minutes behind, or a day has passed, the run reads TronGrid in full,
+  at most every ten minutes as before.
+- A full read records the block it vouches for (`indexer_cursors`
+  `tether:trongrid`): the head when it began, less 100 blocks, because
+  TronGrid lists an event only once its block is indexed. It is recorded
+  only after the snapshot is sealed. A run with nothing new writes no
+  snapshot.
+- **A bug found on the way:** the index API's blacklist `address` was read
+  from the event's data. The address is indexed: it is in `topics[1]`. For
+  `AddedBlackList` the field came out empty. For `DestroyedBlackFunds` it
+  would have been the balance, decoded as an address. Decoding now lives in
+  one place (`indexer.DecodeBlacklist`), tested against two real events and
+  the results TronGrid gives for them.
+
+**Watches.** A watch was rescreened every six hours. `labeler watch-flows`
+now runs in the same minute job. When a watched address sends to, or
+receives from, an address labelled in an alert category
+(`billing.AlertCategories`), the watch is made due, and the bot's monitor,
+which now looks every minute instead of every five, rescreens it and
+alerts as before. Only what a rescreen would newly report triggers it:
+
+- not a category the watch's last state already shows;
+- not a transfer the last check came after (with two minutes for TronGrid
+  to list it).
+
+A test against a real transfer in the index (a wallet paying a
+Tether-frozen address) made a watch with no prior state due and left alone
+one whose state already showed `frozen_funds`. A newly frozen address's
+watched counterparties are also looked for in the index, for flows too
+recent for the main database.
+
+**A false exposure removed.** Checking those transfers showed USDT sent *to
+the USDT contract itself* counting as contact with frozen funds. Tether
+blacklisted its own contract, so that tokens sent to it by mistake stay
+there. The blacklist outranks the curated label, so the contract resolved as
+`frozen_funds`, and every wallet that ever made that mistake read as exposed:
+70 wallets and $164,882 in the stored data. The blacklist no longer labels
+token contracts; the next full read retired the label (7,598 → 7,597).
+
+**The comparison, larger.** Over 5.5 hours of chain, 60 addresses: 40%
+drawn from USDT activity, 40% from all, and 20% busy wallets with 150 to
+2,000 transfers in the window. All 60 were identical: 5,019 transfers from
+TronGrid, 5,019 from the index. The daily job now runs it as a canary.
+
+Not done: screens reading their recent history from the index. The laptop
+index holds three days, a screen needs the whole history from TronGrid
+anyway, and the saving would be a handful of requests. It becomes the
+cutover once the server holds the whole chain.

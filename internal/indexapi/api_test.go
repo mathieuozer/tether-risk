@@ -209,13 +209,27 @@ func TestKeysAndBadInput(t *testing.T) {
 	}
 }
 
-func TestWordAddress(t *testing.T) {
-	hexAddr, err := tron.Base58ToHex(alice)
-	if err != nil {
+// A real DestroyedBlackFunds (9f4753c5…15c3b) comes back with its address
+// and the USDT destroyed, both read from where the event keeps them.
+func TestEventsDecodeTheBlacklist(t *testing.T) {
+	sink := openIndex(t)
+	at := time.Date(2026, 9, 16, 15, 14, 21, 0, time.UTC)
+	b := tronindex.BlockData{Number: 86299832, Time: at, Events: []tronindex.Event{{
+		TxID: "9f4753c51fc7053defc0a5ed51e72787de426da2e0a328f9734d352de8115c3b", Block: 86299832, Time: at,
+		Contract: tron.USDTContract, Position: 1,
+		Topics: []string{"61e6e66b0d6339b2980aecc6ccc0039736791f0ccde9ed512e789a7fbdd698c6",
+			"000000000000000000000000c3f11bafbee0c8cfafd5a76bb10570e26dd36b40"},
+		Data: "0000000000000000000000000000000000000000000000000000000415203ee3",
+	}}}
+	if err := sink.WriteBlocks(context.Background(), []tronindex.BlockData{b}); err != nil {
 		t.Fatal(err)
 	}
-	word := "000000000000000000000000" + hexAddr[2:]
-	if got := wordAddress(word); got != alice {
-		t.Errorf("wordAddress = %q, want %s", got, alice)
+	var p struct {
+		Data []Event `json:"data"`
+	}
+	get(t, (&Server{CH: sink.CH}).Handler(), "/v1/events?event=DestroyedBlackFunds", &p)
+	want, _ := tron.HexToBase58("41c3f11bafbee0c8cfafd5a76bb10570e26dd36b40")
+	if len(p.Data) != 1 || p.Data[0].Address != want || p.Data[0].Amount != "17534.303971" {
+		t.Fatalf("events = %+v, want %s and 17534.303971 USDT", p.Data, want)
 	}
 }

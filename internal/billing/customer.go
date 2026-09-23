@@ -110,6 +110,13 @@ func (s *Store) History(ctx context.Context, userID int64, limit int) ([]History
 // Watches
 // ---------------------------------------------------------------------------
 
+// AlertCategories are the categories whose first appearance in a watched
+// address's exposure is an alert. They match the report's risk checks.
+var AlertCategories = []string{
+	"sanctions", "terrorist_financing", "darknet", "stolen_funds", "frozen_funds",
+	"mixer", "scam", "high_risk_exchange", "gambling",
+}
+
 // WatchState is what the monitor last saw for a watched address. Alerts
 // compare a new state against it.
 type WatchState struct {

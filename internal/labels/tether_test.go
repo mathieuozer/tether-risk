@@ -1,6 +1,7 @@
 package labels
 
 import (
+	"math/big"
 	"testing"
 	"time"
 
@@ -40,5 +41,18 @@ func TestTetherBlacklistReplaysEvents(t *testing.T) {
 	labels := TetherLabels(got, 1.0)
 	if labels[0].Category != "frozen_funds" || labels[0].Evidence["destroyed_usdt"] != "18529.513880" {
 		t.Errorf("label = %+v", labels[0])
+	}
+}
+
+// Tether blacklisted its own contract; a mistaken send there is not a
+// contact with frozen funds (D46).
+func TestTetherLabelsLeaveOutTokenContracts(t *testing.T) {
+	frozen := []FrozenAddress{
+		{Address: tron.USDTContract, DestroyedRaw: new(big.Int)},
+		{Address: "TTmnEn8CEjQnJpHwEvkRxBK25EJfKyPLE8", DestroyedRaw: new(big.Int)},
+	}
+	got := TetherLabels(frozen, 1)
+	if len(got) != 1 || got[0].Address != "TTmnEn8CEjQnJpHwEvkRxBK25EJfKyPLE8" {
+		t.Errorf("labels = %+v, want only the wallet", got)
 	}
 }

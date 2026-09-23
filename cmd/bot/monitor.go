@@ -15,12 +15,8 @@ import (
 // gate: a watch is paid for by the plan's watch allowance, not by daily
 // screens.
 
-// riskCategories are the categories whose first appearance is an alert. They
-// match the report's risk checks.
-var riskCategories = []string{
-	"sanctions", "terrorist_financing", "darknet", "stolen_funds", "frozen_funds",
-	"mixer", "scam", "high_risk_exchange", "gambling",
-}
+// riskCategories are the categories whose first appearance is an alert.
+var riskCategories = billing.AlertCategories
 
 // bandRank orders bands so "worse" is a comparison.
 var bandRank = map[string]int{"low": 1, "medium": 2, "high": 3}
@@ -97,8 +93,9 @@ func (b *bot) wakeMonitor() {
 
 // monitor runs passes until ctx ends.
 func (b *bot) monitor(ctx context.Context) {
-	// Check often; each pass takes only watches due for a check.
-	tick := time.NewTicker(5 * time.Minute)
+	// Check often; each pass takes only watches due for a check. A watch
+	// the TRON index makes due (D46) waits at most a minute here.
+	tick := time.NewTicker(time.Minute)
 	defer tick.Stop()
 	for {
 		if err := b.monitorPass(ctx); err != nil && ctx.Err() == nil {

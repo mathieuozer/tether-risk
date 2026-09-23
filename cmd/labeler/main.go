@@ -27,6 +27,7 @@ import (
 
 	"github.com/mozer/tether-risk/internal/chain/tron"
 	"github.com/mozer/tether-risk/internal/config"
+	"github.com/mozer/tether-risk/internal/indexer"
 	"github.com/mozer/tether-risk/internal/labels"
 	"github.com/mozer/tether-risk/internal/store"
 )
@@ -86,6 +87,7 @@ func usage() {
 commands:
   ingest       run every permitted source into a new snapshot
   tether       refresh Tether's blacklist only, and make watches touching a newly frozen address due
+  watch-flows  make watches due whose address just transacted with a high-risk address (TRON index)
   derive-services  detect high-volume service addresses from behaviour
   derive       run the deposit-wallet heuristic against stored chain data
   activations  read who created each labelled service wallet (for operator grouping)
@@ -126,6 +128,8 @@ func run(ctx context.Context, cmd, configDir, chainID, ofacFile string, log *slo
 		return derive(ctx, cfg, pg, st, chainID, log)
 	case "tether":
 		return tetherRefresh(ctx, cfg, pg, st, log)
+	case "watch-flows":
+		return watchFlows(ctx, pg, st, log)
 	case "activations":
 		return fetchActivations(ctx, cfg, pg, chainID, log)
 	case "counts":
@@ -267,7 +271,7 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 	// First-party and authoritative, but not a sanctions list: a failure is
 	// logged and the run continues, and the previous snapshot's list stands.
 	if src, ok := cfg.Source("tether_blacklist"); ok && src.Ingestible() {
-		res, _, err := refreshTether(ctx, cfg, st, snapshotID, 0, log)
+		res, _, _, err := refreshTether(ctx, cfg, st, snapshotID, 0, log)
 		if err != nil {
 			return err
 		}
@@ -473,10 +477,14 @@ func storedServiceStats(ctx context.Context, ch, pg *sql.DB, chainID string, can
 
 // ingestTetherBlacklist reads the USDT contract's blacklist events from the
 // start and folds them into the current list.
-func ingestTetherBlacklist(ctx context.Context, cfg *config.Config, rps float64, log *slog.Logger) ([]labels.Label, error) {
+//
+// through is a block every event up to which the read includes: the head
+// when the read began, less a margin for TronGrid's event index to catch up.
+// The index applies only what came after it (D46).
+func ingestTetherBlacklist(ctx context.Context, cfg *config.Config, rps float64, log *slog.Logger) ([]labels.Label, uint64, error) {
 	chainCfg, ok := cfg.Chain("tron")
 	if !ok {
-		return nil, fmt.Errorf("tron is not declared in sources.yaml")
+		return nil, 0, fmt.Errorf("tron is not declared in sources.yaml")
 	}
 	key := os.Getenv("TRONGRID_API_KEY")
 	if rps <= 0 {
@@ -488,19 +496,32 @@ func ingestTetherBlacklist(ctx context.Context, cfg *config.Config, rps float64,
 		RequestsPerSecond: rps, MaxRetries: 12, Logger: log})
 	src, _ := cfg.Source("tether_blacklist")
 
+	head, err := tron.NewAdapter(client).Head(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+	var through uint64
+	if head > tetherEventMargin {
+		through = head - tetherEventMargin
+	}
 	events := map[string][]tron.ContractEvent{}
 	for _, name := range []string{"AddedBlackList", "RemovedBlackList", "DestroyedBlackFunds"} {
 		evs, err := client.ContractEvents(ctx, tron.USDTContract, name, time.Unix(0, 0))
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
+			return nil, 0, fmt.Errorf("%s: %w", name, err)
 		}
 		events[name] = evs
 	}
 	frozen := labels.TetherBlacklist(events["AddedBlackList"], events["RemovedBlackList"], events["DestroyedBlackFunds"])
 	log.Info("tether blacklist read", "added_events", len(events["AddedBlackList"]),
 		"removed_events", len(events["RemovedBlackList"]), "frozen_now", len(frozen))
-	return labels.TetherLabels(frozen, src.Confidence), nil
+	return labels.TetherLabels(frozen, src.Confidence), through, nil
 }
+
+// tetherEventMargin is 5 minutes of blocks: TronGrid lists an event only
+// once its block is confirmed and indexed, so the newest blocks at the time
+// of a read may still be missing from it.
+const tetherEventMargin = 100
 
 func ingestPoR(ctx context.Context, url, exchange, sourceID string, confidence float64) ([]labels.Label, *labels.PoRResult, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -951,20 +972,21 @@ func sortedKeys[V any](m map[string]V) []string {
 // addresses frozen since the previous read. A failed read is logged and the
 // previous list stands: the blacklist is authoritative but not a sanctions
 // list, so its absence is not worth failing a run over.
+// through is 0 when the read failed.
 func refreshTether(ctx context.Context, cfg *config.Config, st *labels.Store, snapshotID int64,
-	rps float64, log *slog.Logger) (labels.UpsertResult, []string, error) {
-	batch, err := ingestTetherBlacklist(ctx, cfg, rps, log)
+	rps float64, log *slog.Logger) (labels.UpsertResult, []string, uint64, error) {
+	batch, through, err := ingestTetherBlacklist(ctx, cfg, rps, log)
 	if err != nil {
 		log.Error("tether blacklist failed; the previous list stands", "error", err)
-		return labels.UpsertResult{}, nil, nil
+		return labels.UpsertResult{}, nil, 0, nil
 	}
 	before, err := st.CurrentAddresses(ctx, "tether_blacklist", "tron")
 	if err != nil {
-		return labels.UpsertResult{}, nil, err
+		return labels.UpsertResult{}, nil, 0, err
 	}
 	res, err := st.Upsert(ctx, snapshotID, batch)
 	if err != nil {
-		return res, nil, err
+		return res, nil, 0, err
 	}
 	keep := make(map[string]bool, len(batch))
 	var fresh []string
@@ -976,11 +998,11 @@ func refreshTether(ctx context.Context, cfg *config.Config, st *labels.Store, sn
 	}
 	released, err := st.Retire(ctx, snapshotID, "tether_blacklist", "tron", keep)
 	if err != nil {
-		return res, nil, err
+		return res, nil, 0, err
 	}
 	log.Info("tether blacklist ingested", "frozen", len(batch), "inserted", res.Inserted,
 		"newly_frozen", len(fresh), "released_since_last_run", released)
-	return res, fresh, nil
+	return res, fresh, through, nil
 }
 
 // tetherRefresh is the frequent refresh (docs/DECISIONS.md D34). Tether
@@ -1004,21 +1026,46 @@ func tetherRefresh(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labe
 		log.Info("another labeler run holds an open snapshot; skipping this refresh")
 		return nil
 	}
-	snapshotID, err := st.OpenSnapshot(ctx, "labeler tether")
+	// The index first: it has every event since the last full read within
+	// a minute of its block, and costs no TronGrid request (D46).
+	mark, err := loadTetherMark(ctx, pg)
 	if err != nil {
 		return err
 	}
-	// Two requests a second: the read takes about 25 s, and leaves the
-	// worker, which shares the API key's 15 a second, its full rate. At the
-	// worker's own rate the two together were throttled.
-	_, fresh, err := refreshTether(ctx, cfg, st, snapshotID, 2, log)
+	fresh, handled, err := tetherFromIndex(ctx, cfg, st, mark, log)
 	if err != nil {
 		return err
 	}
-	if _, err := st.SealSnapshot(ctx, snapshotID); err != nil {
-		return err
+	if !handled {
+		// A full read at most every ten minutes, as before the index: the
+		// job now runs every minute.
+		if mark.ok && time.Since(mark.at) < 10*time.Minute {
+			return nil
+		}
+		snapshotID, err := st.OpenSnapshot(ctx, "labeler tether")
+		if err != nil {
+			return err
+		}
+		// Two requests a second: the read takes about 25 s, and leaves the
+		// worker, which shares the API key's 15 a second, its full rate. At
+		// the worker's own rate the two together were throttled.
+		var through uint64
+		_, fresh, through, err = refreshTether(ctx, cfg, st, snapshotID, 2, log)
+		if err != nil {
+			return err
+		}
+		if _, err := st.SealSnapshot(ctx, snapshotID); err != nil {
+			return err
+		}
+		// Recorded only once the list is sealed: the index applies what
+		// came after this block to the list as it now stands.
+		if through > 0 {
+			if err := (indexer.Cursors{PG: pg}).Save(ctx, tetherMarkName, through); err != nil {
+				return err
+			}
+		}
+		fmt.Printf("snapshot %d sealed; %d newly frozen\n", snapshotID, len(fresh))
 	}
-	fmt.Printf("snapshot %d sealed; %d newly frozen\n", snapshotID, len(fresh))
 	if len(fresh) == 0 {
 		return nil
 	}
@@ -1065,6 +1112,8 @@ func tetherRefresh(ctx context.Context, cfg *config.Config, pg *sql.DB, st *labe
 		hit = append(hit, a)
 	}
 	crows.Close()
+	// Flows too recent for this database are in the index (D46).
+	hit = append(hit, indexContacts(ctx, watched, fresh, log)...)
 	if len(hit) == 0 {
 		return nil
 	}

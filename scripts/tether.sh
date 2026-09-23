@@ -18,4 +18,9 @@ fi
 
 docker info >/dev/null 2>&1 || exit 1
 go build -o bin/ ./cmd/labeler || exit 1
-exec bin/labeler tether
+# The blacklist, then watches whose address just transacted with a
+# high-risk one (D46); each runs even if the other failed.
+bin/labeler tether
+status=$?
+bin/labeler watch-flows || status=1
+exit $status

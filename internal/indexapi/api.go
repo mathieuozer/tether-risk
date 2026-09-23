@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/mozer/tether-risk/internal/indexer"
 	"github.com/mozer/tether-risk/internal/pricing"
 	"github.com/mozer/tether-risk/pkg/tronaddr"
 	"github.com/shopspring/decimal"
@@ -354,8 +355,8 @@ func (s *Server) meta(ctx context.Context, win window) (Meta, error) {
 	return Meta{Coverage: c, Partial: c.Blocks == 0 || win.min.Before(c.FirstTime) || c.Missing > 0}, nil
 }
 
-// Event is one kept contract event. Address is decoded for the blacklist
-// events, whose one argument is the address.
+// Event is one kept contract event. The blacklist events carry their
+// address decoded, and DestroyedBlackFunds the USDT destroyed.
 type Event struct {
 	Event     string   `json:"event"`
 	Contract  string   `json:"contract"`
@@ -364,6 +365,7 @@ type Event struct {
 	Block     uint64   `json:"block"`
 	Timestamp int64    `json:"timestamp"`
 	Address   string   `json:"address,omitempty"`
+	Amount    string   `json:"amount,omitempty"` // USDT destroyed, for DestroyedBlackFunds
 	Topics    []string `json:"topics"`
 	Data      string   `json:"data"`
 }
@@ -407,8 +409,9 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		e.Timestamp = at.UnixMilli()
-		if strings.HasSuffix(e.Event, "BlackList") || e.Event == "DestroyedBlackFunds" {
-			e.Address = wordAddress(e.Data)
+		if res, ok := indexer.DecodeBlacklist(e.Event, e.Topics, e.Data); ok {
+			e.Address = res["_user"] + res["_blackListedUser"]
+			e.Amount = amount("USDT", res["_balance"])
 		}
 		out = append(out, e)
 		last = position{Time: at.UTC(), Tx: e.TxHash, N: e.Position}
@@ -426,19 +429,6 @@ func (s *Server) events(w http.ResponseWriter, r *http.Request) {
 		meta.Next = last.encode()
 	}
 	writeJSON(w, map[string]any{"data": out, "meta": meta})
-}
-
-// wordAddress reads the address in an event's first 32-byte data word.
-func wordAddress(data string) string {
-	data = strings.TrimPrefix(data, "0x")
-	if len(data) < 64 {
-		return ""
-	}
-	a, err := tronaddr.HexToBase58("41" + data[24:64])
-	if err != nil {
-		return ""
-	}
-	return a
 }
 
 func amount(asset, raw string) string {

@@ -109,12 +109,14 @@ daily-status: ## Show the schedule and the latest run's summary
 # Tether blacklist refresh (scripts/tether.sh), every TETHER_INTERVAL seconds
 # ---------------------------------------------------------------------------
 
-TETHER_INTERVAL ?= 600
+# Every minute: between daily full reads it applies only what the TRON index
+# caught, in milliseconds and with no TronGrid request (D46).
+TETHER_INTERVAL ?= 60
 TETHER_LABEL    := com.tether-risk.tether
 TETHER_PLIST    := $(HOME)/Library/LaunchAgents/$(TETHER_LABEL).plist
 
 .PHONY: tether-install
-tether-install: ## Refresh Tether's blacklist every TETHER_INTERVAL seconds (default 600)
+tether-install: ## Refresh Tether's blacklist every TETHER_INTERVAL seconds (default 60)
 	@mkdir -p $(HOME)/Library/LaunchAgents .data/logs
 	@printf '%s\n' \
 		'<?xml version="1.0" encoding="UTF-8"?>' \

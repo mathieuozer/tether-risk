@@ -16,8 +16,7 @@ import (
 
 // compare checks the index against TronGrid (the plan's phase 2 check): for
 // n addresses active in the window the index covers, every transfer TronGrid
-// lists must be in the index, and nothing else. Half the addresses are drawn
-// from USDT transfers, half from all. It reads TronGrid through the
+// lists must be in the index, and nothing else. It reads TronGrid through the
 // adapter's own parsing, so the keys compared are the keys stored.
 func compare(ctx context.Context, db string, n int, log *slog.Logger) error {
 	os.Setenv("CLICKHOUSE_DB", db)
@@ -95,20 +94,32 @@ func compare(ctx context.Context, db string, n int, log *slog.Logger) error {
 	return nil
 }
 
+// sampleAddresses draws n addresses active in the window: 40% from USDT
+// transfers and 40% from all, each with at most 150 transfers in it, and
+// 20% busy ones with 150 to 2,000, the exchange-like wallets whose history
+// runs over many TronGrid pages.
 func sampleAddresses(ctx context.Context, ch *sql.DB, lo, hi time.Time, n int) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
-	for _, assetCond := range []string{"asset = 'USDT'", "1"} {
+	groups := []struct {
+		asset    string
+		min, max int
+		share    float64
+	}{{"asset = 'USDT'", 1, 150, 0.4}, {"1", 1, 150, 0.4}, {"1", 151, 2000, 0.2}}
+	for _, g := range groups {
+		want := int(float64(n)*g.share + 0.5)
 		rows, err := ch.QueryContext(ctx, fmt.Sprintf(`
 			SELECT a FROM (
 				SELECT from_address AS a FROM transfers WHERE chain = 'tron' AND block_time BETWEEN ? AND ? AND %[1]s
 				UNION ALL
 				SELECT to_address AS a FROM transfers_by_to WHERE chain = 'tron' AND block_time BETWEEN ? AND ? AND %[1]s)
-			GROUP BY a HAVING count() <= 150 ORDER BY rand() LIMIT ?`, assetCond), lo, hi, lo, hi, n)
+			GROUP BY a HAVING count() BETWEEN ? AND ? ORDER BY rand() LIMIT ?`, g.asset),
+			lo, hi, lo, hi, g.min, g.max, want*2)
 		if err != nil {
 			return nil, err
 		}
-		for rows.Next() && len(out) < n {
+		got := 0
+		for rows.Next() && got < want {
 			var a string
 			if err := rows.Scan(&a); err != nil {
 				rows.Close()
@@ -117,9 +128,7 @@ func sampleAddresses(ctx context.Context, ch *sql.DB, lo, hi time.Time, n int) (
 			if !seen[a] {
 				seen[a] = true
 				out = append(out, a)
-			}
-			if assetCond != "1" && len(out) >= n/2 {
-				break
+				got++
 			}
 		}
 		rows.Close()

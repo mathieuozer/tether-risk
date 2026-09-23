@@ -97,6 +97,8 @@ if [ -f "$HOME/Library/LaunchAgents/com.tether-risk.indexer-tail.plist" ]; then
 	[ -n "${INDEX_KEEP:-}" ] && step "index prune" bin/indexer -keep "$INDEX_KEEP" prune
 	step "index price backfill" env CLICKHOUSE_DB=tron_index bin/price -chain tron backfill
 	step "index audit-edges"    env CLICKHOUSE_DB=tron_index bin/ingest -chain tron audit-edges
+	# The canary: 60 addresses' transfers in the index against TronGrid's.
+	step "index compare"        bin/indexer -n 60 compare
 fi
 
 # Keep a month of logs.

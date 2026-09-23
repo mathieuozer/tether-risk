@@ -79,9 +79,19 @@ func TetherBlacklist(added, removed, destroyed []tron.ContractEvent) []FrozenAdd
 }
 
 // TetherLabels turns the blacklist into labels.
+//
+// Token contracts are left out. Tether blacklisted its own USDT contract so
+// that tokens sent to it by mistake stay there, and as a label that made
+// everyone who once made that mistake read as exposed to frozen funds: 70
+// wallets and $164,882 in the stored data (docs/DECISIONS.md D46). Sending
+// to the contract loses the sender's money; it is not a contact with a
+// frozen wallet.
 func TetherLabels(frozen []FrozenAddress, confidence float64) []Label {
 	out := make([]Label, 0, len(frozen))
 	for _, f := range frozen {
+		if tron.IsCanonicalToken(f.Address) {
+			continue
+		}
 		ev := map[string]any{
 			"contract":  tron.USDTContract,
 			"added_at":  f.AddedAt.Format(time.RFC3339),
