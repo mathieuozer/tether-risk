@@ -1897,3 +1897,52 @@ held 7.7 GB, more than the chain data: `text_log` 4.7 GB, `query_log`
 
 Free disk went from 11 GB to 32 GB. This buys time, not room: `docs/INDEXER_PLAN.md`
 and the go-live both need a server.
+
+---
+
+## D45 — a local index, fed by Alchemy, with its own API
+
+**Date:** 2026-09-23 · **Status:** active (until the server) · **Follows:** D44, `docs/INDEXER_PLAN.md`
+
+Without a server, the index runs on this laptop from today onward, with blocks
+from Alchemy's TRON endpoint instead of our own node. The code is the one
+that will run on the server; only `-source` changes when a node exists.
+
+- **Tail:** `indexer tail`, under launchd (`make indexer-install`), writes
+  each solidified block into the `tron_index` database. It keeps up at about
+  one block a second against one produced every three, and resumes from its
+  cursor after a restart: the first restart left no gap.
+- **API:** `indexer serve` on 127.0.0.1:8098 (`internal/indexapi`): an
+  address's transfers (direction, asset, time window, keyset pagination,
+  newest first), the kept contract events with the blacklisted address
+  decoded, and `/v1/status`. Every answer carries the index's coverage and
+  a `partial` flag when the window asked for starts before it. An index
+  that began today must not read as "this address had no history". Keys
+  are optional on localhost and required on any other address, 10 requests
+  a second each.
+- **Checked against TronGrid:** `indexer compare` takes 50 addresses active
+  in the covered window, half from USDT, and reads their history from
+  TronGrid through the adapter's own parsing. First run, 11 minutes of
+  chain: 50 of 50 identical, 106 transfers on each side, none missing, none
+  extra.
+- **Idempotent writes, tested:** writing blocks 100–102 and then 100–104
+  stores each transfer once, in `transfers` and in the edge totals. With the
+  `indexed_blocks` check disabled, the test fails on both (12 rows instead of
+  7, the edge 21 USDT instead of 15).
+- **Disk:** about 113 KB a block, so about 3 GB a day against 30 GB free.
+  The laptop keeps three days (`INDEX_KEEP=72h` in `.env`; the daily job
+  runs `indexer prune`), and the tail stops writing below 10 GB free, then
+  resumes from its cursor. A ClickHouse TTL was tried first. It deletes only
+  as parts merge, unevenly, and the coverage would have shown false gaps.
+  `prune` deletes the block ledger first, then the transfers, then edges
+  wholly older than the cutoff, and the audit recomputes edges that straddle
+  it. `INDEX_KEEP` is opt-in, so a server with room never prunes by
+  accident.
+- **Prices:** the tail prices as it writes. TRX transfers from a day whose
+  close is not yet loaded stay unpriced until the nightly
+  `price backfill`, which now also runs on `tron_index`, followed by its
+  own `audit-edges`.
+
+Moving to a node (a Lite FullNode on an external SSD, or the server) is a
+change of `INDEXER_SOURCE`. A Lite node serves `/walletsolidity` on its own
+port, 8091 by default.

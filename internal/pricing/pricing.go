@@ -42,6 +42,12 @@ var assetDecimals = map[string]int32{
 	"BNB":  18,
 }
 
+// Decimals is the number of decimal places in asset's raw amounts.
+func Decimals(asset string) (int32, bool) {
+	d, ok := assetDecimals[asset]
+	return d, ok
+}
+
 // Pricer converts raw amounts to USD.
 type Pricer struct {
 	cfg    *config.Config

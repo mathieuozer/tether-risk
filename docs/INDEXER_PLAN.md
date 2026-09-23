@@ -1,6 +1,7 @@
 # Plan: our own TRON index
 
-Status: 2026-09-23. The indexer (pkg/tronindex, cmd/indexer) is built and tested; the node and the server are not.
+Status: 2026-09-23. The indexer (pkg/tronindex, cmd/indexer) and its query API are built, tested,
+and running on the laptop from today onward, fed by Alchemy (D45). The node and the server are not.
 
 ## Why
 

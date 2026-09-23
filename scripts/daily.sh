@@ -89,6 +89,15 @@ step "labeler activations"    bin/labeler -chain tron activations
 step "labeler derive"         bin/labeler -chain tron derive
 # Edges that disagree with their transfers are recomputed (D37).
 step "ingest audit-edges"     bin/ingest -chain tron audit-edges
+# The TRON index (D45), when its tail runs: today's TRX transfers were
+# written before today's close existed, and its edges are audited the same way.
+if [ -f "$HOME/Library/LaunchAgents/com.tether-risk.indexer-tail.plist" ]; then
+	# A machine without room for the whole chain keeps INDEX_KEEP of it
+	# (set in .env, e.g. 72h); unset keeps everything.
+	[ -n "${INDEX_KEEP:-}" ] && step "index prune" bin/indexer -keep "$INDEX_KEEP" prune
+	step "index price backfill" env CLICKHOUSE_DB=tron_index bin/price -chain tron backfill
+	step "index audit-edges"    env CLICKHOUSE_DB=tron_index bin/ingest -chain tron audit-edges
+fi
 
 # Keep a month of logs.
 find "$LOG_DIR" -name 'daily-*.log' -mtime +30 -delete 2>/dev/null

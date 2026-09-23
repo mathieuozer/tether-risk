@@ -465,3 +465,16 @@ func (a *Adapter) USDTWindowCursor(address string, from, to time.Time) chain.Cur
 		a.client.baseURL, url.PathEscape(address), a.pageSize, USDTContract, from.UnixMilli(), to.UnixMilli())
 	return chain.Cursor{Value: encodeCursor(cursorState{TRC20Next: u, NativeDone: true})}
 }
+
+// WindowCursor starts a drain of address's TRC-20 and native transfers
+// between from and to, both inclusive, through the same parsing as a full
+// fetch. The indexer's comparison uses it to check the index against
+// TronGrid over the window the index covers.
+func (a *Adapter) WindowCursor(address string, from, to time.Time) chain.Cursor {
+	window := fmt.Sprintf("limit=%d&only_confirmed=true&min_timestamp=%d&max_timestamp=%d",
+		a.pageSize, from.UnixMilli(), to.UnixMilli())
+	return chain.Cursor{Value: encodeCursor(cursorState{
+		TRC20Next:  fmt.Sprintf("%s/v1/accounts/%s/transactions/trc20?%s", a.client.baseURL, url.PathEscape(address), window),
+		NativeNext: fmt.Sprintf("%s/v1/accounts/%s/transactions?%s", a.client.baseURL, url.PathEscape(address), window),
+	})}
+}

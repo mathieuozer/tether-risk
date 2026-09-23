@@ -4,6 +4,9 @@
 //	indexer init                                    create the index database and its schema
 //	indexer tail [-start N]                         follow the solidified head
 //	indexer backfill -from N -to M [-parts 8]       index a block range, resumably
+//	indexer serve [-addr 127.0.0.1:8098]            serve the index over HTTP (internal/indexapi)
+//	indexer compare [-n 50]                         check the index against TronGrid
+//	indexer prune -keep 72h                         delete what is older, on a machine without room (D45)
 //
 // The index goes to its own ClickHouse database (-db, default tron_index), so
 // the live tables are untouched until cutover.
@@ -14,6 +17,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"sort"
@@ -22,6 +26,7 @@ import (
 	"time"
 
 	"github.com/mozer/tether-risk/internal/config"
+	"github.com/mozer/tether-risk/internal/indexapi"
 	"github.com/mozer/tether-risk/internal/indexer"
 	"github.com/mozer/tether-risk/internal/pricing"
 	"github.com/mozer/tether-risk/internal/store"
@@ -42,12 +47,33 @@ func main() {
 		start     = flag.Uint64("start", 0, "tail: first block when there is no cursor (default: the head)")
 		parts     = flag.Int("parts", 8, "backfill: ranges run at once")
 		configDir = flag.String("config", "config", "configuration directory")
+		addr      = flag.String("addr", "127.0.0.1:8098", "serve: listen address; keys from INDEX_API_KEYS, comma-separated")
+		n         = flag.Int("n", 50, "compare: addresses to check")
+		keep      = flag.Duration("keep", 0, "prune: how much history to keep")
+		minFree   = flag.Float64("min-free-gb", 10, "tail, backfill: stop writing below this much free disk")
 	)
 	flag.Parse()
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	switch flag.Arg(0) {
+	case "serve":
+		if err := serve(ctx, *db, *addr, log); err != nil && ctx.Err() == nil {
+			fail(log, err)
+		}
+		return
+	case "compare":
+		if err := compare(ctx, *db, *n, log); err != nil {
+			fail(log, err)
+		}
+		return
+	case "prune":
+		if err := prune(ctx, *db, *keep, log); err != nil {
+			fail(log, err)
+		}
+		return
+	}
 	src, err := newSource(*source, *solid, *rps)
 	if err != nil {
 		fail(log, err)
@@ -62,9 +88,9 @@ func main() {
 	case "init":
 		err = initDB(ctx, *db, log)
 	case "tail", "backfill":
-		err = run(ctx, flag.Arg(0), src, *db, *configDir, *from, *to, *start, *parts, *fetchers, *batch, log)
+		err = run(ctx, flag.Arg(0), src, *db, *configDir, *from, *to, *start, *parts, *fetchers, *batch, uint64(*minFree*1e9), log)
 	default:
-		fmt.Fprintln(os.Stderr, "usage: indexer [flags] measure | init | tail | backfill")
+		fmt.Fprintln(os.Stderr, "usage: indexer [flags] measure | init | tail | backfill | serve | compare | prune")
 		os.Exit(2)
 	}
 	if err != nil && ctx.Err() == nil {
@@ -251,7 +277,7 @@ func initDB(ctx context.Context, db string, log *slog.Logger) error {
 }
 
 func run(ctx context.Context, mode string, src *tronindex.NodeClient, db, configDir string,
-	from, to, start uint64, parts, fetchers, batch int, log *slog.Logger) error {
+	from, to, start uint64, parts, fetchers, batch int, minFree uint64, log *slog.Logger) error {
 	cfg, err := config.Load(configDir)
 	if err != nil {
 		return err
@@ -270,7 +296,9 @@ func run(ctx context.Context, mode string, src *tronindex.NodeClient, db, config
 
 	ix := &tronindex.Indexer{
 		Source: src, Cursors: indexer.Cursors{PG: pg}, Config: indexer.Config(),
-		Sink:     &indexer.Sink{CH: ch, Writer: store.NewTransferWriter(ch, pg), Pricer: pricing.New(cfg, pg)},
+		// ClickHouse's data lives in Docker's disk image on the root volume.
+		Sink: diskGuard{Sink: &indexer.Sink{CH: ch, Writer: store.NewTransferWriter(ch, pg), Pricer: pricing.New(cfg, pg)},
+			path: "/", min: minFree},
 		Fetchers: fetchers, Batch: batch, Log: log,
 		OnBatch: func(bs []tronindex.BlockData, took time.Duration) {
 			var n int
@@ -300,4 +328,36 @@ func run(ctx context.Context, mode string, src *tronindex.NodeClient, db, config
 		}
 		return ix.Backfill(ctx, from, to, parts)
 	}
+}
+
+// serve answers index queries until ctx ends.
+func serve(ctx context.Context, db, addr string, log *slog.Logger) error {
+	os.Setenv("CLICKHOUSE_DB", db)
+	ch, err := store.OpenClickHouse(ctx)
+	if err != nil {
+		return err
+	}
+	defer ch.Close()
+	keys := map[string]bool{}
+	for _, k := range strings.Split(os.Getenv("INDEX_API_KEYS"), ",") {
+		if k = strings.TrimSpace(k); k != "" {
+			keys[k] = true
+		}
+	}
+	if len(keys) == 0 && !strings.HasPrefix(addr, "127.0.0.1:") && !strings.HasPrefix(addr, "localhost:") {
+		return fmt.Errorf("refusing to serve on %s without INDEX_API_KEYS", addr)
+	}
+	srv := &http.Server{Addr: addr, Handler: (&indexapi.Server{CH: ch, Keys: keys, Log: log}).Handler(),
+		ReadHeaderTimeout: 10 * time.Second}
+	go func() {
+		<-ctx.Done()
+		shut, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		srv.Shutdown(shut)
+	}()
+	log.Info("serving the index", "addr", addr, "db", db, "keys", len(keys))
+	if err := srv.ListenAndServe(); err != http.ErrServerClosed {
+		return err
+	}
+	return nil
 }

@@ -210,6 +210,44 @@ api-uninstall: ## Stop and remove the permanent API
 	@echo "api removed"
 
 # ---------------------------------------------------------------------------
+# TRON index (scripts/indexer.sh): the tail and the query API, kept alive by launchd
+# ---------------------------------------------------------------------------
+
+INDEXER_MODES := tail serve
+
+.PHONY: indexer-install
+indexer-install: ## Run the index tail and its API (127.0.0.1:8098) permanently
+	@mkdir -p $(HOME)/Library/LaunchAgents .data/logs
+	@for m in $(INDEXER_MODES); do \
+		label=com.tether-risk.indexer-$$m; plist=$(HOME)/Library/LaunchAgents/$$label.plist; \
+		printf '%s\n' \
+			'<?xml version="1.0" encoding="UTF-8"?>' \
+			'<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+			'<plist version="1.0"><dict>' \
+			"  <key>Label</key><string>$$label</string>" \
+			"  <key>ProgramArguments</key><array><string>/bin/bash</string><string>$(CURDIR)/scripts/indexer.sh</string><string>$$m</string></array>" \
+			'  <key>WorkingDirectory</key><string>$(CURDIR)</string>' \
+			'  <key>RunAtLoad</key><true/>' \
+			'  <key>KeepAlive</key><true/>' \
+			'  <key>ThrottleInterval</key><integer>60</integer>' \
+			"  <key>StandardOutPath</key><string>$(CURDIR)/.data/logs/indexer-$$m.log</string>" \
+			"  <key>StandardErrorPath</key><string>$(CURDIR)/.data/logs/indexer-$$m.log</string>" \
+			'</dict></plist>' > $$plist; \
+		launchctl bootout gui/$$(id -u)/$$label 2>/dev/null || true; \
+		while launchctl print gui/$$(id -u)/$$label >/dev/null 2>&1; do sleep 1; done; \
+		launchctl bootstrap gui/$$(id -u) $$plist; \
+	done
+	@echo "indexer tail and API running under launchd; logs in .data/logs/indexer-*.log"
+
+.PHONY: indexer-uninstall
+indexer-uninstall: ## Stop and remove the index tail and its API
+	@for m in $(INDEXER_MODES); do \
+		launchctl bootout gui/$$(id -u)/com.tether-risk.indexer-$$m 2>/dev/null || true; \
+		rm -f $(HOME)/Library/LaunchAgents/com.tether-risk.indexer-$$m.plist; \
+	done
+	@echo "indexer removed"
+
+# ---------------------------------------------------------------------------
 # Telegram bot (scripts/bot.sh), kept alive by launchd
 # ---------------------------------------------------------------------------
 
