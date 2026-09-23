@@ -107,8 +107,7 @@ func (b *bot) followUp(ctx context.Context, userID int64, lang, chain, address s
 
 	b.log.Info("follow-up done", "user", userID, "address", address, "rounds", rounds,
 		"coverage_first", first.Coverage, "coverage_final", final.Coverage)
-	if err := b.store.RecordScreen(ctx, userID, chain, address, "followup",
-		&final.Score, &final.Band, &final.Coverage, b.now()); err != nil {
+	if err := b.store.RecordScreen(ctx, screenRecord(userID, chain, address, "followup", final), b.now()); err != nil {
 		b.log.Error("record follow-up", "user", userID, "error", err)
 	}
 	b.say(ctx, userID, followUpText(lang, first, final))

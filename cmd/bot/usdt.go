@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/mozer/tether-risk/internal/billing"
@@ -93,6 +94,29 @@ func (b *bot) handlePayment(ctx context.Context, m tron.Movement, open []billing
 				billing.FormatUSDT(p.Amount), p.From, p.Tx))
 		}
 		return nil
+	}
+
+	// A payment from a risky source is held, not granted: taking funds
+	// from a sanctioned or frozen wallet is our risk too (D43). Whether to
+	// return it is a legal question, so an admin decides.
+	if b.billing.USDT.ScreenPayments {
+		why, err := b.payerRisk(ctx, p.From)
+		if err != nil {
+			return fmt.Errorf("screen payer %s: %w", p.From, err) // retried on the next poll
+		}
+		if why != nil {
+			if _, err := b.store.RecordUnmatched(ctx, p); err != nil {
+				return err
+			}
+			detail := fmt.Sprintf("payment of %s USDT from %s held: %s", billing.FormatUSDT(p.Amount), p.From, strings.Join(why, "; "))
+			if _, err := b.store.RaiseFlag(ctx, inv.UserID, "risky_payment", p.From, detail, now); err != nil {
+				b.log.Warn("raise flag", "user", inv.UserID, "error", err)
+			}
+			b.say(ctx, inv.UserID, t(b.langOf(ctx, inv.UserID), "usdt_held", billing.FormatUSDT(p.Amount), b.support))
+			b.notifyAdmins(ctx, fmt.Sprintf("🛑 %s\nUser %d, invoice for %s, tx %s.\nNo plan was granted. Decide with the lawyer's guidance; /grant if it proves clean.",
+				detail, inv.UserID, inv.Plan, p.Tx))
+			return nil
+		}
 	}
 
 	until, settled, err := b.store.Settle(ctx, inv, p, now)

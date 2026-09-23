@@ -63,14 +63,23 @@ type HistoryItem struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-// RecordScreen adds a screen to the user's history. score, band and coverage
-// are nil when the channel produced no result to read them from (a PDF).
-func (s *Store) RecordScreen(ctx context.Context, userID int64, chain, address, channel string,
-	score *float64, band *string, coverage *float64, now time.Time) error {
+// ScreenRecord is one screen for the history. Score, band, coverage and
+// verdict are nil when the channel produced no result to read them from (a
+// PDF); FirstSeen is nil when the address had no stored activity.
+type ScreenRecord struct {
+	UserID                  int64
+	Chain, Address, Channel string
+	Score, Coverage         *float64
+	Band, Verdict           *string
+	FirstSeen               *time.Time
+}
+
+// RecordScreen adds a screen to the user's history.
+func (s *Store) RecordScreen(ctx context.Context, r ScreenRecord, now time.Time) error {
 	_, err := s.pg.ExecContext(ctx, `
-		INSERT INTO screen_history (user_id, chain, address, channel, score, band, coverage, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		userID, chain, address, channel, score, band, coverage, now)
+		INSERT INTO screen_history (user_id, chain, address, channel, score, band, coverage, verdict, first_seen, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		r.UserID, r.Chain, r.Address, r.Channel, r.Score, r.Band, r.Coverage, r.Verdict, r.FirstSeen, now)
 	return err
 }
 

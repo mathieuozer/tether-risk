@@ -374,6 +374,11 @@ Bu fatura %[6]d dakika geçerli. Ödeme onaylanır onaylanmaz, genellikle 2 daki
 
 Счёт действителен %[6]d мин. Как только платёж подтвердится (обычно в течение 2 минут), я напишу вам здесь.`,
 	},
+	"usdt_held": {
+		"We received your payment of %s USDT, but it is on hold for review because the sending wallet is linked to risk. Please contact support: %s",
+		"%s USDT ödemenizi aldık, ancak gönderen cüzdan riskle bağlantılı olduğu için inceleme amacıyla bekletiliyor. Lütfen destek ile iletişime geçin: %s",
+		"Мы получили ваш платёж %s USDT, но он удержан для проверки: кошелёк отправителя связан с риском. Пожалуйста, свяжитесь с поддержкой: %s",
+	},
 	"usdt_received": {
 		"Payment received: %s USDT. Your %s plan is active until %s. Thank you!\n\nUSDT periods do not renew by themselves; /plans extends at any time without losing days.",
 		"Ödeme alındı: %s USDT. %s planınız %s tarihine kadar aktif. Teşekkürler!\n\nUSDT dönemleri kendiliğinden yenilenmez; /plans ile istediğiniz an gün kaybetmeden uzatabilirsiniz.",

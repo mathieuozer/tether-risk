@@ -59,7 +59,19 @@ type Config struct {
 		InvoiceTTL time.Duration `yaml:"invoice_ttl"`
 		Grace      time.Duration `yaml:"grace"`
 		Poll       time.Duration `yaml:"poll"`
+		// ScreenPayments screens each paying address before a plan is
+		// granted; a risky payer's payment is held for an admin (D43).
+		ScreenPayments bool `yaml:"screen_payments"`
 	} `yaml:"usdt"`
+	// Abuse sets when a user's screening pattern is raised to an admin
+	// (D43). Zero disables a check.
+	Abuse struct {
+		Window       time.Duration `yaml:"window"`
+		SameAddress  int           `yaml:"same_address"`
+		RiskyTargets int           `yaml:"risky_targets"`
+		FreshTargets int           `yaml:"fresh_targets"`
+		FreshDays    int           `yaml:"fresh_days"`
+	} `yaml:"abuse"`
 	PeriodDays int `yaml:"period_days"`
 	Monitor    struct {
 		Interval time.Duration `yaml:"interval"`

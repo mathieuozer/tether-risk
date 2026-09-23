@@ -12,13 +12,13 @@ Results depend on public data that can be incomplete, out of date or wrong. The 
 Plans, prices and daily limits are shown under /plans. Telegram Stars subscriptions renew every 30 days until cancelled with /cancel or in Telegram's settings; cancelling stops future charges, and access continues to the end of the paid period. USDT payments buy one period and do not renew. Daily limits reset at 00:00 UTC.
 
 4. Refunds
-Stars payments may be refunded at our discretion through Telegram, for example if the service was unavailable for a substantial part of a paid period; a refund ends the period it paid for. USDT payments are not refundable, except where a payment was received but not applied because of an error on our side. A USDT payment sent to the wrong network, with the wrong amount or after its invoice expired may not be recoverable; contact support.
+Stars payments may be refunded at our discretion through Telegram, for example if the service was unavailable for a substantial part of a paid period; a refund ends the period it paid for. USDT payments are not refundable, except where a payment was received but not applied because of an error on our side. A USDT payment sent to the wrong network, with the wrong amount or after its invoice expired may not be recoverable; contact support. A payment sent from a wallet that our screening links to sanctions, frozen funds or other serious risk is held for review and does not activate a plan; what happens to it is decided case by case and may depend on legal requirements.
 
 5. Acceptable use
-Do not resell access, share an account, automate requests beyond your plan, or use the service for any unlawful purpose. We may suspend access that breaches these terms, without refund of the current period.
+Do not resell access, share an account, automate requests beyond your plan, or use the service for any unlawful purpose. In particular, you may not use it to launder money, to evade sanctions, or to test or design ways of avoiding detection by screening or monitoring systems, and you may not use it if you are, or act for, a person subject to sanctions or located in a sanctioned jurisdiction. We review unusual patterns of use and may suspend or close access that breaches these terms, without refund of the current period.
 
 6. Data
-We store your Telegram user id, username, the addresses you screen, your payments and your daily usage, to provide the service and to answer support requests. We do not sell this data.
+We store your Telegram user id, username, the addresses you screen, your payments and your daily usage, to provide the service, to answer support requests and to detect misuse. We keep these records as long as needed for those purposes and to meet legal obligations, and may disclose them where the law requires. We do not sell this data.
 
 7. Liability
 To the extent permitted by law, our total liability is limited to the amount you paid in the 30 days before the claim.

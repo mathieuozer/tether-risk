@@ -59,6 +59,24 @@ usdt:
   grace: 24h
   # How often the payment address is checked.
   poll: 30s
+  # Screen each paying address before granting the plan. A payer the screen
+  # answers risky has its payment held for an admin to decide: taking funds
+  # from a sanctioned or frozen source is our risk too (D43).
+  screen_payments: true
+
+# Screening patterns raised to an admin, once per user and pattern a day.
+# Nothing is blocked automatically (D43).
+abuse:
+  window: 24h
+  # The same address screened this often: a holder testing whether their
+  # own wallet looks clean after each move.
+  same_address: 6
+  # This many distinct addresses answered risky.
+  risky_targets: 20
+  # This many distinct addresses first active within fresh_days: new
+  # layering wallets being tried out.
+  fresh_targets: 30
+  fresh_days: 7
 
 # How long one paid period lasts. Stars fixes it at 30 days; USDT matches.
 period_days: 30

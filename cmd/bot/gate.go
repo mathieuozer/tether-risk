@@ -196,15 +196,10 @@ func (b *bot) gate(ctx context.Context, r screenRequest) (*screenOutcome, error)
 		return nil, &gateError{Code: "screen_failed", Status: http.StatusBadGateway, Cause: err}
 	}
 
-	var score, coverage *float64
-	var band *string
-	if res := out.Result; res != nil {
-		score, coverage, band = &res.Score, &res.Coverage, &res.Band
-	}
-	if err := b.store.RecordScreen(context.WithoutCancel(ctx), r.UserID, chain, address, r.Channel,
-		score, band, coverage, now); err != nil {
+	if err := b.store.RecordScreen(context.WithoutCancel(ctx), screenRecord(r.UserID, chain, address, r.Channel, out.Result), now); err != nil {
 		b.log.Error("record screen", "user", r.UserID, "error", err)
 	}
+	b.checkPatterns(context.WithoutCancel(ctx), r.UserID, address, now)
 	return out, nil
 }
 

@@ -1084,6 +1084,22 @@ func (b *bot) admin(ctx context.Context, chat int64, cmd, arg string) {
 			}
 			sb.WriteString("\n")
 		}
+		if flags, _ := b.store.Flags(ctx, uid, 10); len(flags) > 0 {
+			sb.WriteString("\nFlags (D43):\n")
+			for _, f := range flags {
+				fmt.Fprintf(&sb, "  %s  %s: %s\n", datetime(f.CreatedAt), f.Kind, f.Detail)
+			}
+		}
+		if hist, _ := b.store.History(ctx, uid, 15); len(hist) > 0 {
+			sb.WriteString("\nRecent screens:\n")
+			for _, h := range hist {
+				band := "-"
+				if h.Band != nil {
+					band = *h.Band
+				}
+				fmt.Fprintf(&sb, "  %s  %s  %s  %s\n", datetime(h.CreatedAt), h.Channel, h.Address, band)
+			}
+		}
 		b.say(ctx, chat, sb.String())
 	}
 }

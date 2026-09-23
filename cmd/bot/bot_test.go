@@ -519,3 +519,69 @@ func TestInlineCheckEditsPlaceholderIntoVerdict(t *testing.T) {
 		t.Errorf("offered a check for a non-address: %+v", c.Params)
 	}
 }
+
+// A payment from a wallet the screen answers risky is held, not granted, and
+// the admins are told why (docs/DECISIONS.md D43).
+func TestRiskyPaymentIsHeld(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.text(11, "/start")
+	h.b.dispatch(ctx, update{CallbackQuery: &callbackQuery{ID: "cb", From: tgUser{ID: 11},
+		Message: &message{Chat: tgChat{ID: 11, Type: "private"}}, Data: "usdt:pro"}})
+	invs, _ := h.b.store.OpenInvoices(ctx, payAddr, h.clock)
+	if len(invs) != 1 {
+		t.Fatalf("%d invoices open, want 1", len(invs))
+	}
+	h.setResult(map[string]any{"score": 95.0, "band": "high", "coverage": 0.9,
+		"own_label": map[string]any{"entity": "Garantex", "category": "sanctions"},
+		"verdict": map[string]any{"level": "high_risk", "confidence_pct": 99,
+			"reasons": []map[string]any{{"code": "own_listed", "category": "sanctions"}}}})
+	paidAt := h.clock.Add(3 * time.Minute)
+	*h.tron = fmt.Sprintf(`{"success":true,"meta":{},"data":[{"transaction_id":"tx-risky","block_timestamp":%d,"from":"TZ8Ksz21Hk1tQuztCKCUJBRXStCav9uyjM","to":"%s","type":"Transfer","value":"%d","token_info":{"address":"%s"}}]}`,
+		paidAt.UnixMilli(), payAddr, invs[0].Amount, tron.USDTContract)
+	h.clock = h.clock.Add(4 * time.Minute)
+	h.tg.reset()
+	if err := h.b.scanUSDT(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if acc, _ := h.b.store.Access(ctx, 11, h.clock); acc.Plan != nil && acc.Plan.ID == "pro" {
+		t.Fatal("a payment from a sanctioned wallet granted the plan")
+	}
+	if !contains(h.tg.sent(11), "on hold for review") {
+		t.Errorf("customer not told: %q", h.tg.sent(11))
+	}
+	if !contains(h.tg.sent(adminID), "held: listed: Garantex") {
+		t.Errorf("admin not told: %q", h.tg.sent(adminID))
+	}
+	// Rescanning neither grants nor repeats.
+	h.tg.reset()
+	if err := h.b.scanUSDT(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.tg.sent(11)) != 0 || len(h.tg.sent(adminID)) != 0 {
+		t.Errorf("rescan sent messages: %q %q", h.tg.sent(11), h.tg.sent(adminID))
+	}
+}
+
+// Screening the same address again and again is raised to the admins once
+// a day; the user is not blocked (docs/DECISIONS.md D43).
+func TestRepeatScreeningIsRaisedOnce(t *testing.T) {
+	h := newHarness(t)
+	h.text(12, "/start")
+	h.tg.reset()
+	for i := 0; i < 8; i++ {
+		h.text(12, addrA)
+	}
+	var alerts int
+	for _, m := range h.tg.sent(adminID) {
+		if strings.Contains(m, "Pattern to review, user 12") && strings.Contains(m, addrA) {
+			alerts++
+		}
+	}
+	if alerts != 1 {
+		t.Errorf("admin alerts = %d, want 1: %q", alerts, h.tg.sent(adminID))
+	}
+	if contains(h.tg.sent(12), "limit") {
+		t.Error("the user was limited by a pattern alert")
+	}
+}

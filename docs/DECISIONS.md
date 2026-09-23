@@ -1817,3 +1817,56 @@ customer priority.
 Result: the 60 were fetched again within minutes. 10 of them had missed
 transfers, 52 in all, now stored. TZC67v…zkn now shows 874,267 USDT in and
 874,267 out over 27 transfers, as TronGrid does.
+
+---
+
+## D43 — controls against use for laundering
+
+**Date:** 2026-09-23 · **Status:** active · **Follows:** D26, D27
+
+Any screening tool can serve a launderer too: to check whether a wallet
+looks clean before an exchange sees it, and to learn by trial what passes.
+Ours explains its reasons, which helps honest users and teaches evaders
+alike. The owner chose four controls. Two others were set aside for now:
+verifying business customers before issuing API keys, and making the
+repository private.
+
+**Paying wallets are screened.** Before a USDT payment grants a plan, the
+paying address is screened (`usdt.screen_payments`). If the answer is risky,
+the plan is not granted. The payment is recorded so it is not processed
+twice, the customer is told it is on hold, and admins get the reasons.
+Whether to return such funds is a legal question (docs/LEGAL_QUESTIONS.md
+§3), so the decision stays with a person. A screen that fails leaves the
+payment for the next poll, rather than granting it unscreened. Stars
+payments pass through Telegram and cannot be screened.
+
+**Patterns are raised, not blocked.** The screen history now keeps each
+answer's verdict and the address's first activity. Three patterns go to
+admins, once per user and pattern a day, with thresholds in `billing.yaml`
+under `abuse`:
+
+- the same address screened 6 times in 24 hours: a holder testing their own
+  wallet after each move;
+- 20 distinct addresses answered risky;
+- 30 distinct addresses first active within 7 days: new layering wallets
+  being tried.
+
+Follow-ups and watch rescreens are the system's own and do not count.
+Nothing is blocked automatically, since an investigator looks like this
+too. `/user` shows a user's flags and recent screens so an admin can decide.
+Tested by `TestRiskyPaymentIsHeld` and `TestRepeatScreeningIsRaisedOnce`.
+
+**Terms.** Acceptable use now forbids laundering, sanctions evasion and
+testing ways to avoid detection. It also excludes sanctioned persons and
+jurisdictions, and says usage patterns are reviewed. Refunds say a payment
+from a risky wallet is held. Data says records serve misuse detection, are
+kept as the law requires, and may be disclosed where it requires. The same
+changes are in English, Turkish and Russian, all still pending legal review.
+
+**Legal questions.** `docs/LEGAL_QUESTIONS.md` lists what a lawyer must
+answer before go-live. It covers the entity's jurisdiction and whether we
+are regulated at all, and the EU, UK and US restrictions on services to
+Russia. It covers what to do with held payments, data protection and
+retention, liability for labels, and disputes. It also covers the attribution
+the UK list's Open Government Licence requires, which the product does not
+yet show.
