@@ -123,7 +123,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		default:
 		}
 
-		job, err := w.jobs.ClaimBelow(ctx, w.id, w.opts.Lease, w.claimCeiling(ctx))
+		job, err := w.jobs.ClaimBelow(ctx, w.adapter.Chain(), w.id, w.opts.Lease, w.claimCeiling(ctx))
 		if errors.Is(err, store.ErrNoJobs) {
 			select {
 			case <-ctx.Done():

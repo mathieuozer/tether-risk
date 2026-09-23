@@ -414,29 +414,30 @@ chains:
     notes: "Free tier is sufficient for demand-driven per-address ingestion."
 
   - id: ethereum
-    status: unavailable
+    status: allowed
     adapter: "evm-jsonrpc"
     url: "https://ethereum-rpc.publicnode.com"
-    auth: "requires an archive-capable endpoint; ETH_RPC_URL overrides the default"
+    auth: "ETH_RPC_URL, an Alchemy endpoint; the adapter uses alchemy_getAssetTransfers for per-address history (docs/ALCHEMY.md)"
     rate_limit_per_sec: 10
-    checked: 2026-09-21
-    unavailable_reason: >
-      The adapter works and is verified against this endpoint for recent
-      blocks, but per-address history needs archive access and no public
-      endpoint serves it usably: publicnode refuses archive requests outright,
-      ankr and drpc require authentication, and 1rpc and pokt cap ranges at 50
-      blocks, which is roughly 520,000 requests to cover the chain. Set
-      ETH_RPC_URL to an archive-capable endpoint to enable this chain. See
-      docs/METHODOLOGY.md §2.
+    checked: 2026-09-23
+    notes: >
+      Enabled 2026-09-23 with an Alchemy key (docs/DECISIONS.md D40).
+      Alchemy Terms of Service v2.0 (effective 2025-06-27), read that day:
+      §2.1 grants use "solely for your internal business purposes", and §1.5
+      and §2.13 contemplate "End User[s]" of "applications you provide or
+      create using the Services", so a product built on it is in scope.
+      §2.2(v) forbids reselling or letting third parties use the Services;
+      customers never reach Alchemy, they get our derived results. §2.2(ix)
+      forbids products competing with the Services (blockchain
+      infrastructure), which AML screening does not. §2.2(x) forbids
+      spreading usage across accounts to get round limits.
 
   - id: bsc
-    status: unavailable
+    status: allowed
     adapter: "evm-jsonrpc"
     url: "https://bsc-rpc.publicnode.com"
-    auth: "requires an archive-capable endpoint; BSC_RPC_URL overrides the default"
+    auth: "BSC_RPC_URL, an Alchemy endpoint (docs/ALCHEMY.md)"
     rate_limit_per_sec: 10
-    checked: 2026-09-21
-    unavailable_reason: >
-      As ethereum, and worse: bsc-dataseed rate-limits eth_getLogs below
-      usefulness even for a ten-block span. Set BSC_RPC_URL to an
-      archive-capable endpoint to enable this chain.
+    checked: 2026-09-23
+    notes: >
+      Enabled with Ethereum under the same Alchemy terms (D40).

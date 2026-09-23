@@ -98,6 +98,8 @@ var messages = map[string][3]string{
 
 Send an address and you get a summary of its connections: where its funds came from and went, and the risk categories they touch.
 
+TRON (T…) and Ethereum (0x…) addresses work as they are; for BNB Smart Chain, write "bsc 0x…".
+
 /app                 open the app
 /send <recipient>    check a payment before sending it
 /details <address>   full breakdown with paths (Pro)
@@ -119,6 +121,8 @@ Always read the coverage figure alongside the score. Low coverage means most tra
 
 Bir adres gönderin; bağlantılarının özetini alın: fonları nereden geldi, nereye gitti ve hangi risk kategorilerine dokunuyor.
 
+TRON (T…) ve Ethereum (0x…) adreslerini olduğu gibi gönderin; BNB Smart Chain için "bsc 0x…" yazın.
+
 /app                 uygulamayı aç
 /send <alıcı>        ödemeyi göndermeden önce kontrol et
 /details <adres>     yollarla birlikte tam döküm (Pro)
@@ -139,6 +143,8 @@ Puanı her zaman kapsam oranıyla birlikte okuyun. Düşük kapsam, izlenen değ
 		`Проверка адресов на риск.
 
 Отправьте адрес — и получите сводку по его связям: откуда пришли средства, куда ушли и с какими категориями риска они связаны.
+
+Адреса TRON (T…) и Ethereum (0x…) отправляйте как есть; для BNB Smart Chain напишите «bsc 0x…».
 
 /app                 открыть приложение
 /send <получатель>   проверить платёж перед отправкой

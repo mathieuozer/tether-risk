@@ -327,19 +327,23 @@ func TestUnavailableChainsRecordWhy(t *testing.T) {
 	}
 	tron, ok := c.Chain("tron")
 	if !ok || !tron.Available() {
-		t.Error("tron must be available; it is the only chain with a live data path in v1")
+		t.Error("tron must be available")
 	}
-	for _, id := range []string{"ethereum", "bsc"} {
+	// Ethereum and BSC were unavailable until D40 (docs/PLAN.md F1). Either
+	// way the state must explain itself: an unavailable chain says why, an
+	// available one names the environment variable holding its endpoint,
+	// since the key is never in the repository.
+	for id, env := range map[string]string{"ethereum": "ETH_RPC_URL", "bsc": "BSC_RPC_URL"} {
 		ch, ok := c.Chain(id)
 		if !ok {
-			t.Errorf("chain %q must be declared even though it is unavailable", id)
+			t.Errorf("chain %q must be declared", id)
 			continue
 		}
-		if ch.Available() {
-			t.Errorf("chain %q is marked available but has no credentials (docs/PLAN.md F1)", id)
-		}
-		if ch.UnavailableReason == "" {
+		if !ch.Available() && ch.UnavailableReason == "" {
 			t.Errorf("chain %q is unavailable without a recorded reason", id)
+		}
+		if ch.Available() && !strings.Contains(ch.Auth, env) {
+			t.Errorf("chain %q is available but its auth does not name %s", id, env)
 		}
 	}
 }

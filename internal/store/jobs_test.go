@@ -154,13 +154,13 @@ func TestClaimBelowSkipsBackgroundWork(t *testing.T) {
 	if err := jobs.EnqueueBackground(ctx, "tron", "TBackground"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := jobs.ClaimBelow(ctx, "w", time.Minute, BackgroundPriority); !errors.Is(err, ErrNoJobs) {
+	if _, err := jobs.ClaimBelow(ctx, "tron", "w", time.Minute, BackgroundPriority); !errors.Is(err, ErrNoJobs) {
 		t.Fatalf("background job claimed under the ceiling: %v", err)
 	}
 	if err := jobs.Enqueue(ctx, "tron", "TCustomer", 1, nil); err != nil {
 		t.Fatal(err)
 	}
-	job, err := jobs.ClaimBelow(ctx, "w", time.Minute, BackgroundPriority)
+	job, err := jobs.ClaimBelow(ctx, "tron", "w", time.Minute, BackgroundPriority)
 	if err != nil || job.Address != "TCustomer" {
 		t.Fatalf("customer job not claimed: %v %v", job, err)
 	}
@@ -182,5 +182,24 @@ func TestAPIUsageAccumulatesPerDay(t *testing.T) {
 	}
 	if n, err := APIUsageToday(ctx, pg, "test"); err != nil || n != 150 {
 		t.Fatalf("usage = %d, %v; want 150", n, err)
+	}
+}
+
+// A worker runs one chain's adapter and must not take another chain's job
+// (docs/DECISIONS.md D40).
+func TestClaimBelowTakesOnlyItsChain(t *testing.T) {
+	_, pg := testDBs(t)
+	ctx := context.Background()
+	truncateJobs(t, pg)
+
+	jobs := NewJobs(pg)
+	if err := jobs.Enqueue(ctx, "ethereum", "0xabc", 0, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jobs.ClaimBelow(ctx, "tron", "w", time.Minute, 0); !errors.Is(err, ErrNoJobs) {
+		t.Fatalf("a TRON worker claimed an Ethereum job: %v", err)
+	}
+	if job, err := jobs.ClaimBelow(ctx, "ethereum", "w", time.Minute, 0); err != nil || job.Address != "0xabc" {
+		t.Fatalf("the Ethereum worker did not get its job: %v %v", job, err)
 	}
 }

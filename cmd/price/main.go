@@ -271,7 +271,9 @@ func loadPrices(ctx context.Context, pg *sql.DB, asset string, days int,
 		return fmt.Errorf("price source returned no points for %s", asset)
 	}
 
-	n, err := pricing.LoadPrices(ctx, pg, "coingecko", points)
+	// The source actually used. Until 2026-09-23 every load was recorded as
+	// coingecko, including the Binance history back to 2018 (D40).
+	n, err := pricing.LoadPrices(ctx, pg, source, points)
 	if err != nil {
 		return err
 	}

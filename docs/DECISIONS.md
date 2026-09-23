@@ -1652,3 +1652,54 @@ read oddly inside a Turkish or Russian sentence.
 them several. A creator of many wallets that all sweep to one exchange is
 probably that exchange's operations account, and naming it would name what
 it creates, as D31 does for reserves.
+
+---
+
+## D40 — Ethereum and BSC through Alchemy; a job queue that ignored chains; prices without a licence
+
+**Date:** 2026-09-23 · **Status:** active · **Follows:** PLAN F1, D19, D22
+
+**Enabled.** With Alchemy endpoints in `ETH_RPC_URL` and `BSC_RPC_URL`,
+both chains are `allowed`. Before turning them on, the Alchemy Terms of
+Service v2.0 (2025-06-27) were read and quoted in `sources.yaml`. A product
+built on it is in scope (§1.5 and §2.13 describe "End Users" of
+"applications you provide or create using the Services"). What is forbidden
+is reselling access (§2.2(v)) and competing with it (§2.2(ix)). Our
+customers never reach Alchemy, and AML screening is not blockchain
+infrastructure. The adapter's live test fetched 100 transfers, none of them
+from the lossy float amount. Screening an OFAC-listed Ethereum address took
+9.7 s and fetched its history as it answered. Garantex's BSC address
+answered risky at 99%. This brings the 5,621 Ethereum labels already held
+into use (CryptoScamDB, ScamSniffer, OFAC, UK and EU).
+
+**Found before turning them on: workers took any chain's jobs.**
+`Jobs.Claim` ordered by priority across chains. The one worker, running the
+TRON adapter, would have claimed Ethereum jobs and failed them.
+`ClaimBelow` now takes the worker's chain
+(`TestClaimBelowTakesOnlyItsChain`). `worker.sh` starts one process per
+chain with an endpoint, and restarts them all when one stops. It is written
+for the macOS `/bin/bash` 3.2 that launchd runs, which has no `wait -n`.
+
+**Found on the way: price sources have no recorded licence.** Every daily
+close was recorded as coming from CoinGecko, whatever was used. TRX's
+2,972 days back to 2018 cannot have come from CoinGecko's free tier, which
+stops at 365. The loader now records the source it used. Neither source's
+terms had been checked as `sources.yaml` requires:
+
+- CoinGecko API terms (2025-09-05) allow a paid product that incorporates
+  the API. They require a visible "Powered by CoinGecko" (§4.4), and they
+  forbid storing the data except as a cache refreshed every 24 hours, to be
+  deleted on termination (§6.1–6.2). We keep history permanently.
+- Binance's terms, quoted in D19, forbid obtaining platform data by
+  automated means. Whether its public market-data API is covered was not
+  settled. The page renders only with JavaScript and could not be read.
+
+ETH and BNB prices are therefore not loaded. USDT and other stablecoin
+transfers, the product's subject, are valued as before, pinned at $1.
+Native ETH and BNB transfers show as unpriced, which is reported rather
+than hidden (D16). The choice of price source is the owner's (see Open).
+
+**Open:** a licence-clean price source. The alternative that needs no
+licence is prices read from the chains themselves: daily closes from the
+TRX/USDT, WETH/USDT and WBNB/USDT pools of the largest DEX on each chain.
+These are public chain data, like everything else here.

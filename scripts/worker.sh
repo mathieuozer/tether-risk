@@ -33,5 +33,36 @@ if [ -n "${TRONGRID_API_KEY:-}" ]; then
 fi
 
 go build -o bin/ ./cmd/ingest || exit 1
-echo "$(date '+%F %T') starting $WORKERS worker(s)"
-exec bin/ingest -chain tron -workers "$WORKERS" worker
+
+# One process per chain with a data path: a worker runs one chain's adapter
+# and claims only that chain's jobs (D40). Ethereum and BSC run through
+# Alchemy when their endpoints are set.
+pids=()
+echo "$(date '+%F %T') starting $WORKERS tron worker(s)"
+bin/ingest -chain tron -workers "$WORKERS" worker &
+pids+=($!)
+if [ -n "${ETH_RPC_URL:-}" ]; then
+	echo "$(date '+%F %T') starting an ethereum worker"
+	bin/ingest -chain ethereum -workers 1 worker &
+	pids+=($!)
+fi
+if [ -n "${BSC_RPC_URL:-}" ]; then
+	echo "$(date '+%F %T') starting a bsc worker"
+	bin/ingest -chain bsc -workers 1 worker &
+	pids+=($!)
+fi
+
+# launchd runs this with /bin/bash 3.2, which has no `wait -n`. When any
+# worker stops, stop the rest and exit, so launchd restarts them together.
+trap 'kill "${pids[@]}" 2>/dev/null' TERM INT
+while :; do
+	for pid in "${pids[@]}"; do
+		if ! kill -0 "$pid" 2>/dev/null; then
+			echo "$(date '+%F %T') worker $pid stopped; restarting all"
+			kill "${pids[@]}" 2>/dev/null
+			wait
+			exit 1
+		fi
+	done
+	sleep 5
+done
