@@ -141,3 +141,46 @@ func TestBackgroundJobsYieldToCustomers(t *testing.T) {
 		t.Fatalf("claim order %v: customer jobs must come first", order)
 	}
 }
+
+// Once the day's background budget is spent the worker claims below
+// BackgroundPriority: a customer's job still runs, background work waits
+// (docs/DECISIONS.md D35).
+func TestClaimBelowSkipsBackgroundWork(t *testing.T) {
+	_, pg := testDBs(t)
+	ctx := context.Background()
+	truncateJobs(t, pg)
+
+	jobs := NewJobs(pg)
+	if err := jobs.EnqueueBackground(ctx, "tron", "TBackground"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := jobs.ClaimBelow(ctx, "w", time.Minute, BackgroundPriority); !errors.Is(err, ErrNoJobs) {
+		t.Fatalf("background job claimed under the ceiling: %v", err)
+	}
+	if err := jobs.Enqueue(ctx, "tron", "TCustomer", 1, nil); err != nil {
+		t.Fatal(err)
+	}
+	job, err := jobs.ClaimBelow(ctx, "w", time.Minute, BackgroundPriority)
+	if err != nil || job.Address != "TCustomer" {
+		t.Fatalf("customer job not claimed: %v %v", job, err)
+	}
+	if job, err := jobs.Claim(ctx, "w", time.Minute); err != nil || job.Address != "TBackground" {
+		t.Fatalf("without a ceiling background work runs: %v %v", job, err)
+	}
+}
+
+func TestAPIUsageAccumulatesPerDay(t *testing.T) {
+	_, pg := testDBs(t)
+	ctx := context.Background()
+	if _, err := pg.Exec(`DELETE FROM api_usage WHERE provider = 'test'`); err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range []int64{120, 0, 30} {
+		if err := AddAPIUsage(ctx, pg, "test", n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := APIUsageToday(ctx, pg, "test"); err != nil || n != 150 {
+		t.Fatalf("usage = %d, %v; want 150", n, err)
+	}
+}

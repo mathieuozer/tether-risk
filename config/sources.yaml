@@ -404,6 +404,12 @@ chains:
     # key: 10 of 10 requests succeeded, and sampling cost 0.86 s per address
     # with no 429s, against about 8 s and 60-80% throttled without it.
     rate_limit_per_sec_with_key: 8
+    # The free key allows 100,000 requests a UTC day, then one a second
+    # until midnight UTC. On 2026-09-22 background fetching spent it all, and
+    # the Tether blacklist refresh failed for four hours. Background work may
+    # spend 60%; the rest is kept for screens and the refresh (D35).
+    daily_request_quota: 100000
+    background_share: 0.6
     checked: 2026-09-21
     notes: "Free tier is sufficient for demand-driven per-address ingestion."
 

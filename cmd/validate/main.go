@@ -22,7 +22,9 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
+	"github.com/mozer/tether-risk/internal/ingest"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -100,6 +102,9 @@ func run(ctx context.Context, cmd, configDir, chainID string, limit int, compare
 		return 2, err
 	}
 	defer pg.Close()
+	// Every TronGrid request counts against the key's daily quota (D35).
+	ingest.TrackTronUsage(ctx, pg, slog.Default())
+	defer ingest.FlushTronUsage(context.WithoutCancel(ctx), pg, slog.Default())
 
 	svc := screen.NewService(ch, pg, cfg)
 

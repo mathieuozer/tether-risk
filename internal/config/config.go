@@ -282,10 +282,16 @@ type ChainSource struct {
 	RateLimitPerSec int          `yaml:"rate_limit_per_sec"`
 	// RateLimitPerSecWithKey applies when the chain's API key is set. Zero
 	// means the key buys nothing and RateLimitPerSec applies either way.
-	RateLimitPerSecWithKey int    `yaml:"rate_limit_per_sec_with_key"`
-	Checked                string `yaml:"checked"`
-	UnavailableReason      string `yaml:"unavailable_reason"`
-	Notes                  string `yaml:"notes"`
+	RateLimitPerSecWithKey int `yaml:"rate_limit_per_sec_with_key"`
+	// DailyRequestQuota is the API key's requests per UTC day, and
+	// BackgroundShare the part of it background fetching may spend; the rest
+	// is kept for customers' screens and the blacklist refresh
+	// (docs/DECISIONS.md D35). Zero quota means no budget.
+	DailyRequestQuota int64   `yaml:"daily_request_quota"`
+	BackgroundShare   float64 `yaml:"background_share"`
+	Checked           string  `yaml:"checked"`
+	UnavailableReason string  `yaml:"unavailable_reason"`
+	Notes             string  `yaml:"notes"`
 }
 
 // RequestRate is the request budget to pace at, given whether an API key is
@@ -295,6 +301,14 @@ func (c ChainSource) RequestRate(hasKey bool) float64 {
 		return float64(c.RateLimitPerSecWithKey)
 	}
 	return float64(c.RateLimitPerSec)
+}
+
+// BackgroundBudget is the requests a day background fetching may spend.
+func (c ChainSource) BackgroundBudget() int64 {
+	if c.DailyRequestQuota <= 0 || c.BackgroundShare <= 0 {
+		return 0
+	}
+	return int64(float64(c.DailyRequestQuota) * c.BackgroundShare)
 }
 
 // Available reports whether the chain has a live data path.

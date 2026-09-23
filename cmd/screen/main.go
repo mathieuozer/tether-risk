@@ -78,6 +78,9 @@ func run(ctx context.Context, configDir, chainID, address, pdfOut, format, lang 
 		return err
 	}
 	defer pg.Close()
+	// Every TronGrid request counts against the key's daily quota (D35).
+	ingest.TrackTronUsage(ctx, pg, slog.Default())
+	defer ingest.FlushTronUsage(context.WithoutCancel(ctx), pg, slog.Default())
 
 	svc := screen.NewService(ch, pg, cfg)
 	if fetch {

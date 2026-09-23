@@ -85,6 +85,14 @@ func (j *Jobs) EnqueueBackground(ctx context.Context, chainID, address string) e
 // pre-insert deduplication in TransferWriter is a read-then-write, and it is
 // only safe because exactly one worker holds an address at a time.
 func (j *Jobs) Claim(ctx context.Context, workerID string, lease time.Duration) (*Job, error) {
+	return j.ClaimBelow(ctx, workerID, lease, 0)
+}
+
+// ClaimBelow claims like Claim, but only a job whose priority number is
+// below maxPriority; 0 means any. With BackgroundPriority it takes customer
+// work only, which is what the worker does once the day's background budget
+// is spent (docs/DECISIONS.md D35).
+func (j *Jobs) ClaimBelow(ctx context.Context, workerID string, lease time.Duration, maxPriority int) (*Job, error) {
 	var job Job
 	err := j.pg.QueryRowContext(ctx, `
 		UPDATE fetch_jobs SET
@@ -103,12 +111,13 @@ func (j *Jobs) Claim(ctx context.Context, workerID string, lease time.Duration) 
 			SELECT id FROM fetch_jobs
 			WHERE state = 'pending'
 			  AND (not_before IS NULL OR not_before <= now())
+			  AND ($3 = 0 OR priority < $3)
 			ORDER BY priority, created_at
 			FOR UPDATE SKIP LOCKED
 			LIMIT 1
 		)
 		RETURNING id, chain, address, depth_remaining, run_id, attempts, max_attempts`,
-		workerID, fmt.Sprintf("%d seconds", int(lease.Seconds())),
+		workerID, fmt.Sprintf("%d seconds", int(lease.Seconds())), maxPriority,
 	).Scan(&job.ID, &job.Chain, &job.Address, &job.DepthRemaining,
 		&job.RunID, &job.Attempts, &job.MaxAttempts)
 

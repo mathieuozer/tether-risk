@@ -98,6 +98,9 @@ func run(ctx context.Context, cmd, configDir, chainID string, workers, depth int
 		return err
 	}
 	defer pg.Close()
+	// Every TronGrid request counts against the key's daily quota (D35).
+	ingest.TrackTronUsage(ctx, pg, log)
+	defer ingest.FlushTronUsage(context.WithoutCancel(ctx), pg, log)
 
 	jobs := store.NewJobs(pg)
 	writer := store.NewTransferWriter(ch, pg)
@@ -110,6 +113,12 @@ func run(ctx context.Context, cmd, configDir, chainID string, workers, depth int
 	// Priced as written, so fetched history is visible to traversal at once
 	// rather than after the nightly backfill (docs/DECISIONS.md D22).
 	opts := ingest.Options{TTL: ttl, Logger: log, Pricer: pricing.New(cfg, pg)}
+	// Background fetching stops for the day at its share of the key's quota,
+	// so screens and the blacklist refresh keep theirs (docs/DECISIONS.md D35).
+	if chainID == "tron" {
+		opts.BackgroundBudget = chainCfg.BackgroundBudget()
+		opts.Usage = func(ctx context.Context) (int64, error) { return store.APIUsageToday(ctx, pg, "trongrid") }
+	}
 
 	switch cmd {
 	case "worker":

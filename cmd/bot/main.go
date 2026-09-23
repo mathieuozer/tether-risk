@@ -24,6 +24,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/mozer/tether-risk/internal/ingest"
 	"log/slog"
 	"net/http"
 	"os"
@@ -112,6 +113,9 @@ func run(apiURL, chainID, configDir, tgBase string, concurrency int, log *slog.L
 		return err
 	}
 	defer pg.Close()
+	// Every TronGrid request counts against the key's daily quota (D35).
+	ingest.TrackTronUsage(ctx, pg, log)
+	defer ingest.FlushTronUsage(context.WithoutCancel(ctx), pg, log)
 	if err := pg.QueryRowContext(ctx, `SELECT 1 FROM bot_users LIMIT 1`).Err(); err != nil &&
 		strings.Contains(err.Error(), "does not exist") {
 		return errors.New("billing tables missing; run `make migrate`")

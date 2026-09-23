@@ -1445,3 +1445,29 @@ to drop that body and log a bare "429", which hid the cause; it now keeps
 it. For paying customers one free key is not enough: a paid TronGrid plan
 or our own node is a go-live requirement. `validate freeze` costs about
 one request per sampled wallet plus pages.
+
+---
+
+## D35 — background fetching has a daily budget
+
+**Date:** 2026-09-23 · **Status:** active · **Follows:** D17, D34
+
+The morning after D34, the refresh log showed the Tether blacklist had
+failed every run from 23:43 to 03:44: four hours in which a new freeze
+would have warned nobody. The API key's 100,000 requests a UTC day were
+gone, and after that TronGrid serves one request a second to everyone
+sharing the key. All 12,374 pending jobs were background work (priority
+1000), which no customer was waiting on. The worker spends about 100
+requests a minute, so left alone it uses the whole quota in about 16 hours.
+
+Every process now counts its TronGrid requests (`tron.TakeRequests`) and
+adds them every 15 seconds to `api_usage`, per UTC day, which is how
+TronGrid counts. The worker reads the total at most every 30 seconds. Once
+it reaches `background_share` (0.6) of `daily_request_quota` (100,000) in
+`sources.yaml`, the worker claims only jobs below `BackgroundPriority`.
+Customer screens, their follow-ups and the ten-minute blacklist refresh
+keep the other 40,000. Background work resumes at midnight UTC.
+
+The budget does not make the quota bigger. A paid TronGrid plan or our own
+node remains a go-live requirement (D34). The budget only decides who goes
+without when the quota runs out.

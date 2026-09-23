@@ -15,6 +15,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	ingestpkg "github.com/mozer/tether-risk/internal/ingest"
 	"io"
 	"log/slog"
 	"net/http"
@@ -109,6 +110,9 @@ func run(ctx context.Context, cmd, configDir, chainID, ofacFile string, log *slo
 		return err
 	}
 	defer pg.Close()
+	// Every TronGrid request counts against the key's daily quota (D35).
+	ingestpkg.TrackTronUsage(ctx, pg, log)
+	defer ingestpkg.FlushTronUsage(context.WithoutCancel(ctx), pg, log)
 
 	st := labels.NewStore(pg)
 	resolver := labels.NewResolver(cfg)

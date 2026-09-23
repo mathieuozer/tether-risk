@@ -147,6 +147,7 @@ func (c *Client) doOnce(ctx context.Context, url string) ([]byte, bool, error) {
 		req.Header.Set("TRON-PRO-API-KEY", c.apiKey)
 	}
 
+	requests.Add(1)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		// Transport errors are transient far more often than not: a dropped

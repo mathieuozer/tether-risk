@@ -44,6 +44,13 @@ type Options struct {
 	PollInterval time.Duration
 	Logger       *slog.Logger
 
+	// BackgroundBudget is how many upstream requests a day may be spent
+	// before background jobs wait for the next day; customer jobs always
+	// run. Usage reads today's count across processes. Zero or a nil Usage
+	// means no budget (docs/DECISIONS.md D35).
+	BackgroundBudget int64
+	Usage            func(ctx context.Context) (int64, error)
+
 	// Pricer values transfers as they are written. Without one they are
 	// stored unpriced until the next `price backfill`, and traversal cannot
 	// see them: an address fetched during the day would score as if it had
@@ -85,6 +92,11 @@ type Worker struct {
 	writer  *store.TransferWriter
 	opts    Options
 	log     *slog.Logger
+
+	// Today's upstream usage as last read, for the background budget.
+	usage       int64
+	usageAt     time.Time
+	budgetSpent bool
 }
 
 func NewWorker(id string, adapter chain.Adapter, jobs *store.Jobs, writer *store.TransferWriter, opts Options) *Worker {
@@ -111,7 +123,7 @@ func (w *Worker) Run(ctx context.Context) error {
 		default:
 		}
 
-		job, err := w.jobs.Claim(ctx, w.id, w.opts.Lease)
+		job, err := w.jobs.ClaimBelow(ctx, w.id, w.opts.Lease, w.claimCeiling(ctx))
 		if errors.Is(err, store.ErrNoJobs) {
 			select {
 			case <-ctx.Done():
@@ -387,4 +399,34 @@ func (w *Worker) enqueueNeighbours(ctx context.Context, chainID string, values m
 		}
 	}
 	return limit, nil
+}
+
+// claimCeiling is the priority bound for the next claim: none while the
+// day's background budget lasts, customer work only once it is spent. The
+// count is read at most every thirty seconds.
+func (w *Worker) claimCeiling(ctx context.Context) int {
+	if w.opts.BackgroundBudget <= 0 || w.opts.Usage == nil {
+		return 0
+	}
+	if time.Since(w.usageAt) > 30*time.Second {
+		n, err := w.opts.Usage(ctx)
+		if err != nil {
+			w.log.Warn("reading today's api usage failed; background work continues", "error", err)
+			return 0
+		}
+		w.usage, w.usageAt = n, time.Now()
+		spent := n >= w.opts.BackgroundBudget
+		if spent != w.budgetSpent {
+			w.budgetSpent = spent
+			if spent {
+				w.log.Info("background budget spent for today; customer jobs only", "requests", n, "budget", w.opts.BackgroundBudget)
+			} else {
+				w.log.Info("background budget available again", "requests", n, "budget", w.opts.BackgroundBudget)
+			}
+		}
+	}
+	if w.budgetSpent {
+		return store.BackgroundPriority
+	}
+	return 0
 }
