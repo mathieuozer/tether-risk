@@ -16,16 +16,12 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/go-pdf/fpdf"
 	"github.com/mozer/tether-risk/internal/scoring"
 	"github.com/shopspring/decimal"
 )
-
-const disclaimer = "This report is automated triage and pre-screening built on open data. " +
-	"It is not a regulated AML determination, does not constitute advice, and must not be " +
-	"used as the sole basis for any decision about a person or account. Every figure is " +
-	"reconstructible from the stored path set identified by the run reference below."
 
 // The PDF core fonts cover only Western European text, so a Cyrillic or
 // Turkish letter, in the verdict or in an entity name, would print as a wrong
@@ -42,9 +38,9 @@ var (
 	fontItalic []byte
 )
 
-// Render writes a one-page PDF report for a screening result. The verdict is
-// written in lang ("en", "tr" or "ru"); the analyst detail below it is
-// English.
+// Render writes a one-page PDF report for a screening result in lang ("en",
+// "tr" or "ru"). Category keys, entity names and paths' addresses stay as
+// the data has them.
 func Render(w io.Writer, res *scoring.Result, generatedAt time.Time, lang string) error {
 	pdf := fpdf.New("P", "mm", "A4", "")
 	pdf.AddUTF8FontFromBytes(sans, "", fontRegular)
@@ -55,15 +51,16 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time, lang string
 	pdf.AddPage()
 
 	const width = 180
+	l := newLoc(lang)
 
 	// --- header ---
 	pdf.SetFont(sans, "B", 16)
-	pdf.Cell(width, 8, "Address Risk Screening")
+	pdf.Cell(width, 8, l.f("pdf_title"))
 	pdf.Ln(9)
 
 	pdf.SetFont(sans, "", 9)
 	pdf.SetTextColor(90, 90, 90)
-	pdf.Cell(width, 5, "Triage report - not a regulated AML determination")
+	pdf.Cell(width, 5, l.f("pdf_subtitle"))
 	pdf.Ln(8)
 	pdf.SetTextColor(0, 0, 0)
 
@@ -76,7 +73,7 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time, lang string
 	pdf.Ln(5)
 	pdf.SetFont(sans, "", 9)
 	pdf.SetTextColor(90, 90, 90)
-	pdf.Cell(width, 5, "Chain: "+res.Chain)
+	pdf.Cell(width, 5, l.f("pdf_chain", chainName(res.Chain)))
 	pdf.Ln(8)
 	pdf.SetTextColor(0, 0, 0)
 
@@ -86,7 +83,6 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time, lang string
 		pdf.SetFillColor(vr, vg, vb)
 		pdf.SetTextColor(255, 255, 255)
 		pdf.SetFont(sans, "B", 13)
-		l := newLoc(lang)
 		pdf.CellFormat(width, 11, "  "+pdfVerdictHead(v, l), "", 0, "L", true, 0, "")
 		pdf.Ln(13)
 		pdf.SetTextColor(0, 0, 0)
@@ -107,17 +103,17 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time, lang string
 	pdf.SetTextColor(255, 255, 255)
 	pdf.SetFont(sans, "B", 14)
 	// Labelled as exposure so it is not read against the verdict above it.
-	pdf.CellFormat(55, 14, "EXPOSURE "+strings.ToUpper(res.Band), "", 0, "C", true, 0, "")
+	fitCell(pdf, 55, 14, l.f("pdf_exposure_band", upper(l, l.band(res.Band))), 14, true)
 
 	pdf.SetTextColor(0, 0, 0)
 	pdf.SetFont(sans, "B", 13)
-	pdf.CellFormat(60, 14, "Exposure score "+res.Score.StringFixed(1)+" / 100", "", 0, "C", false, 0, "")
+	fitCell(pdf, 60, 14, l.f("pdf_exposure_score", decText(l, res.Score, 1)), 13, false)
 
 	coveragePct := res.Coverage.Mul(decimal.NewFromInt(100))
 	if res.LowConfidence {
 		pdf.SetTextColor(180, 60, 0)
 	}
-	pdf.CellFormat(65, 14, "Coverage "+coveragePct.StringFixed(1)+"%", "", 0, "C", false, 0, "")
+	fitCell(pdf, 65, 14, l.f("pdf_coverage", pctText(l, coveragePct, 1)), 13, false)
 	pdf.SetTextColor(0, 0, 0)
 	pdf.Ln(16)
 
@@ -126,46 +122,35 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time, lang string
 	// independent of any traced exposure, and a listed address with little
 	// traced value scores near zero — so a report showing only the band would
 	// omit the most important fact on the page.
-	if l := res.OwnLabel; l != nil && !res.SanctionsOverride {
+	if o := res.OwnLabel; o != nil && !res.SanctionsOverride {
 		conflict := ""
-		if l.Conflicted {
-			conflict = " Sources disagree about this address; the conflict is recorded for review."
+		if o.Conflicted {
+			conflict = l.f("pdf_conflict")
 		}
-		warning(pdf, width, "THIS ADDRESS IS DIRECTLY LISTED",
-			fmt.Sprintf("%s - categorised %s by %s (confidence %.2f). This is a direct "+
-				"listing, not exposure traced through other addresses.%s",
-				l.Entity, l.Category, l.Source, l.Confidence, conflict))
+		warning(pdf, width, l.f("pdf_listed_title"),
+			l.f("pdf_listed_body", o.Entity, l.category(o.Category), o.Source, fmt.Sprintf("%.2f", o.Confidence), conflict))
 	}
 	if res.SanctionsOverride {
-		if l := res.OwnLabel; l != nil && l.Category != "sanctions" {
-			warning(pdf, width, "DIRECT LISTING: "+strings.ToUpper(newLoc("en").category(l.Category)),
-				fmt.Sprintf("%s. The band is set to High regardless of the computed score.", l.Entity))
+		if o := res.OwnLabel; o != nil && o.Category != "sanctions" {
+			warning(pdf, width, l.f("pdf_direct_listing", upper(l, l.category(o.Category))), l.f("pdf_band_forced", o.Entity))
 		} else {
-			warning(pdf, width, "DIRECT SANCTIONS MATCH",
-				"This address appears on a sanctions list. The band is set to High regardless "+
-					"of the computed score.")
+			warning(pdf, width, l.f("pdf_sanctions_title"), l.f("pdf_sanctions_body"))
 		}
 	}
 	if res.LowConfidence {
-		warning(pdf, width, "LOW CONFIDENCE - READ BEFORE USING",
-			fmt.Sprintf("Only %s%% of traced value could be attributed to a known entity. "+
-				"The score describes that portion only. The remaining %s%% is unknown, "+
-				"not clean, and this report makes no claim about it.",
-				coveragePct.StringFixed(1),
-				decimal.NewFromInt(100).Sub(coveragePct).StringFixed(1)))
+		warning(pdf, width, l.f("pdf_lowconf_title"), l.f("pdf_lowconf_body",
+			pctText(l, coveragePct, 1), pctText(l, decimal.NewFromInt(100).Sub(coveragePct), 1)))
 	}
 	if res.BandCappedByAbuseRule {
-		warning(pdf, width, "BAND CAPPED",
-			"The only evidence for this address is unverified community abuse reports. "+
-				"The band is capped accordingly and should not be read as a cleared result.")
+		warning(pdf, width, l.f("pdf_capped_title"), l.f("pdf_capped_body"))
 	}
 
 	// --- breakdowns ---
-	direction(pdf, width, "INBOUND - where funds came from", res.Inbound)
-	direction(pdf, width, "OUTBOUND - where funds went", res.Outbound)
+	direction(pdf, width, l, l.f("pdf_inbound"), res.Inbound)
+	direction(pdf, width, l, l.f("pdf_outbound"), res.Outbound)
 
 	// --- paths ---
-	paths(pdf, width, res)
+	paths(pdf, width, l, res)
 
 	// --- provenance ---
 	pdf.Ln(2)
@@ -173,17 +158,16 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time, lang string
 	pdf.Ln(3)
 	pdf.SetFont(sans, "", 8)
 	pdf.SetTextColor(90, 90, 90)
-	pdf.Cell(width, 4, fmt.Sprintf(
-		"Generated %s   |   Label snapshot %d   |   Config version %s",
+	pdf.Cell(width, 4, l.f("pdf_generated",
 		generatedAt.UTC().Format("2006-01-02 15:04:05 UTC"),
 		res.LabelSnapshotID, res.ConfigVersion))
 	pdf.Ln(4)
-	pdf.Cell(width, 4, "Methodology: docs/METHODOLOGY.md")
+	pdf.Cell(width, 4, l.f("pdf_methodology"))
 	pdf.Ln(6)
 
 	// --- disclaimer ---
 	pdf.SetFont(sans, "I", 7.5)
-	pdf.MultiCell(width, 3.4, disclaimer, "", "L", false)
+	pdf.MultiCell(width, 3.4, l.f("pdf_disclaimer"), "", "L", false)
 
 	return pdf.Output(w)
 }
@@ -203,7 +187,7 @@ func pdfVerdictHead(v *scoring.Verdict, l loc) string {
 	return head
 }
 
-func direction(pdf *fpdf.Fpdf, width float64, title string, d *scoring.DirectionResult) {
+func direction(pdf *fpdf.Fpdf, width float64, l loc, title string, d *scoring.DirectionResult) {
 	pdf.Ln(2)
 	pdf.SetFont(sans, "B", 10)
 	pdf.Cell(width, 6, title)
@@ -212,7 +196,7 @@ func direction(pdf *fpdf.Fpdf, width float64, title string, d *scoring.Direction
 	if d == nil || (len(d.Categories) == 0 && d.UnattributedPct.IsZero()) {
 		pdf.SetFont(sans, "I", 9)
 		pdf.SetTextColor(120, 120, 120)
-		pdf.Cell(width, 5, "No traced value in this direction.")
+		pdf.Cell(width, 5, l.f("pdf_no_value"))
 		pdf.Ln(6)
 		pdf.SetTextColor(0, 0, 0)
 		return
@@ -220,18 +204,18 @@ func direction(pdf *fpdf.Fpdf, width float64, title string, d *scoring.Direction
 
 	pdf.SetFont(sans, "B", 8)
 	pdf.SetFillColor(240, 240, 240)
-	pdf.CellFormat(70, 5, " Category", "", 0, "L", true, 0, "")
-	pdf.CellFormat(28, 5, "Share", "", 0, "R", true, 0, "")
-	pdf.CellFormat(28, 5, "Weight", "", 0, "R", true, 0, "")
-	pdf.CellFormat(54, 5, "Contribution to score", "", 0, "R", true, 0, "")
+	pdf.CellFormat(70, 5, l.f("pdf_col_category"), "", 0, "L", true, 0, "")
+	pdf.CellFormat(28, 5, l.f("pdf_col_share"), "", 0, "R", true, 0, "")
+	pdf.CellFormat(28, 5, l.f("pdf_col_weight"), "", 0, "R", true, 0, "")
+	pdf.CellFormat(54, 5, l.f("pdf_col_contribution"), "", 0, "R", true, 0, "")
 	pdf.Ln(5)
 
 	pdf.SetFont(sans, "", 8)
 	for _, c := range d.Categories {
-		pdf.CellFormat(70, 4.6, " "+c.Category, "", 0, "L", false, 0, "")
-		pdf.CellFormat(28, 4.6, c.Pct.StringFixed(2)+"%", "", 0, "R", false, 0, "")
+		pdf.CellFormat(70, 4.6, " "+l.category(c.Category), "", 0, "L", false, 0, "")
+		pdf.CellFormat(28, 4.6, pctText(l, c.Pct, 2), "", 0, "R", false, 0, "")
 		pdf.CellFormat(28, 4.6, c.Weight.StringFixed(0), "", 0, "R", false, 0, "")
-		pdf.CellFormat(54, 4.6, c.Contribution.StringFixed(2), "", 0, "R", false, 0, "")
+		pdf.CellFormat(54, 4.6, decText(l, c.Contribution, 2), "", 0, "R", false, 0, "")
 		pdf.Ln(4.6)
 	}
 
@@ -241,10 +225,10 @@ func direction(pdf *fpdf.Fpdf, width float64, title string, d *scoring.Direction
 	if d.UnattributedPct.IsPositive() {
 		pdf.SetFont(sans, "B", 8)
 		pdf.SetTextColor(180, 60, 0)
-		pdf.CellFormat(70, 4.6, " unattributed", "", 0, "L", false, 0, "")
-		pdf.CellFormat(28, 4.6, d.UnattributedPct.StringFixed(2)+"%", "", 0, "R", false, 0, "")
+		pdf.CellFormat(70, 4.6, l.f("pdf_unattributed"), "", 0, "L", false, 0, "")
+		pdf.CellFormat(28, 4.6, pctText(l, d.UnattributedPct, 2), "", 0, "R", false, 0, "")
 		pdf.CellFormat(28, 4.6, "-", "", 0, "R", false, 0, "")
-		pdf.CellFormat(54, 4.6, "not scored - unknown", "", 0, "R", false, 0, "")
+		pdf.CellFormat(54, 4.6, l.f("pdf_not_scored"), "", 0, "R", false, 0, "")
 		pdf.Ln(4.6)
 		pdf.SetTextColor(0, 0, 0)
 	}
@@ -252,21 +236,21 @@ func direction(pdf *fpdf.Fpdf, width float64, title string, d *scoring.Direction
 	// SPEC.md §7: the result must be honest about being truncated.
 	var notes []string
 	if d.FanoutCapped {
-		notes = append(notes, "neighbour cap reached; this traversal is truncated")
+		notes = append(notes, l.f("pdf_fanout"))
 	}
 	if d.HopLimitReached {
-		notes = append(notes, "hop limit reached; value beyond it is unknown")
+		notes = append(notes, l.f("pdf_hoplimit"))
 	}
 	if len(notes) > 0 {
 		pdf.SetFont(sans, "I", 7.5)
 		pdf.SetTextColor(120, 120, 120)
-		pdf.Cell(width, 4, " Note: "+strings.Join(notes, "; "))
+		pdf.Cell(width, 4, l.f("pdf_note", strings.Join(notes, "; ")))
 		pdf.Ln(5)
 		pdf.SetTextColor(0, 0, 0)
 	}
 }
 
-func paths(pdf *fpdf.Fpdf, width float64, res *scoring.Result) {
+func paths(pdf *fpdf.Fpdf, width float64, l loc, res *scoring.Result) {
 	type entry struct {
 		dir  string
 		text string
@@ -276,7 +260,7 @@ func paths(pdf *fpdf.Fpdf, width float64, res *scoring.Result) {
 	for _, spec := range []struct {
 		name string
 		d    *scoring.DirectionResult
-	}{{"in", res.Inbound}, {"out", res.Outbound}} {
+	}{{l.f("pdf_dir_in"), res.Inbound}, {l.f("pdf_dir_out"), res.Outbound}} {
 		if spec.d == nil {
 			continue
 		}
@@ -284,30 +268,28 @@ func paths(pdf *fpdf.Fpdf, width float64, res *scoring.Result) {
 			if i >= 3 {
 				break
 			}
+			// A named entity by its name; an unnamed one by its address,
+			// which says more than a generic English description would.
 			name := p.Terminal.Entity
-			if name == "" {
-				name = p.Terminal.Address
+			if name == "" || p.Terminal.Category == "unnamed_service" {
+				name = shortAddress(p.Terminal.Address)
 			}
 			entries = append(entries, entry{
-				dir: spec.name,
-				text: fmt.Sprintf("%s via %d hop(s) - %s - contributes %s",
-					name, p.HopCount(), p.Terminal.Category, p.Contribution.StringFixed(4)),
+				dir:  spec.name,
+				text: l.f("pdf_path", name, p.HopCount(), l.category(p.Terminal.Category), decText(l, p.Contribution, 4)),
 			})
 		}
 	}
 
 	pdf.Ln(2)
 	pdf.SetFont(sans, "B", 10)
-	pdf.Cell(width, 6, "TOP CONTRIBUTING PATHS")
+	pdf.Cell(width, 6, l.f("pdf_paths"))
 	pdf.Ln(6)
 
 	if len(entries) == 0 {
 		pdf.SetFont(sans, "I", 9)
 		pdf.SetTextColor(120, 120, 120)
-		pdf.MultiCell(width, 4.5,
-			"No path reached an identified counterparty. This is a coverage gap, not "+
-				"an absence of activity: flows were traced but could not be attributed "+
-				"to a named entity.", "", "L", false)
+		pdf.MultiCell(width, 4.5, l.f("pdf_no_paths"), "", "L", false)
 		pdf.SetTextColor(0, 0, 0)
 		return
 	}
@@ -366,4 +348,41 @@ func bandColour(band string) (int, int, int) {
 	default:
 		return 60, 140, 80
 	}
+}
+
+// upper capitalises for a heading in the reader's language. Turkish has a
+// dotted capital İ that strings.ToUpper does not produce.
+func upper(l loc, s string) string {
+	if l.lang == "tr" {
+		return strings.ToUpperSpecial(unicode.TurkishCase, s)
+	}
+	return strings.ToUpper(s)
+}
+
+// fitCell writes a one-line box, shrinking the font from size until the
+// text fits: a translated heading is often longer than the English one.
+func fitCell(pdf *fpdf.Fpdf, w, h float64, text string, size float64, fill bool) {
+	pdf.SetFont(sans, "B", size)
+	for size > 7 && pdf.GetStringWidth(text) > w-3 {
+		size -= 0.5
+		pdf.SetFont(sans, "B", size)
+	}
+	pdf.CellFormat(w, h, text, "", 0, "C", fill, 0, "")
+}
+
+// decText is a number with the reader's decimal separator.
+func decText(l loc, d decimal.Decimal, places int32) string {
+	s := d.StringFixed(places)
+	if l.lang != "en" {
+		s = strings.Replace(s, ".", ",", 1)
+	}
+	return s
+}
+
+// pctText is a percentage as the reader writes it: 61.84%, %61,84, 61,84%.
+func pctText(l loc, d decimal.Decimal, places int32) string {
+	if l.lang == "tr" {
+		return "%" + decText(l, d, places)
+	}
+	return decText(l, d, places) + "%"
 }

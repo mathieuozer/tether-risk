@@ -1479,3 +1479,29 @@ that had paid it. Yet D34 measured the following days as the most
 dangerous. The watch state now keeps the `frozen_contact` note's wallet, and
 a different one alerts (`TestCompareAlertsOnNewFrozenContact`). The note
 lapsing after three days does not.
+
+---
+
+## D36 — the PDF report in the reader's language, throughout
+
+**Date:** 2026-09-23 · **Status:** active · **Follows:** D33
+
+D33 translated only the PDF's verdict block. The headings, tables,
+warnings, provenance and disclaimer below it stayed English, so a Turkish
+or Russian compliance officer got a document half in another language.
+Every string now comes from the report catalogues (`pdf_*` keys), which the
+existing test keeps complete in all three languages. Category and band
+names follow the reader's language too. Numbers use their decimal
+separator (61,84% in Russian, %61,84 in Turkish), and the chain is named
+("Tron (TRX)").
+
+Found on the way, from rendered pages:
+
+- "ЭКСПОЗИЦИЯ: ВЫСОКИЙ" overflowed its box. Headline boxes now shrink
+  their font until the text fits (`fitCell`).
+- Paths to unnamed services printed the derived label's English
+  description, "Unidentified high-volume service". They now print the
+  service's short address, which the reader can look up.
+- The English disclaimer pointed to "the run reference below", which is
+  printed above it.
+- Turkish headings are capitalised with Turkish rules (İ, not I).
