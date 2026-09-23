@@ -1351,7 +1351,7 @@
     if (!v || !v.level) return '';
     var reasons = (v.reasons || []).slice(0, 2).map(function (x) {
       var p = { pct: fmtPct(x.pct || 0), cat: x.category ? catName(x.category) : '', flag: x.flag ? tt('flag_' + x.flag + '_title') : '',
-        addr: x.address ? short(x.address) : '' };
+        addr: x.address ? short(x.address) : '', name: (x.entity || '').split(' (')[0] };
       return '<li>' + esc(tt('vr_' + x.code, p)) + '</li>';
     }).join('');
     return '<section class="card verdict verdict-' + esc(v.level) + '" aria-labelledby="verdict-title">' +

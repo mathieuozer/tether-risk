@@ -1,6 +1,7 @@
 package scoring
 
 import (
+	"slices"
 	"sort"
 
 	"github.com/mozer/tether-risk/internal/config"
@@ -28,12 +29,14 @@ type Verdict struct {
 // its own language.
 type VerdictReason struct {
 	// Code: own_listed, poisoning, band_high, exposure, band_medium, exposure_minor,
-	// low_coverage, unidentified, tracing_incomplete, behaviour, clean.
+	// low_coverage, unidentified, tracing_incomplete, behaviour, clean,
+	// own_service.
 	Code     string
 	Category string  // for own_listed, exposure, exposure_minor
 	Pct      float64 // exposure share, coverage for low_coverage, unnamed share for unidentified
 	Flag     string  // for behaviour
 	Address  string  // for poisoning: the address imitated
+	Entity   string  // for own_service: who the address belongs to
 }
 
 // Verdict levels.
@@ -85,6 +88,14 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 	// dead ends is too little to change the answer.
 	done := r.Depth == nil || r.Depth.Complete() || pendingShare(r) < rules.MaxPendingPct
 
+	// An address that is itself a named service's wallet, an exchange
+	// deposit address for instance, is answered by whose it is. Its unknown
+	// counterparties are that service's customers, so low coverage and
+	// unfinished tracing say nothing against it; risk found in its flows
+	// still does (docs/DECISIONS.md D39).
+	ownService := r.OwnLabel != nil && r.OwnLabel.Imitates == "" &&
+		slices.Contains(rules.OwnServiceCategories, r.OwnLabel.Category)
+
 	var red, caution []VerdictReason
 	switch {
 	case r.OwnLabel != nil && r.OwnLabel.Imitates != "":
@@ -126,6 +137,11 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 	// two reasons, and a round split says more than a low coverage.
 	notes := 0
 	for _, f := range r.Flags {
+		// Passing money straight through is what a service's deposit and hot
+		// wallets are for; in its own wallet it is not a sign (D39).
+		if f.Code == "pass_through" && ownService {
+			continue
+		}
 		if f.Code == "pass_through" || f.Code == "high_volume_new" || f.Code == "round_split" || f.Code == "parked_funds" {
 			caution = append(caution, VerdictReason{Code: "behaviour", Flag: f.Code})
 			notes++
@@ -134,7 +150,7 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 	if r.Band == "medium" {
 		caution = append(caution, VerdictReason{Code: "band_medium"})
 	}
-	if coverage < rules.ClearMinCoverage {
+	if coverage < rules.ClearMinCoverage && !ownService {
 		caution = append(caution, VerdictReason{Code: "low_coverage", Pct: coverage * 100})
 	}
 	// Value that ends at a service nobody has named is traced, not vouched
@@ -142,7 +158,7 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 	if u := shares["unnamed_service"]; rules.MaxUnnamedPct > 0 && u >= rules.MaxUnnamedPct {
 		caution = append(caution, VerdictReason{Code: "unidentified", Pct: u})
 	}
-	if !done {
+	if !done && !ownService {
 		caution = append(caution, VerdictReason{Code: "tracing_incomplete"})
 	}
 
@@ -163,6 +179,16 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 		v.Level = VerdictClear
 		v.Reasons = []VerdictReason{{Code: "clean", Pct: coverage * 100}}
 		v.ConfidencePct = seenPct(shares, notes, rules)
+	}
+	if ownService && v.Level != VerdictHighRisk {
+		// As sure as the label: 60% for a derived deposit wallet, 90% for an
+		// exchange's own reserve list.
+		if p := clampPct(r.OwnLabel.Confidence*100, 1); p > v.ConfidencePct {
+			v.ConfidencePct = p
+		}
+		if v.Level == VerdictClear {
+			v.Reasons = []VerdictReason{{Code: "own_service", Category: r.OwnLabel.Category, Entity: r.OwnLabel.Entity}}
+		}
 	}
 	// Value still waiting at unfetched addresses may change the answer.
 	if high := int(rules.ConfidenceHigh * 100); !done && v.Level != VerdictHighRisk && v.ConfidencePct >= high {

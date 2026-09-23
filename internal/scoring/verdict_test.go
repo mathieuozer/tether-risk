@@ -139,3 +139,38 @@ func TestVerdictIgnoresNegligibleExposure(t *testing.T) {
 		t.Errorf("0.03%% exposure: %+v", v)
 	}
 }
+
+// An exchange deposit wallet sends everything to the exchange and receives
+// from its customers, whom tracing cannot name: coverage sits at 50%. Whose
+// wallet it is answers the question, unless its flows carry risk (D39).
+func TestVerdictOwnService(t *testing.T) {
+	rules := verdictRules()
+	rules.OwnServiceCategories = []string{"exchange", "named_service"}
+	deposit := &OwnLabel{Entity: "HTX (deposit)", Category: "named_service", Source: "derived:deposit", Confidence: 0.6}
+
+	r := vresult("low", 0.5, map[string]float64{"named_service": 50}, false)
+	r.OwnLabel = deposit
+	v := Decide(r, rules)
+	if v.Level != VerdictClear || v.Reasons[0].Code != "own_service" || v.Reasons[0].Entity != "HTX (deposit)" || v.ConfidencePct != 60 {
+		t.Errorf("deposit wallet: %+v", v)
+	}
+
+	r = vresult("low", 0.5, map[string]float64{"named_service": 50}, true)
+	r.OwnLabel = deposit
+	r.Flags = []Flag{{Code: "pass_through"}}
+	if v := Decide(r, rules); v.Level != VerdictClear {
+		t.Errorf("a deposit wallet passing money through is what it is for: %+v", v)
+	}
+
+	r = vresult("low", 0.5, map[string]float64{"named_service": 48, "sanctions": 2}, true)
+	r.OwnLabel = deposit
+	if v := Decide(r, rules); v.Level != VerdictHighRisk {
+		t.Errorf("a deposit wallet that received sanctioned funds is still risky: %+v", v)
+	}
+
+	r = vresult("low", 0.5, map[string]float64{"named_service": 50}, true)
+	r.OwnLabel = &OwnLabel{Entity: "Unidentified service", Category: "unnamed_service", Confidence: 0.75}
+	if v := Decide(r, rules); v.Level != VerdictCaution || v.Reasons[0].Code != "low_coverage" {
+		t.Errorf("an unnamed service is not answered by its label: %+v", v)
+	}
+}

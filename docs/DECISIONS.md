@@ -1605,3 +1605,50 @@ addresses then screened in 1, 3, 9, 10 and 12 s. These are different
 addresses from the 31 s one, not a controlled comparison. The API's depth
 block also gains `ring_fetched`. It was computed but never returned, which
 made a ring that had fetched four wallets look as if it had fetched none.
+
+---
+
+## D39 — a service's own wallet is answered by whose it is
+
+**Date:** 2026-09-23 · **Status:** active · **Follows:** D29, D31
+
+The verdict benchmark answered 46 of 50 exchange deposit wallets "caution",
+which a reader sees as "not risky" at low confidence. Their coverage sat at
+exactly 50%. Outbound, everything reached the exchange's named hot wallet.
+Inbound, it came from retail customers, whom tracing cannot name. But each
+of these wallets is itself labelled as an exchange's deposit address. For
+the question "may I send to it", whose wallet it is answers first.
+
+`verdict.own_service_categories` (`exchange`, `named_service`): an address
+whose own label is one of these is not held back by low coverage,
+unfinished tracing, or passing money straight through, which is what
+deposit and hot wallets are for. Its confidence rises to the label's own:
+0.6 for a derived deposit wallet, 0.9 for an exchange's reserve list. The
+reason reads "Not risky: this wallet belongs to HTX (named service), so its
+many unknown counterparties are that service's customers." Risk found in
+its flows still decides. A deposit wallet that received sanctioned funds is
+risky (`TestVerdictOwnService`).
+
+**Result:** deposit wallets answered clear went from 4 to 42 of 50. There
+were still no misses in any set: listed wallets were 50 of 50 risky, and
+exposed wallets were 0 of 50 clear.
+
+**Is the deposit label right?** Its precision had never been measured
+(METHODOLOGY §4). Account creation is evidence independent of the sweep
+pattern the heuristic reads. Poloniex's own wallets created 266 of its 283
+deposit wallets (94%), but only 2 of HTX's 138. So the label's confidence
+stays 0.6, and the answer says "60%".
+
+**Found on the way:** T9zh9…FBD1BW carried both "HTX (sends to its
+reserves)" (`named_service`, 0.6) and "Unidentified high-volume service"
+(`unnamed_service`, 0.75). Resolution went by confidence, so the name was
+lost. A named service now outranks an unnamed one: the name says
+everything "a service" does, plus who it is
+(`TestNamedServiceBeatsUnnamedService`). The why line uses the name
+alone. A derived label's English description, "(sends to its reserves)",
+read oddly inside a Turkish or Russian sentence.
+
+**Leads:** 58 unlabelled addresses created HTX's deposit wallets, some of
+them several. A creator of many wallets that all sweep to one exchange is
+probably that exchange's operations account, and naming it would name what
+it creates, as D31 does for reserves.

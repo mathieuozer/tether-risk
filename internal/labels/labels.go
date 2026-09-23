@@ -92,6 +92,15 @@ func (r *Resolver) Resolve(chainID, address string, in []Label) Resolution {
 			return aWins
 		}
 
+		// A service with a name says everything an unnamed one does, and who
+		// it is. T9zh9…FBD1BW was both "HTX (sends to its reserves)" at 0.6
+		// and "Unidentified high-volume service" at 0.75, and the name lost
+		// on confidence (docs/DECISIONS.md D39).
+		if an, bn := a.Category == "named_service", b.Category == "named_service"; an != bn &&
+			(a.Category == "unnamed_service" || b.Category == "unnamed_service") {
+			return an
+		}
+
 		if a.Confidence != b.Confidence {
 			return a.Confidence > b.Confidence
 		}

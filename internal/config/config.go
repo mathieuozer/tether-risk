@@ -151,6 +151,9 @@ type Verdict struct {
 	InsufficientBelow int                `yaml:"insufficient_below"`
 	ConfidenceHigh    float64            `yaml:"confidence_high"`
 	ConfidenceMedium  float64            `yaml:"confidence_medium"`
+	// OwnServiceCategories: an address carrying one of these as its own
+	// label is answered by whose it is (docs/DECISIONS.md D39).
+	OwnServiceCategories []string `yaml:"own_service_categories"`
 }
 
 // Behaviour configures the unscored behaviour notes (docs/DECISIONS.md D28).

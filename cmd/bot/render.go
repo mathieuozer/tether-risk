@@ -44,6 +44,7 @@ type screenResponse struct {
 			Pct      float64 `json:"pct"`
 			Flag     string  `json:"flag"`
 			Address  string  `json:"address"`
+			Entity   string  `json:"entity"`
 		} `json:"reasons"`
 	} `json:"verdict"`
 
@@ -337,7 +338,7 @@ func connectionsVerdict(r *screenResponse) *report.ConnectionsVerdict {
 	}
 	cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Insufficient: v.InsufficientData}
 	for _, x := range v.Reasons {
-		cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: x.Code, Category: x.Category, Flag: x.Flag, Address: x.Address, Pct: x.Pct})
+		cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: x.Code, Category: x.Category, Flag: x.Flag, Address: x.Address, Entity: x.Entity, Pct: x.Pct})
 	}
 	return cv
 }

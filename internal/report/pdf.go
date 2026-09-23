@@ -89,7 +89,7 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time, lang string
 		pdf.SetFont(sans, "", 9.5)
 		cv := &ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Insufficient: v.Insufficient}
 		for _, r := range v.Reasons {
-			cv.Reasons = append(cv.Reasons, ConnectionsVerdictReason{Code: r.Code, Category: r.Category, Flag: r.Flag, Address: r.Address, Pct: r.Pct})
+			cv.Reasons = append(cv.Reasons, ConnectionsVerdictReason{Code: r.Code, Category: r.Category, Flag: r.Flag, Address: r.Address, Entity: r.Entity, Pct: r.Pct})
 		}
 		pdf.MultiCell(width, 5, strings.TrimSpace(whyText(cv, l)), "", "L", false)
 		pdf.Ln(3)

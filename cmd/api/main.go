@@ -237,6 +237,8 @@ type verdictReasonResponse struct {
 	Flag     string  `json:"flag,omitempty"`
 	// Address is the address a poisoning sender imitates.
 	Address string `json:"address,omitempty"`
+	// Entity is who an own_service address belongs to.
+	Entity string `json:"entity,omitempty"`
 }
 
 func toVerdict(v *scoring.Verdict) *verdictResponse {
@@ -246,7 +248,7 @@ func toVerdict(v *scoring.Verdict) *verdictResponse {
 	out := &verdictResponse{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, InsufficientData: v.Insufficient, Reasons: []verdictReasonResponse{}}
 	for _, r := range v.Reasons {
 		out.Reasons = append(out.Reasons, verdictReasonResponse{Code: r.Code, Category: r.Category,
-			Pct: float64(int(r.Pct*100+0.5)) / 100, Flag: r.Flag, Address: r.Address})
+			Pct: float64(int(r.Pct*100+0.5)) / 100, Flag: r.Flag, Address: r.Address, Entity: r.Entity})
 	}
 	return out
 }

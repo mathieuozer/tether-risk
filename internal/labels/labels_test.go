@@ -235,3 +235,25 @@ func TestValidateCategory(t *testing.T) {
 		}
 	}
 }
+
+// A name outranks "unidentified" for the same kind of thing, whatever the
+// confidences (docs/DECISIONS.md D39).
+func TestNamedServiceBeatsUnnamedService(t *testing.T) {
+	r := testResolver(t)
+	res := r.Resolve("tron", "TAlice", []Label{
+		lbl("derived:service", "unnamed_service", 0.75),
+		lbl("derived:deposit", "named_service", 0.6),
+	})
+	if res.Category != "named_service" || res.Source != "derived:deposit" {
+		t.Errorf("resolved to %s from %s, want the named service", res.Category, res.Source)
+	}
+	// It does not reach past other categories: a scam label still beats it
+	// on confidence as before.
+	res = r.Resolve("tron", "TAlice", []Label{
+		lbl("derived:deposit", "named_service", 0.6),
+		lbl("curated", "scam", 0.95),
+	})
+	if res.Category != "scam" {
+		t.Errorf("resolved to %s, want scam", res.Category)
+	}
+}

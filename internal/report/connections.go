@@ -59,6 +59,7 @@ type ConnectionsVerdict struct {
 
 type ConnectionsVerdictReason struct {
 	Code, Category, Flag, Address string
+	Entity                        string // own_service: who the address belongs to
 	Pct                           float64
 }
 
@@ -584,6 +585,13 @@ func whyText(v *ConnectionsVerdict, l loc) string {
 	}
 	switch v.Level {
 	case "clear":
+		if len(v.Reasons) > 0 && v.Reasons[0].Code == "own_service" {
+			// The name alone: a derived label's English description, as in
+			// "HTX (sends to its reserves)", reads oddly inside another
+			// language's sentence.
+			name, _, _ := strings.Cut(v.Reasons[0].Entity, " (")
+			return l.f("why_own_service", name, l.category(v.Reasons[0].Category))
+		}
 		return l.f("why_clear")
 	case "high_risk":
 		return l.f("why_high_risk", strings.Join(parts, "; "))

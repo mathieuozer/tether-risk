@@ -315,7 +315,7 @@ func connectionsInput(res *scoring.Result) report.ConnectionsInput {
 	if v := res.Verdict; v != nil {
 		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Insufficient: v.Insufficient}
 		for _, r := range v.Reasons {
-			cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: r.Code, Category: r.Category, Flag: r.Flag, Address: r.Address, Pct: r.Pct})
+			cv.Reasons = append(cv.Reasons, report.ConnectionsVerdictReason{Code: r.Code, Category: r.Category, Flag: r.Flag, Address: r.Address, Entity: r.Entity, Pct: r.Pct})
 		}
 		in.Verdict = cv
 	}

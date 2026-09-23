@@ -187,6 +187,16 @@ observed, "Poloniex (sends to its reserves)", and keep the anchor's
 **Precision is not yet measured** for either anchor kind. SPEC.md §6 requires
 it, and it needs a hand-labelled sample, which does not exist yet.
 
+**Independent evidence (2026-09-23, D39).** A TRON account is created by
+whoever first pays it. For 419 of the 421 deposit wallets the creator is
+known. 266 of Poloniex's 283 (94%) were created by Poloniex's own reserve or
+operator wallets. That is first-party evidence the labels are right, and it
+does not depend on the sweep pattern the heuristic reads. Only 2 of HTX's
+138 were created that way. The other 136 were created by 58 unlabelled
+addresses, some of which created several. They are probably HTX operations
+accounts we do not know, but that is not shown. The label's confidence
+stays at 0.6.
+
 ## 4a. Derived exchange hot wallets (D28)
 
 A service-shaped wallet (at least 250 counterparties) that exchanges transfers

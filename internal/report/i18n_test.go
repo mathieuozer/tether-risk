@@ -225,3 +225,16 @@ func TestRussianPlurals(t *testing.T) {
 		}
 	}
 }
+
+// A service's own wallet is explained by its name, without the derived
+// label's English description (docs/DECISIONS.md D39).
+func TestWhyOwnServiceUsesTheName(t *testing.T) {
+	v := &ConnectionsVerdict{Level: "clear", ConfidencePct: 60, Reasons: []ConnectionsVerdictReason{
+		{Code: "own_service", Category: "named_service", Entity: "HTX (sends to its reserves)"}}}
+	for _, lang := range []string{"en", "tr", "ru"} {
+		got := whyText(v, newLoc(lang))
+		if !strings.Contains(got, "HTX") || strings.Contains(got, "sends to its reserves") {
+			t.Errorf("%s: %q", lang, got)
+		}
+	}
+}

@@ -231,6 +231,11 @@ verdict:
     gambling: 40
   # A clean verdict needs at least this coverage and finished tracing. Below
   # it the answer is caution: unknown, not clean.
+  # An address whose own label is one of these, an exchange's deposit wallet
+  # for instance, is answered by whose it is: low coverage and unfinished
+  # tracing do not count against it, and confidence rises to the label's.
+  # Risk in its flows still decides (D39).
+  own_service_categories: [exchange, named_service]
   clear_min_coverage: 0.80
   # Tracing counts as finished when the value still waiting at unfetched
   # dead ends is under this share of traced value, in percent. One pending
