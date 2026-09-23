@@ -204,9 +204,11 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 		batch, ares, err := ingestAbuse(ctx, feed.url, feed.parse, log)
 		if err != nil {
 			// An abuse feed is useful but not load-bearing. Unlike OFAC, its
-			// absence reduces coverage rather than creating a sanctions gap,
-			// so the run continues and says what was lost.
-			log.Error("abuse feed failed; its labels are missing from this snapshot",
+			// absence is no sanctions gap, so the run continues. Nothing
+			// retires the feed's labels, so the previous ones stand; the
+			// message said they were missing until 2026-09-23, when 2,987
+			// were verified still current after a failed download.
+			log.Error("abuse feed failed; the previous snapshot's labels stand",
 				"source", feed.id, "error", err)
 			continue
 		}
@@ -285,7 +287,7 @@ func ingest(ctx context.Context, cfg *config.Config, st *labels.Store, resolver 
 		}
 		batch, pres, err := ingestPoR(ctx, src.URL, por.exchange, por.id, src.Confidence)
 		if err != nil {
-			log.Error("proof-of-reserves list failed; its labels are missing from this snapshot",
+			log.Error("proof-of-reserves list failed; the previous snapshot's labels stand",
 				"source", por.id, "error", err)
 			continue
 		}

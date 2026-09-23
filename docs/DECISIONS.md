@@ -1578,3 +1578,10 @@ exist.
 Not reached: the SDNY complaint of 2026-09-14 on Iranian oil sales (about
 $61M of USDT on 10 TRON addresses), the APT38 complaints and the Xinbi
 seizure. Their PDFs sit behind bot protection that was not worked around.
+
+**Run on stored data (2026-09-23):** the first `audit-edges` repaired 928
+edges in 75 s. A second run straight after found 14, edges written by the
+worker while the audit read them. In the same run, CryptoScamDB's download
+failed. The log said its labels were "missing from this snapshot", but
+nothing retires them, and all 2,987 were still current. The message now
+says the previous labels stand.
