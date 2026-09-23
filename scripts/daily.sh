@@ -83,6 +83,8 @@ step "labeler derive-services" bin/labeler -chain tron derive-services
 # Who created each service wallet: only new ones cost a call (D31).
 step "labeler activations"    bin/labeler -chain tron activations
 step "labeler derive"         bin/labeler -chain tron derive
+# Edges that disagree with their transfers are recomputed (D37).
+step "ingest audit-edges"     bin/ingest -chain tron audit-edges
 
 # Keep a month of logs.
 find "$LOG_DIR" -name 'daily-*.log' -mtime +30 -delete 2>/dev/null

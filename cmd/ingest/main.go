@@ -3,6 +3,7 @@
 //	ingest worker                 drain the fetch queue
 //	ingest fetch <address>        fetch one address now, reporting timings
 //	ingest rebuild-edges          recompute edges from transfers
+//	ingest audit-edges            find and repair edges that disagree with their transfers
 //	ingest stats                  queue and storage counts
 package main
 
@@ -64,6 +65,7 @@ commands:
   worker                drain the fetch queue until interrupted
   fetch <address>       fetch one address now and report timings
   rebuild-edges         recompute edges from deduplicated transfers
+  audit-edges           find and repair edges that disagree with their transfers
   stats                 queue and storage counts
 
 flags:
@@ -137,6 +139,26 @@ func run(ctx context.Context, cmd, configDir, chainID string, workers, depth int
 			return err
 		}
 		log.Info("edges rebuilt from deduplicated transfers", "duration", time.Since(started))
+		return nil
+
+	case "audit-edges":
+		// Finds and repairs edges that disagree with their transfers; the
+		// nightly run's last step (docs/DECISIONS.md D37).
+		bch, err := store.OpenClickHouseBatch(ctx)
+		if err != nil {
+			return err
+		}
+		defer bch.Close()
+		bw := store.NewTransferWriter(bch, pg)
+		started := time.Now()
+		keys, err := bw.AuditEdges(ctx, chainID, 20)
+		if err != nil {
+			return err
+		}
+		if err := bw.RepairEdges(ctx, chainID, keys); err != nil {
+			return err
+		}
+		log.Info("edges audited", "repaired", len(keys), "duration", time.Since(started))
 		return nil
 
 	case "stats":

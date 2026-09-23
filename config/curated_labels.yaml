@@ -6,7 +6,7 @@
 # Rules for this file
 # ---------------------------------------------------------------------------
 # Every entry MUST carry an `evidence` URL that a reviewer can open to confirm
-# the claim independently. `make check-curated` fails the build otherwise.
+# the claim independently. `TestShippedCuratedLabelsLoad` fails the build otherwise.
 #
 # This is the one label source that cannot be automated, and therefore the one
 # where a wrong entry is most dangerous: a curated label carries confidence
@@ -41,6 +41,579 @@ labels:
       unnamed_service because the vocabulary has no better fit
       (docs/DECISIONS.md D13). Its main purpose is to stop the token contract
       being traversed as though it were an ordinary wallet.
+
+  # -------------------------------------------------------------------------
+  # US Department of Justice / FBI court filings (docs/DECISIONS.md D37).
+  # US government works, public domain (17 U.S.C. §105). Each evidence URL is
+  # a justice.gov PDF that prints the address. The 25-sz-20 and 25-sz-42 PDFs
+  # are image scans: their addresses were transcribed and every one passes the
+  # base58check checksum, which a misread would almost certainly fail.
+  # Left out: "OTC 1" (TGRdYen9…), which the affidavits call unattributed and
+  # which may serve customers besides the network.
+  # -------------------------------------------------------------------------
+  - chain: tron
+    address: "TSWL3euRjZWXiFJgzuV9tYAGiwShtPWkZK"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-34, 2025): 'Donation
+      Address 1', given out by fund[@]alqassam.ps to solicit USDT donations for
+      HAMAS.
+  - chain: tron
+    address: "TA3aQxRwocYytqZBKqMPHPZT6pYvwGjLg1"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): the 'al-Qassam Brigades Operational
+      Wallet', which consolidated about 1,574,719 USDT in donations between Oct
+      2024 and Mar 2025; frozen by Tether in March 2025.
+  - chain: tron
+    address: "TVp7a1r4FGNgWE2ViskhcfVYxbyZRvpvmv"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): one of seven USDT donation addresses
+      sent to an FBI source by fund[@]alqassam.ps in February 2025; donations were
+      forwarded to the al-Qassam Brigades Operational Wallet.
+  - chain: tron
+    address: "TB6PG69uKdN6NJirx8PnV7mJMVh4XRZvzp"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): one of seven USDT donation addresses
+      sent to an FBI source by fund[@]alqassam.ps in February 2025; donations were
+      forwarded to the al-Qassam Brigades Operational Wallet.
+  - chain: tron
+    address: "THeKAQbUnV58Hnt8WxwwXaC4EjzTquoVes"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): one of seven USDT donation addresses
+      sent to an FBI source by fund[@]alqassam.ps in February 2025; donations were
+      forwarded to the al-Qassam Brigades Operational Wallet.
+  - chain: tron
+    address: "TL4MeyPRooqL9UhCiqAHww7u2pNYs6guJS"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): one of seven USDT donation addresses
+      sent to an FBI source by fund[@]alqassam.ps in February 2025; donations were
+      forwarded to the al-Qassam Brigades Operational Wallet.
+  - chain: tron
+    address: "TSxBp5UrV7HDp7Zu5EJc1ijDWGWhwsfBFK"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): one of seven USDT donation addresses
+      sent to an FBI source by fund[@]alqassam.ps in February 2025; donations were
+      forwarded to the al-Qassam Brigades Operational Wallet.
+  - chain: tron
+    address: "TTzRqud2nVZJUSahxspmqjTHZKmfj3d9Uc"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): one of seven USDT donation addresses
+      sent to an FBI source by fund[@]alqassam.ps in February 2025; donations were
+      forwarded to the al-Qassam Brigades Operational Wallet.
+  - chain: tron
+    address: "TX8VZHoXwwGDvL75m7cZee1gyipac3p5PQ"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): one of seven USDT donation addresses
+      sent to an FBI source by fund[@]alqassam.ps in February 2025; donations were
+      forwarded to the al-Qassam Brigades Operational Wallet.
+  - chain: tron
+    address: "TWQTTSqorX2dqVYmVn8j1WNNaKgmL7ShkV"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): HAMAS donation address that
+      fund[@]alqassam.ps gave an FBI source in April 2025.
+  - chain: tron
+    address: "TYMRKshB4rMrr2UP3HF9AFM1PGjpFSKLHh"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): HAMAS donation address that
+      fund[@]alqassam.ps gave an FBI source in April 2025.
+  - chain: tron
+    address: "TA315GUGunjKDhv1ZL1YTvy7asPzJhAtL1"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 23 to 27, which
+      laundered funds meant for HAMAS after the Operational Wallet was frozen.
+      They were funded by the same Gas Wallet. Subject to the seizure warrant.
+  - chain: tron
+    address: "TS4toQBwagdM2oD1Q9eNqWoL8s7fMg5U2b"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 23 to 27, which
+      laundered funds meant for HAMAS after the Operational Wallet was frozen.
+      They were funded by the same Gas Wallet. Subject to the seizure warrant.
+  - chain: tron
+    address: "TWsomy6GFJqhswDjJcufPgTpMKGhwcVhdw"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 23 to 27, which
+      laundered funds meant for HAMAS after the Operational Wallet was frozen.
+      They were funded by the same Gas Wallet. Subject to the seizure warrant.
+  - chain: tron
+    address: "TVWRL9AY81gDdChuYiCfiNm5U39DNTyQwG"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 23 to 27, which
+      laundered funds meant for HAMAS after the Operational Wallet was frozen.
+      They were funded by the same Gas Wallet. Subject to the seizure warrant.
+  - chain: tron
+    address: "TYjWo3X1eFm8ufpb1jPQf8xv5bfriszGgq"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 23 to 27, which
+      laundered funds meant for HAMAS after the Operational Wallet was frozen.
+      They were funded by the same Gas Wallet. Subject to the seizure warrant.
+  - chain: tron
+    address: "TM1ywQ3ApL8ai2VTR6515fmzNdgFdKfa6J"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 28 to 30, HAMAS
+      donation addresses from fund[@]alqassam.ps emails; frozen by Tether around
+      15 April 2025.
+  - chain: tron
+    address: "TAbC5hoom3mktAGf3KZBNdxhEEujdUtpWG"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 28 to 30, HAMAS
+      donation addresses from fund[@]alqassam.ps emails; frozen by Tether around
+      15 April 2025.
+  - chain: tron
+    address: "TFBnvjWAjXkRAigJSPR5YqzowMNT85y1YZ"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 28 to 30, HAMAS
+      donation addresses from fund[@]alqassam.ps emails; frozen by Tether around
+      15 April 2025.
+  - chain: tron
+    address: "TDeBgBrQjgySyP9zPje3CRBCT2MQd13hy3"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 31 to 36, linked to
+      HAMAS funding. The affidavit says HAMAS controls these Target Properties to
+      launder funds. Subject to the seizure warrant.
+  - chain: tron
+    address: "TWE3K4dctpkdQgXG5VRHU4ND1ssh3HCCFg"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 31 to 36, linked to
+      HAMAS funding. The affidavit says HAMAS controls these Target Properties to
+      launder funds. Subject to the seizure warrant.
+  - chain: tron
+    address: "TCeCc94bcYiooTuGsHojDCUNbdneK2qgn3"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 31 to 36, linked to
+      HAMAS funding. The affidavit says HAMAS controls these Target Properties to
+      launder funds. Subject to the seizure warrant.
+  - chain: tron
+    address: "TL5Npc5AA2CuWcWzjzemGV1zBo3dadUgdF"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 31 to 36, linked to
+      HAMAS funding. The affidavit says HAMAS controls these Target Properties to
+      launder funds. Subject to the seizure warrant.
+  - chain: tron
+    address: "TL192dbA29m2pyaug7m7gHCurzGbzFnLEx"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Properties 31 to 36, linked to
+      HAMAS funding. The affidavit says HAMAS controls these Target Properties to
+      launder funds. Subject to the seizure warrant.
+  - chain: tron
+    address: "TAZEkqkjuHkYznF3Q8g9PKbpRuUNtUbgCB"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): Target Property 35, the operational
+      wallet that consolidated HAMAS donations, swapped them through Bridgers.xyz,
+      and sent 40,010 USDT to a Binance account.
+  - chain: tron
+    address: "TKmyTRdBaKXviN5MCJHD7nvfmoSTQ6zzmS"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): deposit address of Binance account
+      419517072 (Target Property 37). It received 23,206 USDT of HAMAS-linked
+      funds on 14 April 2025. The address is exchange-hosted.
+  - chain: tron
+    address: "TYZwCibn8uH1jr9c7i9Vc46mPoGpS9cvsz"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-34)"
+    category: terrorist_financing
+    evidence: "https://www.justice.gov/usao-dc/media/1459826/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI affidavit (D.D.C. 25-sz-34, 2025): deposit address of Binance account
+      977283937 (Target Property 38). It received 40,000 USDT from Target Property
+      35. The address is exchange-hosted.
+  - chain: tron
+    address: "TC66d59uus8AWhYDvAgWM55T8NRa7KNWAN"
+    entity: "Crypto confidence-scam laundering (U.S. v. Approximately 868,247 USDT, D.D.C. 25-cv-2967)"
+    category: scam
+    evidence: "https://www.justice.gov/usao-dc/media/1412676/dl"
+    verified: 2026-09-23
+    note: >
+      D.D.C. verified forfeiture complaint 25-cv-2967, filed 2025-09-02. Unhosted
+      wallet 'KNWAN' holding about 465,514 USDT, seized as proceeds of confidence-
+      scam thefts from victims and laundered through SwapSpace. Linked to
+      Cambodia.
+  - chain: tron
+    address: "TH4qXPSp3S5g3HnDr1pgnEq4XAoJh7McvZ"
+    entity: "Crypto confidence-scam laundering (U.S. v. Approximately 868,247 USDT, D.D.C. 25-cv-2967)"
+    category: scam
+    evidence: "https://www.justice.gov/usao-dc/media/1412676/dl"
+    verified: 2026-09-23
+    note: >
+      D.D.C. verified forfeiture complaint 25-cv-2967, filed 2025-09-02. Unhosted
+      wallet '7McvZ' holding about 402,732 USDT, including the Florida victim's
+      stolen BTC swapped through SwapSpace. Seized.
+  - chain: tron
+    address: "TM4ASkK7QEMbjTNbyNdfekzZnRdi9TZenn"
+    entity: "Tai Chang scam compound, tickmilleas.com fake investment platform (D.D.C. 25-sz-52)"
+    category: scam
+    evidence: "https://www.justice.gov/usao-dc/media/1419796/dl"
+    verified: 2026-09-23
+    note: >
+      FBI domain-seizure affidavit (D.D.C. 25-sz-52, around Nov-Dec 2025). This
+      USDT-TRC20 address was used by scammers in the Tai Chang compound (Burma) to
+      take victim payments made through the fake investment site tickmilleas.com.
+  - chain: tron
+    address: "TGjgiiXSFt9X3Q2894S1hLBxRx9icfKv74"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified): Target
+      Properties 40 to 43, unhosted wallets that received about 20,000 USDT
+      consolidated from HAMAS donation addresses. Frozen by Tether on 2025-05-22.
+  - chain: tron
+    address: "TE3RXGtd6YJZkDtv9CWDzLFbRbd8WHWUBB"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified): Target
+      Properties 40 to 43, unhosted wallets that received about 20,000 USDT
+      consolidated from HAMAS donation addresses. Frozen by Tether on 2025-05-22.
+  - chain: tron
+    address: "TXvK7Bikg9To8G78DtM6JK8jWwNTAxJkGT"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified): Target
+      Properties 40 to 43, unhosted wallets that received about 20,000 USDT
+      consolidated from HAMAS donation addresses. Frozen by Tether on 2025-05-22.
+  - chain: tron
+    address: "TR4U6oY95e2wQLYe9izoCt9hsAHVqiuFWs"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified): Target
+      Properties 40 to 43, unhosted wallets that received about 20,000 USDT
+      consolidated from HAMAS donation addresses. Frozen by Tether on 2025-05-22.
+  - chain: tron
+    address: "TVyENJr9iRdV4sqrbquoXX5StjYvXYhK9t"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified): Target
+      Property 44. It received about 137,500 USDT in HAMAS donations that had been
+      bridged out through Bridgers.xyz and back. Frozen by Tether on 2025-06-14
+      holding 155,438 USDT.
+  - chain: tron
+    address: "TMMF2wEzg3ywHSWrAezttfdWpuBt1Az5TV"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified): 'Gas
+      Wallet #1', which paid TRX fees for the al-Qassam donation addresses. The
+      affidavit says all addresses that received TRX directly from it are used to
+      support the HAMAS financing network.
+  - chain: tron
+    address: "TSrPQijgQp5E55uH7c8jsheUQvqW6Xofja"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified): the
+      'TSrPQ Address', which consolidated funds from 29 HAMAS network addresses on
+      2-3 May 2025.
+  - chain: tron
+    address: "TZE86gg4eb9EDMQmA5qn2vuyiLwC4hFbEb"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified): the
+      'TZE86 Address', a one-time HAMAS donation address that received 259.72 USDT
+      from a donor after the donor emailed fund[@]alqassam.ps (May 2025).
+  - chain: tron
+    address: "TVie6wdG27ypweVXiivWaaaDycgB6R4G4R"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified): the
+      'TVie6 Address', a HAMAS donation address that received 321.52 USDT from the
+      same donor on 2025-06-05, then consolidated with other donations.
+  - chain: tron
+    address: "TVMAECbyzJJa65ko4Djg1FbwCxSq6JjNXY"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified): the
+      'TVMAE Address', a HAMAS donation address that fund[@]alqassam.ps emailed to
+      an FBI source on 2025-04-11.
+  - chain: tron
+    address: "TMsBHJcchJXbYxssV7gLiv1XWCqqBHNcWm"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified):
+      deposit address of Binance user 193278016 (Target Property 45), which
+      received 20,200 USDT from HAMAS consolidation wallets. The affidavit calls
+      the account a professional launderer used by HAMAS. The address is exchange-
+      hosted.
+  - chain: tron
+    address: "TKmPwAJejTGPBRZptfkfyqPvCbSk2HVcdK"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-42)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459801/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. SZ No. 25-sz-42, sworn 2025-10-10; the
+      PDF is a scan, so the address was transcribed and checksum-verified):
+      deposit address of Binance user 1057117034 (Target Property 46), which
+      received 20,000 USDT from a HAMAS donation consolidation point. The
+      affidavit calls the account a professional launderer used by HAMAS. The
+      address is exchange-hosted.
+  - chain: tron
+    address: "TX87gnGg3un2GeTSsXXEE62KdTyF4WWFJd"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-20)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459791/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. 25-sz-20, sworn 2025-03-25; the PDF is
+      a scan, so the address was transcribed and checksum-verified): Target
+      Property 1, a HAMAS donation address that fund[@]alqassam.ps sent to FBI
+      source CHS-1. Frozen by Tether on 2025-03-12.
+  - chain: tron
+    address: "TDyyV8bkNNfttzk3NvjGvLFobsGdYmig9J"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-20)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459791/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. 25-sz-20, sworn 2025-03-25; the PDF is
+      a scan, so the address was transcribed and checksum-verified): Target
+      Property 4, a HAMAS donation address that fund[@]alqassam.ps sent to FBI
+      source CHS-3. Frozen by Tether on 2025-03-12.
+  - chain: tron
+    address: "TQaNC6oaN8TVtvbVv7vDZUAhPZrfuP76Vp"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-20)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459791/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. 25-sz-20, sworn 2025-03-25; the PDF is
+      a scan, so the address was transcribed and checksum-verified): Target
+      Properties 5 to 12, which the affiant believes are HAMAS donation addresses
+      sent to donors by fund[@]alqassam.ps. They were funded by the same Gas
+      Wallet and sent donations to the al-Qassam Brigades Operational Wallet.
+      Frozen by Tether on 2025-03-12.
+  - chain: tron
+    address: "TFbDs69t3TmMxbjiVPKeQqeH65VdqnCkRg"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-20)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459791/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. 25-sz-20, sworn 2025-03-25; the PDF is
+      a scan, so the address was transcribed and checksum-verified): Target
+      Properties 5 to 12, which the affiant believes are HAMAS donation addresses
+      sent to donors by fund[@]alqassam.ps. They were funded by the same Gas
+      Wallet and sent donations to the al-Qassam Brigades Operational Wallet.
+      Frozen by Tether on 2025-03-12.
+  - chain: tron
+    address: "TPdbmSXTPnNedsXW2smdztWFRTozomoxmc"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-20)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459791/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. 25-sz-20, sworn 2025-03-25; the PDF is
+      a scan, so the address was transcribed and checksum-verified): Target
+      Properties 5 to 12, which the affiant believes are HAMAS donation addresses
+      sent to donors by fund[@]alqassam.ps. They were funded by the same Gas
+      Wallet and sent donations to the al-Qassam Brigades Operational Wallet.
+      Frozen by Tether on 2025-03-12.
+  - chain: tron
+    address: "TXtUP3zCt87Y3ayq6zycmPWQnoSoiaLYML"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-20)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459791/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. 25-sz-20, sworn 2025-03-25; the PDF is
+      a scan, so the address was transcribed and checksum-verified): Target
+      Properties 5 to 12, which the affiant believes are HAMAS donation addresses
+      sent to donors by fund[@]alqassam.ps. They were funded by the same Gas
+      Wallet and sent donations to the al-Qassam Brigades Operational Wallet.
+      Frozen by Tether on 2025-03-12.
+  - chain: tron
+    address: "TU8JS7nMLX6aEgNeTM8px3Szq6tUx8Z8Vu"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-20)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459791/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. 25-sz-20, sworn 2025-03-25; the PDF is
+      a scan, so the address was transcribed and checksum-verified): Target
+      Properties 5 to 12, which the affiant believes are HAMAS donation addresses
+      sent to donors by fund[@]alqassam.ps. They were funded by the same Gas
+      Wallet and sent donations to the al-Qassam Brigades Operational Wallet.
+      Frozen by Tether on 2025-03-12.
+  - chain: tron
+    address: "TCZWe2uJkkYNtwan8eEmziXUp7e3Pg4zA2"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-20)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459791/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. 25-sz-20, sworn 2025-03-25; the PDF is
+      a scan, so the address was transcribed and checksum-verified): Target
+      Properties 5 to 12, which the affiant believes are HAMAS donation addresses
+      sent to donors by fund[@]alqassam.ps. They were funded by the same Gas
+      Wallet and sent donations to the al-Qassam Brigades Operational Wallet.
+      Frozen by Tether on 2025-03-12.
+  - chain: tron
+    address: "TTL4Dc7iv27iQBDejyXtrSSQoYBf6WLWec"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-20)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459791/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. 25-sz-20, sworn 2025-03-25; the PDF is
+      a scan, so the address was transcribed and checksum-verified): Target
+      Properties 5 to 12, which the affiant believes are HAMAS donation addresses
+      sent to donors by fund[@]alqassam.ps. They were funded by the same Gas
+      Wallet and sent donations to the al-Qassam Brigades Operational Wallet.
+      Frozen by Tether on 2025-03-12.
+  - chain: tron
+    address: "TGmLbZiS4SAhxDwmQteQ2fhsKJQ7VfJLsv"
+    entity: "HAMAS / al-Qassam Brigades USDT financing network (D.D.C. 25-sz-20)"
+    category: terrorist_financing
+    evidence: "https://justice.gov/opa/media/1459791/dl?inline="
+    verified: 2026-09-23
+    note: >
+      FBI seizure-warrant affidavit (D.D.C. 25-sz-20, sworn 2025-03-25; the PDF is
+      a scan, so the address was transcribed and checksum-verified): Target
+      Properties 5 to 12, which the affiant believes are HAMAS donation addresses
+      sent to donors by fund[@]alqassam.ps. They were funded by the same Gas
+      Wallet and sent donations to the al-Qassam Brigades Operational Wallet.
+      Frozen by Tether on 2025-03-12.
 
 # ---------------------------------------------------------------------------
 # To be populated by a human. Each needs an evidence URL before it is added.

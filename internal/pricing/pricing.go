@@ -13,10 +13,12 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/mozer/tether-risk/internal/config"
+	"github.com/mozer/tether-risk/internal/store"
 	"github.com/shopspring/decimal"
 )
 
@@ -135,25 +137,44 @@ type BackfillResult struct {
 	Priced   int64
 	Unpriced int64
 	ByBasis  map[string]int64
+	Edges    int // edges recomputed
 }
 
-// Backfill reprices stored transfers.
+// Priceable lists the assets this Pricer can value.
+func (p *Pricer) Priceable() []string {
+	var out []string
+	for asset := range assetDecimals {
+		if _, ok := p.pinned[asset]; ok || p.daily[asset] {
+			out = append(out, asset)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Backfill prices stored transfers that were written unpriced and can be
+// priced now, usually because the day's close had not been loaded yet.
 //
-// SPEC.md §4 leaves usd_value nullable until Phase 3; this is the pass that
-// fills it. It rewrites `transfers` and then rebuilds the edge tables from
-// scratch, because the edge aggregates were computed from the old values and a
-// materialized view cannot retroactively revise what it already summed
-// (docs/DECISIONS.md D2).
-func (p *Pricer) Backfill(ctx context.Context, ch *sql.DB, chainID string, log *slog.Logger) (*BackfillResult, error) {
+// Since D22 transfers are priced as they are written, so this is a small
+// set. Until 2026-09-23 it reread and rewrote every stored transfer (16
+// million rows), held them all in memory, and truncated and rebuilt the edge
+// tables. Screens during the rebuild saw addresses with no flows, and the
+// run outgrew its timeout (docs/DECISIONS.md D35). Now only the repriced
+// rows are rewritten, and only the edges they belong to are recomputed.
+func (p *Pricer) Backfill(ctx context.Context, ch *sql.DB, w EdgeRepairer, chainID string, log *slog.Logger) (*BackfillResult, error) {
 	res := &BackfillResult{ByBasis: map[string]int64{}}
+	assets := p.Priceable()
+	if len(assets) == 0 {
+		return res, nil
+	}
 
 	rows, err := ch.QueryContext(ctx, `
 		SELECT chain, tx_hash, log_index, block_number, block_time,
 		       from_address, to_address, asset, raw_value
 		FROM transfers FINAL
-		WHERE chain = ?`, chainID)
+		WHERE chain = ? AND price_basis = 'unpriced' AND asset IN (?)`, chainID, assets)
 	if err != nil {
-		return nil, fmt.Errorf("read transfers: %w", err)
+		return nil, fmt.Errorf("read unpriced transfers: %w", err)
 	}
 
 	type repriced struct {
@@ -186,13 +207,14 @@ func (p *Pricer) Backfill(ctx context.Context, ch *sql.DB, chainID string, log *
 			rows.Close()
 			return nil, err
 		}
-		r.usd, r.basis = usd, basis
 		res.ByBasis[basis]++
-		if usd != nil {
-			res.Priced++
-		} else {
+		if usd == nil {
+			// Still no price for its day; left as it is.
 			res.Unpriced++
+			continue
 		}
+		r.usd, r.basis = usd, basis
+		res.Priced++
 		batch = append(batch, r)
 	}
 	if err := rows.Err(); err != nil {
@@ -220,25 +242,41 @@ func (p *Pricer) Backfill(ctx context.Context, ch *sql.DB, chainID string, log *
 		tx.Rollback()
 		return nil, err
 	}
+	pairs := map[store.EdgeKey]bool{}
 	for _, r := range batch {
-		var usd any
-		if r.usd != nil {
-			usd = *r.usd
-		}
 		if _, err := stmt.ExecContext(ctx,
 			r.chain, r.txHash, r.logIndex, r.blockNumber, r.blockTime,
-			r.from, r.to, r.asset, r.raw, usd, r.basis); err != nil {
+			r.from, r.to, r.asset, r.raw, *r.usd, r.basis); err != nil {
 			tx.Rollback()
 			return nil, fmt.Errorf("reprice %s: %w", r.txHash, err)
 		}
+		pairs[store.EdgeKey{From: r.from, To: r.to, Asset: r.asset}] = true
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 
+	// The edge views summed each rewritten row a second time (D2). Recompute
+	// exactly the edges those rows belong to from the deduplicated
+	// transfers.
+	keys := make([]store.EdgeKey, 0, len(pairs))
+	for k := range pairs {
+		keys = append(keys, k)
+	}
+	if err := w.RepairEdges(ctx, chainID, keys); err != nil {
+		return nil, fmt.Errorf("repair edges: %w", err)
+	}
+	res.Edges = len(keys)
+
 	log.Info("transfers repriced", "scanned", res.Scanned,
-		"priced", res.Priced, "unpriced", res.Unpriced)
+		"priced", res.Priced, "unpriced", res.Unpriced, "edges_repaired", res.Edges)
 	return res, nil
+}
+
+// EdgeRepairer recomputes named edges from the transfers they aggregate.
+// store.TransferWriter implements it.
+type EdgeRepairer interface {
+	RepairEdges(ctx context.Context, chainID string, keys []store.EdgeKey) error
 }
 
 // LoadPrices writes daily close prices.

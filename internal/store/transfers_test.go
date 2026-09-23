@@ -444,3 +444,120 @@ func TestUnpricedTransfersAreCountedNotHidden(t *testing.T) {
 		t.Errorf("edge USD = %s, want 200 (the priced transfer only)", got)
 	}
 }
+
+// A transfer written unpriced and later repriced is rewritten, and the edge
+// views sum it twice. RepairEdges puts exactly that edge right, in both
+// tables, without the empty window a full rebuild has (docs/DECISIONS.md
+// D35).
+func TestRepairEdgesAfterReprice(t *testing.T) {
+	ch, pg := testDBs(t)
+	w := NewTransferWriter(ch, pg)
+	ctx := context.Background()
+
+	transfers := sampleTransfers()
+	transfers[0].USDValue = nil
+	transfers[0].PriceBasis = "unpriced"
+	if _, err := w.WritePage(ctx, "TAlice", "page-1", transfers); err != nil {
+		t.Fatal(err)
+	}
+	if got := edgeUSD(t, ch, "TAlice", "TBob"); got != "200" {
+		t.Fatalf("before reprice edge USD = %s, want 200", got)
+	}
+
+	repriced := sampleTransfers()[:1]
+	if err := w.insert(ctx, repriced); err != nil {
+		t.Fatal(err)
+	}
+	if got := edgeCount(t, ch, "TAlice", "TBob"); got != 3 {
+		t.Fatalf("the view should have counted the rewrite again: count %d, want 3", got)
+	}
+
+	k := EdgeKey{From: "TAlice", To: "TBob", Asset: repriced[0].Asset}
+	if err := w.RepairEdges(ctx, "tron", []EdgeKey{k}); err != nil {
+		t.Fatal(err)
+	}
+	if got := edgeUSD(t, ch, "TAlice", "TBob"); got != "300" {
+		t.Errorf("after repair edge USD = %s, want 300", got)
+	}
+	if got := edgeCount(t, ch, "TAlice", "TBob"); got != 2 {
+		t.Errorf("after repair transfer_count = %d, want 2", got)
+	}
+	var unpriced uint64
+	var byTo string
+	if err := ch.QueryRowContext(ctx, `
+		SELECT sum(unpriced_count), toString(sum(total_usd_value)) FROM edges_by_to
+		WHERE chain='tron' AND from_address='TAlice' AND to_address='TBob'`).Scan(&unpriced, &byTo); err != nil {
+		t.Fatal(err)
+	}
+	if unpriced != 0 || byTo != "300" {
+		t.Errorf("edges_by_to after repair: unpriced %d, usd %s; want 0 and 300", unpriced, byTo)
+	}
+}
+
+// Two addresses' pages share the transfers between them. Written at the same
+// time, each once found them missing and inserted them, and the edges
+// counted them twice (docs/DECISIONS.md D37). The write lock makes the
+// check and the insert one step.
+func TestConcurrentPagesSharingTransfersCountOnce(t *testing.T) {
+	ch, pg := testDBs(t)
+	w := NewTransferWriter(ch, pg)
+	ctx := context.Background()
+
+	errs := make(chan error, 8)
+	for i := 0; i < 8; i++ {
+		go func(i int) {
+			addr := []string{"TAlice", "TBob"}[i%2]
+			_, err := w.WritePage(ctx, addr, fmt.Sprintf("page-%d", i), sampleTransfers())
+			errs <- err
+		}(i)
+	}
+	for i := 0; i < 8; i++ {
+		if err := <-errs; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := edgeCount(t, ch, "TAlice", "TBob"); got != 2 {
+		t.Errorf("edge transfer_count = %d after concurrent writes, want 2", got)
+	}
+	if got := edgeUSD(t, ch, "TAlice", "TBob"); got != "300" {
+		t.Errorf("edge USD = %s after concurrent writes, want 300", got)
+	}
+}
+
+// The audit finds an edge counted twice, and an edge the views never
+// received, and nothing else; the repair then agrees with the transfers.
+func TestAuditEdgesFindsDriftAndRepairFixesIt(t *testing.T) {
+	ch, pg := testDBs(t)
+	w := NewTransferWriter(ch, pg)
+	ctx := context.Background()
+
+	if _, err := w.WritePage(ctx, "TAlice", "page-1", sampleTransfers()); err != nil {
+		t.Fatal(err)
+	}
+	if keys, err := w.AuditEdges(ctx, "tron", 3); err != nil || len(keys) != 0 {
+		t.Fatalf("clean edges audited as %v, %v", keys, err)
+	}
+	// Double count TAlice->TBob, and drop TAlice->TCarol from edges_by_to.
+	if err := w.insert(ctx, sampleTransfers()[:1]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ch.ExecContext(ctx, `DELETE FROM edges_by_to WHERE to_address = 'TCarol'`); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := w.AuditEdges(ctx, "tron", 3)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != 2 {
+		t.Fatalf("audit found %v, want the TBob and TCarol edges", keys)
+	}
+	if err := w.RepairEdges(ctx, "tron", keys); err != nil {
+		t.Fatal(err)
+	}
+	if keys, err := w.AuditEdges(ctx, "tron", 3); err != nil || len(keys) != 0 {
+		t.Fatalf("after repair the audit still finds %v, %v", keys, err)
+	}
+	if got := edgeCount(t, ch, "TAlice", "TBob"); got != 2 {
+		t.Errorf("transfer_count = %d after repair, want 2", got)
+	}
+}

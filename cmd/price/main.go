@@ -203,8 +203,8 @@ func run(ctx context.Context, cmd, configDir, chainID string, days int, source, 
 		return loadPrices(ctx, pg, asset, days, source, from, chainID, log)
 
 	case "backfill":
-		// Repricing rewrites edges across the whole table, a batch job the
-		// 60 s interactive read timeout cut off on 2026-09-23 (D32, D35).
+		// Reads every unpriced transfer: a batch job, which the 60 s
+		// interactive read timeout cut off on 2026-09-23 (D32, D35).
 		ch, err := store.OpenClickHouseBatch(ctx)
 		if err != nil {
 			return err
@@ -212,7 +212,7 @@ func run(ctx context.Context, cmd, configDir, chainID string, days int, source, 
 		defer ch.Close()
 
 		p := pricing.New(cfg, pg)
-		res, err := p.Backfill(ctx, ch, chainID, log)
+		res, err := p.Backfill(ctx, ch, store.NewTransferWriter(ch, pg), chainID, log)
 		if err != nil {
 			return err
 		}
@@ -224,15 +224,7 @@ func run(ctx context.Context, cmd, configDir, chainID string, days int, source, 
 			fmt.Printf("  %-12s %d\n", basis, n)
 		}
 
-		// The edge aggregates were computed from the old values, and a
-		// materialized view cannot retroactively revise what it already
-		// summed (docs/DECISIONS.md D2). Rebuilding is not optional here.
-		log.Info("rebuilding edges from repriced transfers")
-		w := store.NewTransferWriter(ch, pg)
-		if err := w.RebuildEdges(ctx); err != nil {
-			return err
-		}
-		log.Info("edges rebuilt")
+		fmt.Printf("edges repaired: %d\n", res.Edges)
 		return nil
 
 	case "status":

@@ -85,9 +85,20 @@ func (w *TransferWriter) WritePage(ctx context.Context, address, pageKey string,
 		return res, nil
 	}
 
-	// Defence 1: drop transfers already present in ClickHouse.
+	// Defence 1: drop transfers already present in ClickHouse, then insert
+	// the rest, with no other writer between the two. A transfer between two
+	// addresses appears in both addresses' histories. Fetched at the same
+	// time, by two workers or a worker and a screen, both pages found it
+	// missing and both inserted it, and the edge views counted it twice. A
+	// job lease is per address, so it did not prevent this; measured
+	// 2026-09-23 as 1,493 extra transfers in the edges, 0.009% (D37).
+	unlock, err := w.lockWrites(ctx, chainID)
+	if err != nil {
+		return res, err
+	}
 	fresh, err := w.filterExisting(ctx, chainID, transfers)
 	if err != nil {
+		unlock()
 		return res, err
 	}
 	res.Duplicates = len(transfers) - len(fresh)
@@ -95,9 +106,11 @@ func (w *TransferWriter) WritePage(ctx context.Context, address, pageKey string,
 
 	if len(fresh) > 0 {
 		if err := w.insert(ctx, fresh); err != nil {
+			unlock()
 			return res, err
 		}
 	}
+	unlock()
 	res.Inserted = len(fresh)
 
 	// Record the batch only after the insert succeeded. Recording first would
@@ -107,6 +120,27 @@ func (w *TransferWriter) WritePage(ctx context.Context, address, pageKey string,
 		return res, err
 	}
 	return res, nil
+}
+
+// lockWrites takes the chain's write lock, a PostgreSQL advisory lock that
+// every process writing transfers shares, and returns its release. The lock
+// is held for one page's check and insert, well under a second.
+func (w *TransferWriter) lockWrites(ctx context.Context, chainID string) (func(), error) {
+	conn, err := w.pg.Conn(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("write lock: %w", err)
+	}
+	key := "transfers:" + chainID
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock(hashtext($1))`, key); err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("write lock: %w", err)
+	}
+	return func() {
+		// Released even when ctx has ended, or the session would keep the
+		// lock until the pool closed the connection.
+		_, _ = conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock(hashtext($1))`, key)
+		conn.Close()
+	}, nil
 }
 
 func (w *TransferWriter) pageAlreadyWritten(ctx context.Context, chainID, address, pageKey string) (bool, error) {
@@ -133,17 +167,37 @@ func (w *TransferWriter) filterExisting(ctx context.Context, chainID string, tra
 		end := min(i+chunk, len(transfers))
 		batch := transfers[i:end]
 
+		// A stored copy of a transfer has the same sender and time, so both
+		// narrow the search. They lead the table's sorting key, and without
+		// them the lookup read the whole table: 16 million rows and 7 s per
+		// page on 2026-09-23, growing with every address fetched (D35).
 		placeholders := make([]string, 0, len(batch))
-		args := []any{chainID}
+		pairs := []any{}
+		senders := map[string]bool{}
+		lo, hi := batch[0].BlockTime, batch[0].BlockTime
 		for _, t := range batch {
-			args = append(args, t.TxHash, t.LogIndex)
+			pairs = append(pairs, t.TxHash, t.LogIndex)
 			placeholders = append(placeholders, "(?, ?)")
+			senders[t.FromAddress] = true
+			if t.BlockTime.Before(lo) {
+				lo = t.BlockTime
+			}
+			if t.BlockTime.After(hi) {
+				hi = t.BlockTime
+			}
 		}
+		from := make([]string, 0, len(senders))
+		for a := range senders {
+			from = append(from, a)
+		}
+		sort.Strings(from)
 
 		q := fmt.Sprintf(
 			`SELECT DISTINCT tx_hash, log_index FROM transfers
-			 WHERE chain = ? AND (tx_hash, log_index) IN (%s)`,
+			 WHERE chain = ? AND from_address IN (?) AND block_time BETWEEN ? AND ?
+			   AND (tx_hash, log_index) IN (%s)`,
 			strings.Join(placeholders, ","))
+		args := append([]any{chainID, from, lo.UTC(), hi.UTC()}, pairs...)
 
 		rows, err := w.ch.QueryContext(ctx, q, args...)
 		if err != nil {
@@ -287,6 +341,121 @@ func (w *TransferWriter) RebuildEdges(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// EdgeKey names one aggregated edge.
+type EdgeKey struct{ From, To, Asset string }
+
+// RepairEdges recomputes the named edges, in both edge tables, from the
+// deduplicated transfers. It is what a rewrite of a few transfers needs: the
+// materialized views summed the rewritten rows a second time (D2), and a
+// full RebuildEdges would empty both tables while it runs (D35).
+//
+// Not atomic: a transfer on the same edge inserted between the delete and
+// the recompute is counted twice until the edge is next repaired or rebuilt.
+// Edges being repaired are ones whose prices just arrived, so the window
+// matters little; a full rebuild remains the ground truth.
+func (w *TransferWriter) RepairEdges(ctx context.Context, chainID string, keys []EdgeKey) error {
+	const chunk = 500
+	for i := 0; i < len(keys); i += chunk {
+		part := keys[i:min(i+chunk, len(keys))]
+		// The senders alone, as well as the tuples: from_address leads both
+		// tables' sorting keys, and a tuple IN does not use it. Without it
+		// each chunk read 5.6 million rows (D37).
+		tuples := make([]string, 0, len(part))
+		senders := map[string]bool{}
+		var pairs []any
+		for _, k := range part {
+			tuples = append(tuples, "(?, ?, ?)")
+			pairs = append(pairs, k.From, k.To, k.Asset)
+			senders[k.From] = true
+		}
+		from := make([]string, 0, len(senders))
+		for a := range senders {
+			from = append(from, a)
+		}
+		sort.Strings(from)
+		args := append([]any{chainID, from}, pairs...)
+		in := strings.Join(tuples, ",")
+		for _, table := range []string{"edges", "edges_by_to"} {
+			if _, err := w.ch.ExecContext(ctx, fmt.Sprintf(
+				`DELETE FROM %s WHERE chain = ? AND from_address IN (?) AND (from_address, to_address, asset) IN (%s)`, table, in), args...); err != nil {
+				return fmt.Errorf("delete %s: %w", table, err)
+			}
+			if _, err := w.ch.ExecContext(ctx, fmt.Sprintf(`
+				INSERT INTO %s
+				SELECT
+					chain, from_address, to_address, asset,
+					sum(ifNull(usd_value, toDecimal64(0, 6))) AS total_usd_value,
+					sum(raw_value)                            AS total_raw_value,
+					count()                                   AS transfer_count,
+					countIf(usd_value IS NULL)                AS unpriced_count,
+					min(block_time)                           AS first_seen,
+					max(block_time)                           AS last_seen
+				FROM transfers FINAL
+				WHERE chain = ? AND from_address IN (?) AND (from_address, to_address, asset) IN (%s)
+				GROUP BY chain, from_address, to_address, asset`, table, in), args...); err != nil {
+				return fmt.Errorf("recompute %s: %w", table, err)
+			}
+		}
+	}
+	return nil
+}
+
+// AuditEdges finds edges whose count or value disagrees with the
+// deduplicated transfers they aggregate, in either edge table. Addresses are
+// split into buckets by hash so each comparison fits in memory; the whole
+// table at once exceeded ClickHouse's 6.9 GB limit (docs/DECISIONS.md D37).
+// An edge written to while the audit reads it can show up as a false
+// mismatch; repairing it is harmless.
+func (w *TransferWriter) AuditEdges(ctx context.Context, chainID string, buckets int) ([]EdgeKey, error) {
+	seen := map[EdgeKey]bool{}
+	var out []EdgeKey
+	for b := 0; b < buckets; b++ {
+		for _, table := range []string{"edges", "edges_by_to"} {
+			rows, err := w.ch.QueryContext(ctx, fmt.Sprintf(`
+				WITH e AS (
+					SELECT from_address f, to_address t, asset a,
+					       sum(transfer_count) n, sum(total_usd_value) v
+					FROM %s WHERE chain = ? AND cityHash64(from_address) %% ? = ?
+					GROUP BY f, t, a),
+				x AS (
+					SELECT fa f, ta t, aa a, count() n, sum(ifNull(u, toDecimal64(0, 6))) v
+					FROM (
+						SELECT tx_hash, log_index,
+						       any(from_address) fa, any(to_address) ta, any(asset) aa,
+						       argMax(usd_value, ingested_at) u
+						FROM transfers WHERE chain = ? AND cityHash64(from_address) %% ? = ?
+						GROUP BY tx_hash, log_index)
+					GROUP BY f, t, a)
+				SELECT if(e.f = '', x.f, e.f), if(e.f = '', x.t, e.t), if(e.f = '', x.a, e.a)
+				FROM e FULL OUTER JOIN x ON e.f = x.f AND e.t = x.t AND e.a = x.a
+				WHERE e.n != x.n OR e.v != x.v
+				SETTINGS join_algorithm = 'grace_hash', join_use_nulls = 0`, table),
+				chainID, buckets, b, chainID, buckets, b)
+			if err != nil {
+				return nil, fmt.Errorf("audit %s bucket %d: %w", table, b, err)
+			}
+			for rows.Next() {
+				var k EdgeKey
+				if err := rows.Scan(&k.From, &k.To, &k.Asset); err != nil {
+					rows.Close()
+					return nil, err
+				}
+				if seen[k] {
+					continue
+				}
+				seen[k] = true
+				out = append(out, k)
+			}
+			if err := rows.Err(); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			rows.Close()
+		}
+	}
+	return out, nil
 }
 
 // Edge is one aggregated address-to-address flow.

@@ -1512,3 +1512,69 @@ Found on the way, from rendered pages:
 reprices across the whole table, a batch job, but opened ClickHouse with the
 60 s read timeout meant for interactive screens. It now opens the batch
 pool (15 minutes), as the labeler has since D32.
+
+---
+
+## D37 — edges counted twice, a nightly job that emptied them, and DOJ addresses
+
+**Date:** 2026-09-23 · **Status:** active · **Follows:** D2, D22, D35
+
+**The nightly price backfill rewrote everything.** Since D22, transfers are
+priced as they are written. Yet `price backfill` still reread all 16 million
+stored transfers, held them in memory, rewrote them, then truncated and
+rebuilt both edge tables. While it rebuilt, a screen saw addresses with no
+flows. It had grown from 4 s to past the 60 s and then the 15-minute read
+timeouts. It now reads only transfers still `unpriced` in a priceable asset
+(52,860 on its first run, all TRX from days whose close had not yet been
+loaded). It rewrites the 52,840 it can now price, and recomputes only the
+37,316 edges those rows belong to (`RepairEdges`: a lightweight delete,
+then an insert from `transfers FINAL`, with the senders listed so the
+sorting key is used). `ingest rebuild-edges` remains the manual ground
+truth.
+
+**Duplicate checks read the whole table.** Before each page is written, its
+transfers are looked up by `(tx_hash, log_index)`. That lookup filtered on
+columns outside the sorting key, so it read all 16 million rows: 7 s a
+page. It now also filters on the page's senders and time range, which a
+stored copy shares. Worker pages fell from 4.5 s to 0.98 s, most of it
+TronGrid's latency. Screens fetch through the same path.
+
+**Transfers between two fetched addresses were counted twice.** Comparing
+the edge tables with the deduplicated transfers found 1,493 extra transfer
+counts (0.009%). One example: a TRX edge with two stored transfers, both
+written within two seconds of each other, carried a count of 3. A transfer
+between two addresses is in both addresses' histories. When both were
+fetched at once, by two workers or a worker and a screen, both pages found
+it missing and both inserted it. The row collapsed in `transfers`, but the
+edge views counted both inserts. D2's defence was a job lease per address,
+which does not cover a transfer shared by two addresses. The check and the
+insert now run under one PostgreSQL advisory lock per chain, which every
+writing process shares, held for well under a second a page.
+`TestConcurrentPagesSharingTransfersCountOnce` writes eight overlapping
+pages at once. Without the lock it failed 1 run in 10, and with it 10 of 10
+passed.
+
+The drift already stored is repaired by `ingest audit-edges`, now the
+nightly run's last step. It compares both edge tables with the
+deduplicated transfers, one twentieth of the senders at a time, since the
+whole comparison exceeded ClickHouse's 6.9 GB memory limit. It then repairs
+what differs.
+
+**US DOJ and FBI filings: 52 addresses.** A research pass over justice.gov
+found TRON addresses printed in FBI seizure-warrant affidavits against
+HAMAS's USDT financing (D.D.C. 25-sz-20, 25-sz-34, 25-sz-42: 49 addresses,
+`terrorist_financing`). It also found them in two scam cases (D.D.C.
+25-cv-2967 and 25-sz-52: 3 addresses, `scam`). US government works are in
+the public domain. Every address passes its base58check checksum, and each
+entry cites the PDF that prints it. That includes the scanned affidavits,
+whose addresses were transcribed and so need a visual check. One address,
+"OTC 1", was left out: the affidavits call it unattributed, and it may
+serve other customers. A curated label is believed at 0.95 and decides a
+verdict, so it must name who controls the address.
+`TestShippedCuratedLabelsLoad` now loads the shipped list in every build,
+the check the file's header had promised as a `make` target that did not
+exist.
+
+Not reached: the SDNY complaint of 2026-09-14 on Iranian oil sales (about
+$61M of USDT on 10 TRON addresses), the APT38 complaints and the Xinbi
+seizure. Their PDFs sit behind bot protection that was not worked around.
