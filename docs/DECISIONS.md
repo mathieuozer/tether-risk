@@ -1505,3 +1505,10 @@ Found on the way, from rendered pages:
 - The English disclaimer pointed to "the run reference below", which is
   printed above it.
 - Turkish headings are capitalised with Turkish rules (İ, not I).
+
+**Found the next morning: the price backfill timed out.** The nightly
+`price backfill` failed after 60 s on 2026-09-23. It had taken 4 s on
+2026-09-21 and 14 s on 2026-09-22, growing with the stored transfers. It
+reprices across the whole table, a batch job, but opened ClickHouse with the
+60 s read timeout meant for interactive screens. It now opens the batch
+pool (15 minutes), as the labeler has since D32.

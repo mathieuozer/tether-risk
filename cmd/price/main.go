@@ -203,7 +203,9 @@ func run(ctx context.Context, cmd, configDir, chainID string, days int, source, 
 		return loadPrices(ctx, pg, asset, days, source, from, chainID, log)
 
 	case "backfill":
-		ch, err := store.OpenClickHouse(ctx)
+		// Repricing rewrites edges across the whole table, a batch job the
+		// 60 s interactive read timeout cut off on 2026-09-23 (D32, D35).
+		ch, err := store.OpenClickHouseBatch(ctx)
 		if err != nil {
 			return err
 		}
@@ -302,7 +304,7 @@ func resolveStart(ctx context.Context, from, asset, chainID string) (time.Time, 
 		return t, nil
 	}
 
-	ch, err := store.OpenClickHouse(ctx)
+	ch, err := store.OpenClickHouseBatch(ctx)
 	if err != nil {
 		// Without the store we cannot look up the earliest transfer, so fall
 		// back to a wide window rather than a narrow one. Loading too much
