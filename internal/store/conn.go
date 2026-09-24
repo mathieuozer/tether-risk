@@ -86,7 +86,7 @@ func OpenClickHouseBatch(ctx context.Context) (*sql.DB, error) {
 	if os.Getenv("CLICKHOUSE_DSN") == "" {
 		dsn = strings.Replace(dsn, "read_timeout=60s", "read_timeout=15m", 1)
 	}
-	return openClickHouse(ctx, dsn)
+	return openClickHouse(ctx, dsn+"&"+spillSettings)
 }
 
 // OpenClickHouseDatabase opens a pool on another database of the same
@@ -99,6 +99,16 @@ func OpenClickHouseDatabase(ctx context.Context, db string) (*sql.DB, error) {
 	u.Path = "/" + db
 	return openClickHouse(ctx, u.String())
 }
+
+// spillSettings let batch queries over the whole edge table spill to disk
+// instead of failing at the server's memory limit (6.9 GB here). On
+// 2026-09-24 the service ranking needed 8.7 GB and the poisoning join 6.75,
+// and both failed; with these they used 1.5 and 1.6 GB, with the same
+// results (docs/DECISIONS.md D47). grace_hash is used for the joins it
+// supports, and hash for the rest.
+const spillSettings = "max_bytes_before_external_group_by=1500000000" +
+	"&max_bytes_before_external_sort=1500000000" +
+	"&join_algorithm=grace_hash,hash&grace_hash_join_initial_buckets=16"
 
 func openClickHouse(ctx context.Context, dsn string) (*sql.DB, error) {
 	db, err := sql.Open("clickhouse", dsn)

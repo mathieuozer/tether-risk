@@ -2012,3 +2012,34 @@ Not done: screens reading their recent history from the index. The laptop
 index holds three days, a screen needs the whole history from TronGrid
 anyway, and the saving would be a handful of requests. It becomes the
 cutover once the server holds the whole chain.
+
+---
+
+## D47 — nightly analytics spill to disk instead of failing
+
+**Date:** 2026-09-24 · **Status:** active · **Follows:** D32, D37
+
+On 2026-09-24 the nightly `labeler derive-services` and `labeler derive`
+failed at ClickHouse's memory limit (6.89 GB). Both read the whole edge
+table, which had outgrown it:
+
+- the service ranking (`uniqExact` of counterparties per address) needed
+  8.7 GB;
+- the poisoning join needed 6.75 GB, and the index tail's own use tipped it
+  over.
+
+The batch pool (`store.OpenClickHouseBatch`) now lets aggregations and sorts
+spill to disk past 1.5 GB, and uses `grace_hash` for the joins that support
+it. Rerun on the same data, the two queries used:
+
+| Query | Before | After | Time |
+|---|---|---|---|
+| Service ranking | 8.7 GB | 1.5 GB | 161 s |
+| Poisoning join | 6.75 GB | 1.6 GB | 134 s, against 170 s with the default join |
+
+The poisoning join gave the same 132,762 look-alike pairs with every join
+algorithm tried. Both steps then completed, and the join now takes 2 min
+39 s.
+
+Interactive screens keep the default pool: they read one neighbourhood, not
+the whole table, and spilling there would only add latency.
