@@ -81,9 +81,15 @@ pct}`, `top_paths[] {explanation}` and `traversal {fanout_capped,
 hop_limit_reached}`.
 
 It also carries `flags[] {code, in_usd?, out_usd?, volume_usd?, days?,
-age_days?}` (behaviour notes, never scored) and `verdict {level,
-confidence, reasons[] {code, category?, pct?, flag?}}`, where `level` is
-`clear`, `caution` or `high_risk` (docs/DECISIONS.md D29). The screen
+age_days?}` (behaviour notes, never scored), `contacts[] {address, entity?,
+category?, inbound, flow_usd, total_usd, risky_usd, share_pct, partial,
+risks[] {category, usd, transfers, addresses, entity?, address}}` (direct
+counterparties' own flows with listed addresses, never scored, D48),
+`activity.held[] {asset, amount}` (net token holdings from stored history,
+only when it is complete) and `verdict {level, confidence, reasons[] {code,
+category?, pct?, flag?, address?}}`, where `level` is `clear`, `caution` or
+`high_risk` (docs/DECISIONS.md D29); the reason code `contact` carries the
+counterparty's address and its risky share. The screen
 response adds `follow_up: true` when the bot will send the final result to
 the chat after further tracing.
 

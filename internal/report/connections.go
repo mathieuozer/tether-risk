@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/mozer/tether-risk/internal/scoring"
 )
 
 // ConnectionsInput is what the compact "connections" summary needs.
@@ -44,6 +46,9 @@ type ConnectionsInput struct {
 	// Flags are behaviour notes; shown, never scored.
 	Flags []ConnectionsFlag
 
+	// Contacts: direct counterparties' own flows with listed addresses (D48).
+	Contacts []ConnectionsContact
+
 	// Verdict is the three-state answer (D29); nil when not computed.
 	Verdict *ConnectionsVerdict
 }
@@ -79,6 +84,41 @@ type ConnectionsActivity struct {
 	FirstSeen, LastSeen                 string // YYYY-MM-DD, empty if unknown
 	Assets                              []ConnectionsAsset
 	UnpricedTransfers, UnpricedTokens   uint64
+	// Held: net token holdings from stored history, only when it is complete.
+	Held []ConnectionsHeld
+}
+
+// ConnectionsHeld is one token's net holding, in token units.
+type ConnectionsHeld struct {
+	Asset  string
+	Amount float64
+}
+
+// ConnectionsContact is a direct counterparty's own flows with listed
+// addresses (D48): what the wallet that paid this address, or was paid by
+// it, itself received from or sent to sanctioned, frozen and similar
+// addresses. Shown beside the score, never in it.
+type ConnectionsContact struct {
+	Address  string
+	Entity   string
+	Category string // the counterparty's own label; "" when it has none
+	Inbound  bool   // it paid this address; else this address paid it
+	FlowUSD  float64
+	TotalUSD float64 // its whole volume on the risky side
+	RiskyUSD float64
+	SharePct float64 // RiskyUSD of TotalUSD, 0-100; 0 when Partial
+	Partial  bool    // its own history is not stored: a partial view
+	Risks    []ConnectionsContactRisk
+}
+
+// ConnectionsContactRisk is one category of listed addresses a counterparty
+// dealt with, with the largest of them named.
+type ConnectionsContactRisk struct {
+	Category  string
+	USD       float64
+	Addresses int
+	Entity    string
+	Address   string
 }
 
 type ConnectionsAsset struct {
@@ -212,6 +252,13 @@ func Connections(in ConnectionsInput) string {
 			}
 			b.WriteString(l.f("assets", strings.Join(parts, " · ")))
 		}
+		if len(a.Held) > 0 {
+			parts := make([]string, 0, len(a.Held))
+			for _, h := range a.Held {
+				parts = append(parts, h.Asset+" "+qty(h.Amount))
+			}
+			b.WriteString(l.f("held", strings.Join(parts, " · ")))
+		}
 		if a.UnpricedTransfers > 0 {
 			b.WriteString(l.f("unpriced", l.n(a.UnpricedTransfers, "transfer"), l.n(a.UnpricedTokens, "token")))
 		}
@@ -265,6 +312,7 @@ func Connections(in ConnectionsInput) string {
 		writeEntries(&b, in, l)
 		writeChecks(&b, in, shares, l)
 	}
+	writeContacts(&b, in.Contacts, l)
 	writeFlags(&b, in.Flags, l)
 
 	key := "risk_level"
@@ -570,6 +618,8 @@ func whyText(v *ConnectionsVerdict, l loc) string {
 			p = l.f("why_exposure", l.pct(r.Pct), l.category(r.Category))
 		case "low_coverage", "unidentified":
 			p = l.f("why_"+r.Code, l.pct(r.Pct))
+		case "contact":
+			p = l.f("why_contact", l.pct(r.Pct), l.category(r.Category))
 		case "behaviour":
 			p = l.f("why_" + r.Flag)
 		case "band_high", "band_medium", "tracing_incomplete":
@@ -602,6 +652,89 @@ func whyText(v *ConnectionsVerdict, l loc) string {
 
 // writeFlags lists behaviour notes. They describe what the address did and
 // say plainly that they are not part of the score.
+// writeContacts lists what the counterparties themselves did with listed
+// addresses. It comes after the checks because it answers the question the
+// checks' "not found in the visible part" leaves open.
+func writeContacts(b *strings.Builder, contacts []ConnectionsContact, l loc) {
+	if len(contacts) == 0 {
+		return
+	}
+	b.WriteString(l.f("contacts"))
+	for _, c := range contacts {
+		for _, line := range ContactLines(c, l) {
+			b.WriteString(line)
+		}
+	}
+	b.WriteString(l.f("contacts_note"))
+}
+
+// ContactInput adapts a scoring contact for the report.
+func ContactInput(c scoring.Contact) ConnectionsContact {
+	out := ConnectionsContact{Address: c.Address, Entity: c.Entity, Category: c.Category, Inbound: c.Inbound,
+		FlowUSD: c.FlowUSD.InexactFloat64(), TotalUSD: c.TotalUSD.InexactFloat64(), RiskyUSD: c.RiskyUSD.InexactFloat64(),
+		SharePct: c.SharePct.InexactFloat64(), Partial: c.Partial}
+	for _, k := range c.Risks {
+		out.Risks = append(out.Risks, ConnectionsContactRisk{Category: k.Category, USD: k.USD.InexactFloat64(),
+			Addresses: k.Addresses, Entity: k.Entity, Address: k.Address})
+	}
+	return out
+}
+
+// ContactLines renders one contact: the sentence, then one line per further
+// category. Shared by the chat report and the PDF.
+func ContactLines(c ConnectionsContact, l loc) []string {
+	if len(c.Risks) == 0 {
+		return nil
+	}
+	who := contactName(l, c)
+	top := c.Risks[0]
+	listed := l.n(uint64(top.Addresses), "address")
+	share := ""
+	if c.Partial {
+		share = l.f("contact_partial")
+	} else if c.SharePct > 0 {
+		key := "contact_share_in"
+		if !c.Inbound {
+			key = "contact_share_out"
+		}
+		share = l.f(key, l.pct(c.SharePct))
+	}
+	key := "contact_in"
+	if !c.Inbound {
+		key = "contact_out"
+	}
+	lines := []string{l.f(key, shortAddress(c.Address), who, usd(c.FlowUSD), usd(top.USD), listed,
+		l.category(top.Category), contactEntity(l, top), share)}
+	for _, r := range c.Risks[1:] {
+		lines = append(lines, l.f("contact_also", usd(r.USD), l.n(uint64(r.Addresses), "address"), l.category(r.Category)))
+	}
+	return lines
+}
+
+// contactName says what the counterparty is: its name when it has one, its
+// category otherwise, or that it has no label.
+func contactName(l loc, c ConnectionsContact) string {
+	switch {
+	case c.Category == "named_service" || c.Category == "exchange":
+		if c.Entity != "" {
+			return strings.SplitN(c.Entity, " (", 2)[0]
+		}
+		return l.category(c.Category)
+	case c.Category != "":
+		return l.category(c.Category)
+	}
+	return l.f("contact_unlabelled")
+}
+
+// contactEntity names the largest listed address: its entity when the list
+// gives one, else the address.
+func contactEntity(l loc, r ConnectionsContactRisk) string {
+	if r.Entity != "" && !strings.HasPrefix(r.Entity, "Frozen by Tether") {
+		return r.Entity
+	}
+	return shortAddress(r.Address)
+}
+
 func writeFlags(b *strings.Builder, flags []ConnectionsFlag, l loc) {
 	if len(flags) == 0 {
 		return
@@ -728,6 +861,20 @@ func shortAddress(a string) string {
 }
 
 // usd formats a dollar amount compactly.
+// qty formats a token amount: two decimals, thousands separated.
+func qty(v float64) string {
+	s := fmt.Sprintf("%.2f", v)
+	whole, frac, _ := strings.Cut(s, ".")
+	var b strings.Builder
+	for i, r := range whole {
+		if i > 0 && (len(whole)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(r)
+	}
+	return b.String() + "." + frac
+}
+
 func usd(v float64) string {
 	switch {
 	case v >= 1e9:

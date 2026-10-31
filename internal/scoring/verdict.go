@@ -29,13 +29,13 @@ type Verdict struct {
 // its own language.
 type VerdictReason struct {
 	// Code: own_listed, poisoning, band_high, exposure, band_medium, exposure_minor,
-	// low_coverage, unidentified, tracing_incomplete, behaviour, clean,
-	// own_service.
+	// contact, low_coverage, unidentified, tracing_incomplete, behaviour,
+	// clean, own_service.
 	Code     string
-	Category string  // for own_listed, exposure, exposure_minor
-	Pct      float64 // exposure share, coverage for low_coverage, unnamed share for unidentified
+	Category string  // for own_listed, exposure, exposure_minor, contact
+	Pct      float64 // exposure share, coverage for low_coverage, unnamed share for unidentified, the counterparty's risky share for contact
 	Flag     string  // for behaviour
-	Address  string  // for poisoning: the address imitated
+	Address  string  // for poisoning: the address imitated; for contact: the counterparty
 	Entity   string  // for own_service: who the address belongs to
 }
 
@@ -130,6 +130,27 @@ func Decide(r *Result, rules config.Verdict) Verdict {
 			red = append(red, VerdictReason{Code: "exposure", Category: c, Pct: shares[c]})
 		} else {
 			caution = append(caution, VerdictReason{Code: "exposure_minor", Category: c, Pct: shares[c]})
+		}
+	}
+
+	// A direct counterparty whose own money comes from listed addresses in
+	// more than a trace (D48). A named service is exempt: an exchange's hot
+	// wallet has such contacts by the nature of its business, and what ends
+	// there already counts as identified.
+	if rules.ContactCautionMinPct > 0 {
+		var worst *Contact
+		for i := range r.Contacts {
+			c := &r.Contacts[i]
+			if c.Partial || len(c.Risks) == 0 || slices.Contains(rules.OwnServiceCategories, c.Category) {
+				continue
+			}
+			if c.SharePct.InexactFloat64() >= rules.ContactCautionMinPct && (worst == nil || c.SharePct.GreaterThan(worst.SharePct)) {
+				worst = c
+			}
+		}
+		if worst != nil {
+			caution = append(caution, VerdictReason{Code: "contact", Category: worst.Risks[0].Category,
+				Pct: worst.SharePct.InexactFloat64(), Address: worst.Address})
 		}
 	}
 

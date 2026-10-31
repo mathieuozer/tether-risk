@@ -207,6 +207,21 @@ behaviour:
     min_received_usd: 1000
     window_days: 7
     max_days_since: 3
+  # Direct counterparties' own contacts with listed addresses (D48). The
+  # trace stops at a service, and through anything else it dilutes a listed
+  # address's money by its share of the intermediary's volume. Both are
+  # right for the score and both hide what a reader wants to see: that the
+  # wallet which paid this address itself took millions from a sanctioned or
+  # frozen one. Measured on TVnZo4…gRFR: four direct payers had taken $1.3M
+  # to $5.5M each from OFAC terrorist-financing and Tether-frozen addresses,
+  # and the report showed nothing. Shown beside the score, never in it.
+  counterparty_contact:
+    enabled: true
+    categories: [sanctions, terrorist_financing, frozen_funds, stolen_funds, darknet, mixer]
+    # Per direction, largest flow first: the same cap as tracing.
+    max_counterparties: 100
+    min_usd: 10000
+    max_listed: 5
 
 # ---------------------------------------------------------------------------
 # Verdict (docs/DECISIONS.md D29): the answer to "is this wallet clean?" in
@@ -260,6 +275,11 @@ verdict:
   # A not-risky answer below this confidence, in percent, also says there
   # is not enough data: "not risky" alone would read as a clean bill.
   insufficient_below: 10
+  # A direct counterparty, other than a named service, whose own flows with
+  # listed addresses reach this share of its volume, in percent, makes the
+  # answer "needs review" (D48). A named service has such contacts by the
+  # nature of its business and is already treated as identified.
+  contact_caution_min_pct: 1
   # Confidence buckets, for the API's word: high at or above the first,
   # medium at or above the second, low below. Unfinished tracing is never high.
   confidence_high: 0.90

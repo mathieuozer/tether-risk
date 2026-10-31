@@ -95,7 +95,7 @@ func TestPDFFontsCoverEveryLanguage(t *testing.T) {
 		t.Errorf("head = %q", got)
 	}
 	v := &scoring.Verdict{Level: scoring.VerdictCaution, ConfidencePct: 7, Insufficient: true}
-	if got := pdfVerdictHead(v, newLoc("en")); got != "NOT RISKY · confidence 7% · not enough data" {
+	if got := pdfVerdictHead(v, newLoc("en")); got != "NEEDS REVIEW · confidence 7% · not enough data" {
 		t.Errorf("head = %q", got)
 	}
 	if strings.Contains(pdfVerdictHead(v, newLoc("ru")), "🟡") {

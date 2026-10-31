@@ -107,6 +107,7 @@ func TestConnectionsDetailSections(t *testing.T) {
 			InTransfers: 158, OutTransfers: 35, InCounterparties: 125, OutCounterparties: 17,
 			FirstSeen: "2026-08-02", LastSeen: "2026-09-19",
 			Assets:            []ConnectionsAsset{{"USDT", 9_625_892}, {"TRX", 853}},
+			Held:              []ConnectionsHeld{{"USDT", 1234.5}},
 			UnpricedTransfers: 12, UnpricedTokens: 5,
 		},
 		Inbound: &ConnectionsDirection{
@@ -125,7 +126,8 @@ func TestConnectionsDetailSections(t *testing.T) {
 		"Received: $4.81M in 158 transfers from 125 addresses",
 		"Sent: $4.81M in 35 transfers to 17 addresses",
 		"Active: 2026-08-02 → 2026-09-19",
-		"Assets: USDT $9.63M · TRX $853",
+		"Volume by asset: USDT $9.63M · TRX $853",
+		"Balance now, from stored history: USDT 1,234.50",
 		"Unrecognised tokens: 12 transfers of 5 tokens",
 		"◦ trail stops (no stored history beyond this point) - 50.0%",
 		"◦ beyond the hop limit - 20.0%",

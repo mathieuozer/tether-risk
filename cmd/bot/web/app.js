@@ -115,6 +115,7 @@
     return new Intl.NumberFormat(loc(), { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(v);
   }
   function fmtInt(n) { return new Intl.NumberFormat(loc(), { maximumFractionDigits: 0 }).format(n || 0); }
+  function fmtQty(n) { return new Intl.NumberFormat(loc(), { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0); }
   function fmtPct(v) {
     var s = fmtNum(v || 0, 1);
     return S.lang === 'tr' ? '%' + s : s + '%';
@@ -1171,6 +1172,7 @@
     html += depthNotes(r);
     html += connectionsCard(r, c, dirs);
     if (c.total > 0) html += checksCard(r, c.shares);
+    html += contactsCard(r);
     html += flagsCard(r);
     html += entriesCard(r);
     html += activityCard(r);
@@ -1362,6 +1364,31 @@
       '<ul class="verdict-reasons">' + reasons + '</ul></section>';
   }
 
+  // Counterparties' own contacts with listed addresses (D48): shown beside the score, never in it.
+  function contactsCard(r) {
+    var cs = (r.contacts || []).filter(function (c) { return c.risks && c.risks.length; });
+    if (!cs.length) return '';
+    var rows = cs.map(function (c) {
+      var top = c.risks[0];
+      var who = short(c.address) + ' (' + ((c.category === 'named_service' || c.category === 'exchange') && c.entity ?
+        c.entity.split(' (')[0] : (c.category ? catName(c.category) : t('contact_unlabelled'))) + ')';
+      var share = c.partial ? t('contact_partial') :
+        (c.share_pct > 0 ? t(c.inbound ? 'contact_share_in' : 'contact_share_out', { pct: fmtPct(c.share_pct) }) : '');
+      var topName = top.entity && top.entity.indexOf('Frozen by Tether') !== 0 ? top.entity : short(top.address || '');
+      var text = t(c.inbound ? 'contact_in' : 'contact_out', {
+        who: who, flow: fmtUSD(c.flow_usd || 0), risky: fmtUSD(top.usd || 0), n: tn('n_addresses', top.addresses || 0),
+        cat: catName(top.category), top: topName, share: share
+      });
+      var also = c.risks.slice(1).map(function (k) {
+        return '<span class="hint small">' + esc(t('contact_also', { usd: fmtUSD(k.usd || 0), n: tn('n_addresses', k.addresses || 0), cat: catName(k.category) })) + '</span>';
+      }).join('');
+      return '<li class="flag"><span class="flag-text">' + esc(text) + '</span>' + also + '</li>';
+    }).join('');
+    return '<section class="card" aria-labelledby="contacts-title"><div class="card-head"><div><h2 id="contacts-title">' +
+      tt('contacts_title') + '</h2><p class="hint small">' + tt('contacts_hint') + '</p></div></div>' +
+      '<ul class="flags">' + rows + '</ul></section>';
+  }
+
   // Behaviour notes: what the address did, shown beside the score but never part of it.
   function flagsCard(r) {
     var flags = (r.flags || []).filter(function (f) { return FLAG_TEXT[f.code]; });
@@ -1455,6 +1482,9 @@
     if (a.first_seen) rows += kv(t('active'), fmtRange(a.first_seen, a.last_seen));
     if (a.assets && a.assets.length) {
       rows += kv(t('assets'), a.assets.map(function (as) { return as.asset + ' ' + fmtUSD((as.in_usd || 0) + (as.out_usd || 0)); }).join(' · '));
+    }
+    if (a.held && a.held.length) {
+      rows += kv(t('held'), a.held.map(function (h) { return h.asset + ' ' + fmtQty(h.amount || 0); }).join(' · '));
     }
     if (a.unpriced_transfers > 0) {
       rows += kv(t('unpriced'), t('unpriced_val', {

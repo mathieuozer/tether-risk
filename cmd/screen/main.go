@@ -305,12 +305,18 @@ func connectionsInput(res *scoring.Result) report.ConnectionsInput {
 				Asset: as.Asset, USD: as.InUSD.Add(as.OutUSD).InexactFloat64(),
 			})
 		}
+		for _, h := range a.Held {
+			act.Held = append(act.Held, report.ConnectionsHeld{Asset: h.Asset, Amount: h.Amount.InexactFloat64()})
+		}
 		in.Activity = act
 	}
 	for _, f := range res.Flags {
 		in.Flags = append(in.Flags, report.ConnectionsFlag{Code: f.Code, InUSD: f.InUSD.InexactFloat64(),
 			OutUSD: f.OutUSD.InexactFloat64(), VolumeUSD: f.VolumeUSD.InexactFloat64(), Days: f.Days, AgeDays: f.AgeDays,
 			Count: f.Count, AmountUSD: f.AmountUSD.InexactFloat64(), Minutes: f.Minutes, Address: f.Address})
+	}
+	for _, c := range res.Contacts {
+		in.Contacts = append(in.Contacts, report.ContactInput(c))
 	}
 	if v := res.Verdict; v != nil {
 		cv := &report.ConnectionsVerdict{Level: v.Level, Confidence: v.Confidence, ConfidencePct: v.ConfidencePct, Insufficient: v.Insufficient}

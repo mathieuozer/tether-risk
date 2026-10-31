@@ -125,6 +125,10 @@ type Result struct {
 	// Depth reports how much of the neighbourhood was stored when this was
 	// scored. Nil when not computed.
 	Depth *DepthStatus
+
+	// Contacts are direct counterparties' own flows with listed addresses,
+	// shown beside the score and never in it (docs/DECISIONS.md D48).
+	Contacts []Contact
 }
 
 // DepthStatus says how far stored history reached for this result, so a
@@ -244,6 +248,18 @@ type Activity struct {
 	// never valued: pricing them reopens docs/DECISIONS.md D18.
 	UnpricedTransfers uint64
 	UnpricedTokens    uint64
+
+	// Held is what the address still holds of each token, in token units:
+	// what stored history shows it received less what it sent. Filled only
+	// when every transfer is stored, and never for the chain's native coin,
+	// whose balance also moves through fees and staking (D48).
+	Held []AssetHeld
+}
+
+// AssetHeld is one token's net holding from stored history.
+type AssetHeld struct {
+	Asset  string
+	Amount decimal.Decimal
 }
 
 // AssetFlow is one asset's share of an address's activity.

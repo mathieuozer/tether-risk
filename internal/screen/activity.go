@@ -4,12 +4,19 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math/big"
 	"sort"
 	"time"
 
+	"github.com/mozer/tether-risk/internal/pricing"
 	"github.com/mozer/tether-risk/internal/scoring"
 	"github.com/shopspring/decimal"
 )
+
+// nativeAssets are the chains' own coins. Their balance moves through fees,
+// staking and resource rental as well as transfers, so a net of transfers
+// is not a balance and is never shown as one.
+var nativeAssets = map[string]bool{"TRX": true, "ETH": true, "BNB": true}
 
 // activity summarises the address's own stored history.
 //
@@ -20,6 +27,7 @@ func activity(ctx context.Context, ch *sql.DB, chainID, address string) (*scorin
 	out := &scoring.Activity{InUSD: decimal.Zero, OutUSD: decimal.Zero}
 	assets := map[string]*scoring.AssetFlow{}
 	unpricedTokens := map[string]bool{}
+	rawIn, rawOut := map[string]*big.Int{}, map[string]*big.Int{}
 
 	for _, dir := range []struct {
 		inbound  bool
@@ -29,7 +37,7 @@ func activity(ctx context.Context, ch *sql.DB, chainID, address string) (*scorin
 		{
 			inbound: false,
 			byAsset: `SELECT asset, count(), countIf(usd_value IS NULL), sum(usd_value),
-			                 min(block_time), max(block_time)
+			                 min(block_time), max(block_time), sum(raw_value)
 			          FROM transfers FINAL
 			          WHERE chain = ? AND from_address = ? GROUP BY asset`,
 			distinct: `SELECT uniqExact(to_address) FROM transfers FINAL
@@ -38,7 +46,7 @@ func activity(ctx context.Context, ch *sql.DB, chainID, address string) (*scorin
 		{
 			inbound: true,
 			byAsset: `SELECT asset, count(), countIf(usd_value IS NULL), sum(usd_value),
-			                 min(block_time), max(block_time)
+			                 min(block_time), max(block_time), sum(raw_value)
 			          FROM transfers_by_to FINAL
 			          WHERE chain = ? AND to_address = ? GROUP BY asset`,
 			distinct: `SELECT uniqExact(from_address) FROM transfers_by_to FINAL
@@ -55,8 +63,9 @@ func activity(ctx context.Context, ch *sql.DB, chainID, address string) (*scorin
 				n, unpriced uint64
 				usd         *decimal.Decimal
 				first, last time.Time
+				raw         big.Int
 			)
-			if err := rows.Scan(&asset, &n, &unpriced, &usd, &first, &last); err != nil {
+			if err := rows.Scan(&asset, &n, &unpriced, &usd, &first, &last, &raw); err != nil {
 				rows.Close()
 				return nil, fmt.Errorf("activity: %w", err)
 			}
@@ -91,10 +100,12 @@ func activity(ctx context.Context, ch *sql.DB, chainID, address string) (*scorin
 				out.InTransfers += n
 				out.InUSD = out.InUSD.Add(v)
 				a.InUSD = a.InUSD.Add(v)
+				rawIn[asset] = new(big.Int).Set(&raw)
 			} else {
 				out.OutTransfers += n
 				out.OutUSD = out.OutUSD.Add(v)
 				a.OutUSD = a.OutUSD.Add(v)
+				rawOut[asset] = new(big.Int).Set(&raw)
 			}
 		}
 		if err := rows.Err(); err != nil {
@@ -128,7 +139,37 @@ func activity(ctx context.Context, ch *sql.DB, chainID, address string) (*scorin
 		return out.Assets[i].Asset < out.Assets[j].Asset
 	})
 	out.UnpricedTokens = uint64(len(unpricedTokens))
+	out.Held = held(rawIn, rawOut)
 	return out, nil
+}
+
+// held nets each token's stored inflow against its outflow. A token whose
+// net is negative has inflow missing from the store, so nothing is claimed
+// for it; the caller drops the whole list when history is known to be
+// incomplete.
+func held(rawIn, rawOut map[string]*big.Int) []scoring.AssetHeld {
+	var out []scoring.AssetHeld
+	for asset, in := range rawIn {
+		dec, ok := pricing.Decimals(asset)
+		if !ok || nativeAssets[asset] {
+			continue
+		}
+		net := new(big.Int).Set(in)
+		if o := rawOut[asset]; o != nil {
+			net.Sub(net, o)
+		}
+		if net.Sign() < 0 {
+			continue
+		}
+		out = append(out, scoring.AssetHeld{Asset: asset, Amount: decimal.NewFromBigInt(net, -dec)})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].Amount.Equal(out[j].Amount) {
+			return out[i].Amount.GreaterThan(out[j].Amount)
+		}
+		return out[i].Asset < out[j].Asset
+	})
+	return out
 }
 
 // isContractAsset reports whether an asset is named by its contract address,

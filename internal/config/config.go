@@ -173,6 +173,10 @@ type Verdict struct {
 	// OwnServiceCategories: an address carrying one of these as its own
 	// label is answered by whose it is (docs/DECISIONS.md D39).
 	OwnServiceCategories []string `yaml:"own_service_categories"`
+	// ContactCautionMinPct: a direct counterparty, other than a named
+	// service, whose own flows with listed addresses reach this share of its
+	// volume makes the verdict a caution (D48). Zero disables it.
+	ContactCautionMinPct float64 `yaml:"contact_caution_min_pct"`
 }
 
 // Behaviour configures the unscored behaviour notes (docs/DECISIONS.md D28).
@@ -204,6 +208,23 @@ type Behaviour struct {
 		WindowDays     int     `yaml:"window_days"`
 		MaxDaysSince   int     `yaml:"max_days_since"`
 	} `yaml:"frozen_contact"`
+	CounterpartyContact CounterpartyContact `yaml:"counterparty_contact"`
+}
+
+// CounterpartyContact configures the list of direct counterparties' own
+// flows with listed addresses, shown beside the score (docs/DECISIONS.md
+// D48).
+type CounterpartyContact struct {
+	Enabled bool `yaml:"enabled"`
+	// Categories of listed addresses that count.
+	Categories []string `yaml:"categories"`
+	// MaxCounterparties bounds how many direct counterparties per direction
+	// are checked, largest flow first.
+	MaxCounterparties int `yaml:"max_counterparties"`
+	// MinUSD is the smallest risky flow that is listed.
+	MinUSD float64 `yaml:"min_usd"`
+	// MaxListed bounds the list.
+	MaxListed int `yaml:"max_listed"`
 }
 
 // DerivedPoisoning configures address-poisoning detection

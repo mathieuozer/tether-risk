@@ -67,6 +67,25 @@ type screenResponse struct {
 		Imitates string `json:"imitates"`
 	} `json:"own_label"`
 
+	Contacts []struct {
+		Address  string  `json:"address"`
+		Entity   string  `json:"entity"`
+		Category string  `json:"category"`
+		Inbound  bool    `json:"inbound"`
+		FlowUSD  float64 `json:"flow_usd"`
+		TotalUSD float64 `json:"total_usd"`
+		RiskyUSD float64 `json:"risky_usd"`
+		SharePct float64 `json:"share_pct"`
+		Partial  bool    `json:"partial"`
+		Risks    []struct {
+			Category  string  `json:"category"`
+			USD       float64 `json:"usd"`
+			Addresses int     `json:"addresses"`
+			Entity    string  `json:"entity"`
+			Address   string  `json:"address"`
+		} `json:"risks"`
+	} `json:"contacts"`
+
 	Activity *struct {
 		InUSD             float64 `json:"in_usd"`
 		OutUSD            float64 `json:"out_usd"`
@@ -83,6 +102,10 @@ type screenResponse struct {
 		} `json:"assets"`
 		UnpricedTransfers uint64 `json:"unpriced_transfers"`
 		UnpricedTokens    uint64 `json:"unpriced_tokens"`
+		Held              []struct {
+			Asset  string  `json:"asset"`
+			Amount float64 `json:"amount"`
+		} `json:"held"`
 	} `json:"activity"`
 
 	Depth *struct {
@@ -240,6 +263,14 @@ func summary(r *screenResponse, lang string, followUp bool) string {
 			VolumeUSD: f.VolumeUSD, Days: f.Days, AgeDays: f.AgeDays, Count: f.Count, AmountUSD: f.AmountUSD, Minutes: f.Minutes, Address: f.Address})
 	}
 	in.Verdict = connectionsVerdict(r)
+	for _, c := range r.Contacts {
+		cc := report.ConnectionsContact{Address: c.Address, Entity: c.Entity, Category: c.Category, Inbound: c.Inbound,
+			FlowUSD: c.FlowUSD, TotalUSD: c.TotalUSD, RiskyUSD: c.RiskyUSD, SharePct: c.SharePct, Partial: c.Partial}
+		for _, k := range c.Risks {
+			cc.Risks = append(cc.Risks, report.ConnectionsContactRisk{Category: k.Category, USD: k.USD, Addresses: k.Addresses, Entity: k.Entity, Address: k.Address})
+		}
+		in.Contacts = append(in.Contacts, cc)
+	}
 	if r.OwnLabel != nil {
 		in.OwnLabel = &report.ConnectionsOwnLabel{Entity: r.OwnLabel.Entity, Category: r.OwnLabel.Category, Imitates: r.OwnLabel.Imitates}
 	}
@@ -261,6 +292,9 @@ func summary(r *screenResponse, lang string, followUp bool) string {
 		}
 		for _, as := range a.Assets {
 			act.Assets = append(act.Assets, report.ConnectionsAsset{Asset: as.Asset, USD: as.InUSD + as.OutUSD})
+		}
+		for _, h := range a.Held {
+			act.Held = append(act.Held, report.ConnectionsHeld{Asset: h.Asset, Amount: h.Amount})
 		}
 		in.Activity = act
 	}

@@ -28,6 +28,47 @@ func vresult(band string, coverage float64, cats map[string]float64, done bool) 
 	return r
 }
 
+// A direct counterparty whose own money comes from listed addresses in more
+// than a trace makes the answer "needs review"; a named service with the
+// same contacts does not, and neither does a partial view (D48).
+func TestVerdictCounterpartyContact(t *testing.T) {
+	rules := verdictRules()
+	rules.ContactCautionMinPct = 1
+	rules.OwnServiceCategories = []string{"exchange", "named_service"}
+	clean := func() *Result {
+		return vresult("low", 0.999, map[string]float64{"exchange": 80, "unnamed_service": 19.9}, true)
+	}
+	risk := []ContactRisk{{Category: "terrorist_financing", USD: decimal.NewFromInt(4_114_000)}}
+
+	r := clean()
+	r.Contacts = []Contact{
+		{Address: "TQ1shn", Category: "unnamed_service", SharePct: decimal.NewFromFloat(0.19), Risks: risk},
+		{Address: "TNYhZC", Category: "unnamed_service", SharePct: decimal.NewFromFloat(4.55), Risks: risk},
+	}
+	v := Decide(r, rules)
+	if v.Level != VerdictCaution || v.Reasons[0].Code != "contact" || v.Reasons[0].Address != "TNYhZC" ||
+		v.Reasons[0].Category != "terrorist_financing" || v.Reasons[0].Pct < 4.5 {
+		t.Errorf("contact above the line: got %s %+v", v.Level, v.Reasons)
+	}
+
+	r = clean()
+	r.Contacts = []Contact{
+		{Address: "TBA6Cy", Category: "named_service", SharePct: decimal.NewFromFloat(4.55), Risks: risk},
+		{Address: "TCCS8K", Partial: true, SharePct: decimal.Zero, Risks: risk},
+		{Address: "TQ1shn", Category: "unnamed_service", SharePct: decimal.NewFromFloat(0.19), Risks: risk},
+	}
+	if v := Decide(r, rules); v.Level != VerdictClear {
+		t.Errorf("named service, partial and trace contacts: got %s %+v", v.Level, v.Reasons)
+	}
+
+	rules.ContactCautionMinPct = 0
+	r = clean()
+	r.Contacts = []Contact{{Address: "TNYhZC", Category: "unnamed_service", SharePct: decimal.NewFromFloat(4.55), Risks: risk}}
+	if v := Decide(r, rules); v.Level != VerdictClear {
+		t.Errorf("rule disabled: got %s %+v", v.Level, v.Reasons)
+	}
+}
+
 func TestVerdict(t *testing.T) {
 	rules := verdictRules()
 	for _, tc := range []struct {

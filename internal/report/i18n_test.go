@@ -211,7 +211,7 @@ func TestConnectionsInRussian(t *testing.T) {
 	// A not-risky answer under 10% confidence says so.
 	in.Verdict = &ConnectionsVerdict{Level: "caution", ConfidencePct: 7, Insufficient: true,
 		Reasons: []ConnectionsVerdictReason{{Code: "low_coverage", Pct: 4}}}
-	if out := Connections(in); !strings.Contains(out, "🟡 НЕТ РИСКА · уверенность 7% · недостаточно данных\n") {
+	if out := Connections(in); !strings.Contains(out, "🟡 ТРЕБУЕТ ПРОВЕРКИ · уверенность 7% · недостаточно данных\n") {
 		t.Errorf("Russian insufficient-data verdict:\n%s", out)
 	}
 }

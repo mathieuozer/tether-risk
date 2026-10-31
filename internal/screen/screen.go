@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/mozer/tether-risk/internal/config"
@@ -109,6 +110,11 @@ type Service struct {
 	prefetch map[string]Prefetcher // by chain
 
 	ringBudget *time.Duration // nil: the default
+
+	// listedCache holds the listed addresses of the latest snapshot seen,
+	// for the counterparty contacts (D48).
+	listedMu    sync.Mutex
+	listedCache *listedSet
 }
 
 // Prefetcher fetches an address's history before it is scored, and queues
@@ -264,6 +270,10 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 	if err != nil {
 		return nil, err
 	}
+	if depth.HistoryTruncated || depth.StillFetching || depth.FetchError != "" {
+		// A net of an incomplete history is not a balance.
+		act.Held = nil
+	}
 	res.Activity = act
 	res.Flags = scoring.BehaviourFlags(act, time.Now(), s.cfg.Weights.Behaviour)
 	outs, err := s.outTransfers(ctx, chainID, address)
@@ -282,6 +292,9 @@ func (s *Service) Screen(ctx context.Context, chainID, address string) (*scoring
 
 	if err := s.profile(ctx, chainID, res); err != nil {
 		return nil, err
+	}
+	if res.Contacts, err = s.contacts(ctx, chainID, address, snapshotID); err != nil {
+		return nil, fmt.Errorf("contacts: %w", err)
 	}
 
 	if err := s.depthStatus(ctx, chainID, address, depth); err != nil {

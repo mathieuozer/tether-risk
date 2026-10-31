@@ -145,6 +145,22 @@ func Render(w io.Writer, res *scoring.Result, generatedAt time.Time, lang string
 		warning(pdf, width, l.f("pdf_capped_title"), l.f("pdf_capped_body"))
 	}
 
+	// --- counterparties' contacts with listed addresses (D48) ---
+	if len(res.Contacts) > 0 {
+		pdf.SetFont(sans, "B", 10)
+		pdf.Cell(width, 6, l.f("pdf_contacts"))
+		pdf.Ln(6)
+		pdf.SetFont(sans, "", 8.5)
+		for _, c := range res.Contacts {
+			for _, line := range ContactLines(ContactInput(c), l) {
+				pdf.MultiCell(width, 4, strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "•")), "", "L", false)
+			}
+		}
+		pdf.SetFont(sans, "I", 8)
+		pdf.MultiCell(width, 4, strings.TrimSpace(l.f("contacts_note")), "", "L", false)
+		pdf.Ln(3)
+	}
+
 	// --- breakdowns ---
 	direction(pdf, width, l, l.f("pdf_inbound"), res.Inbound)
 	direction(pdf, width, l, l.f("pdf_outbound"), res.Outbound)

@@ -223,6 +223,15 @@ scored:
 They record what the address did. The same pattern fits layering and an OTC
 desk, and the data cannot tell them apart, so a note never moves the band.
 
+**Counterparties' own contacts (D48).** For the 100 largest direct
+counterparties per direction, the report also lists what each itself
+received from (if it paid the address) or paid to (if the address paid it)
+addresses in the sanctions, terrorist-financing, frozen, stolen, darknet and
+mixer categories: at least $10,000, largest first, at most five, with the
+share of the counterparty's whole volume. Traversal stops at services and
+dilutes everything else by share, which is right for the score and hides
+this; the list shows it beside the score, never in it.
+
 ## 4d. Verdict (D29)
 
 Every result carries a verdict derived from it: **clear**, **caution** or
@@ -230,8 +239,11 @@ Every result carries a verdict derived from it: **clear**, **caution** or
 listing, a High band, or exposure at or above a category's line (sanctions
 and terrorist financing 1%; frozen funds, stolen funds and darknet 5%; mixer
 and scam 10%). Caution means any smaller risk exposure, a Medium band,
-coverage under 80%, 5% or more of value still at unfetched dead ends, or a
-behaviour note. Clear means none of these. Confidence is high at 90%
+coverage under 80%, 5% or more of value still at unfetched dead ends, a
+behaviour note, or a direct counterparty (other than a named service) whose
+own flows with listed addresses reach 1% of its volume (D48). Clear means
+none of these. The three read "NOT RISKY", "NEEDS REVIEW" and "RISKY";
+caution is never worded as not risky (D48). Confidence is high at 90%
 coverage or more with tracing finished, medium at 60% or more, and low
 below that. A direct listing is high risk with high confidence at any
 coverage.

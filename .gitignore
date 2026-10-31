@@ -17,3 +17,7 @@
 
 # Local data volumes
 /.data/
+
+# Stray binaries and IDE module files
+/api
+*.iml

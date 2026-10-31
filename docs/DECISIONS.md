@@ -2043,3 +2043,101 @@ algorithm tried. Both steps then completed, and the join now takes 2 min
 
 Interactive screens keep the default pool: they read one neighbourhood, not
 the whole table, and spilling there would only add latency.
+
+---
+
+## D48 — a third headline, counterparties' own contacts, and what AMLBot saw that we did not
+
+**Date:** 2026-09-28 · **Status:** active · **Follows:** D29, D30, D39
+
+The owner screened TVnZo4…gRFR, got "🟡 RİSKLİ DEĞİL · güven %46", and
+then saw AMLBot Pro+ rate the same address 77% High Risk (Illegal Service
+42.5%, Sanctions 2.5%, two direct "Banned by Contract" counterparties worth
+$3.54M, every outflow to Gate.io). Their words: "beni rezil ettin". Every
+divergence was run down against stored data.
+
+**What both saw.** $13.58M in from 367 addresses, $13.58M out to one; not
+frozen, not listed. AMLBot says "Blacklist Free" too.
+
+**What AMLBot has that open data does not.** "Banned by Contract #N" is an
+AMLBot-proprietary label; its two direct counterparties (TBJ7DV…wbgz, $3.35M,
+and TSGeTT…Q9Zd) are not on Tether's contract (`isBlackListed` returns
+false for both) and have no frozen or sanctioned neighbour in stored data.
+AMLBot also names Gate.io, Binance, Bybit, KuCoin, Bitget and WhiteBIT at
+one hop; our reserve lists cover HTX and Poloniex, and the rest are blocked
+by their terms (D19, D31) or publish no addresses at all: Gate.io's,
+Bybit's and Bitget's GitHub repositories, checked today, hold only the
+Merkle verifier. Controlled test withdrawals (`labeler trace-tx`) remain
+the only licence-clean route, and they are the owner's step.
+
+**What we had and did not show.** The wallets that paid this address had
+themselves taken millions from OFAC terrorist-financing and Tether-frozen
+addresses:
+
+| Direct payer | Its inbound | From listed addresses | Share | Paid this address |
+|---|---|---|---|---|
+| TNYhZC…GRF1 | $90.3M | $4.11M, Arash Estaki ALIVAND (OFAC) | 4.6% | $26k |
+| TB1R8k…LiF3 | $391M | $5.55M, Tether-frozen | 1.4% | $29.5k |
+| TJgudA…VCca | $232M | $4.40M, Tether-frozen | 1.9% | $20.7k |
+| TQ1shn…QHu6 | $684M | $1.30M ANSARALLAH (OFAC) + $1.26M frozen | 0.4% | $29.7k |
+
+The trace stops at a service (D15) and, through anything else, dilutes a
+listed address's money by its share of the intermediary's volume. Both are
+right for the score: 0.4% of a $684M pool proves nothing about one $29.7k
+withdrawal. Both hid a fact the reader wanted. AMLBot shows it by tracing
+through everything and summing, which is why its "Sanctions 2.5%" and its
+Pionex at 14 hops exist. We now show it without scoring it.
+
+**Three changes.**
+
+1. *The caution level has its own headline.* "🟡 RİSKLİ DEĞİL" at 46% read
+   as a clean bill; the reader never saw the percentage. Caution is now
+   "İNCELEME GEREKLİ" / "NEEDS REVIEW" / "ТРЕБУЕТ ПРОВЕРКИ" in the text
+   report, the PDF and the Mini App. "RİSKLİ DEĞİL" is only ever green. This
+   replaces the two-state rule of D33: the owner approved the third headline
+   today after seeing what two states cost.
+
+2. *Counterparties' own contacts with listed addresses.* For the 100 largest
+   direct counterparties in each direction, the screen reads what each
+   received from (inbound) or paid to (outbound) addresses in the sanctions,
+   terrorist-financing, frozen, stolen, darknet and mixer categories, from
+   the stored edge tables, and lists those with at least $10,000 of it,
+   largest first, at most five (`behaviour.counterparty_contact`). Each line
+   says who the counterparty is, what passed between it and the screened
+   address, how much it took from or paid to which list, the largest listed
+   address by name, and the share of its whole volume. A counterparty whose
+   own history is not stored is marked a partial view without a share (D30).
+   A counterparty on both sides is listed once, on the side with more flow.
+   The listed set is loaded once per snapshot (8,081 addresses today) and
+   sent to ClickHouse in chunks of 4,000, under its 256 KB query limit.
+   `JudgeContacts` is pure and tested; the section is in the API
+   (`contacts[]`), the bot, the Mini App and the PDF.
+
+   The verdict reads it once: a counterparty other than a named service
+   whose listed flows reach 1% of its volume
+   (`verdict.contact_caution_min_pct`) makes the answer a caution with the
+   reason "4.6% of a counterparty's own money comes from the Terrorist
+   Financing list". A named service is exempt: an exchange's hot wallet has
+   such contacts by the nature of its business, and D39 already treats what
+   ends there as identified. The share never enters the score.
+
+3. *"Varlıklar" was volume.* The activity line read "Varlıklar: USDT
+   $27.14M" beside AMLBot's "Balance 0.000001". It now says "Hacim (varlığa
+   göre)", and a new line gives the balance from stored history: received
+   less sent per token, in token units, only for tokens with known
+   decimals, never for the chain's own coin (fees and staking move it too),
+   and only when the address's whole history is stored. For TVnZo4…gRFR
+   that is "USDT 0.00", which matches.
+
+**Result on TVnZo4…gRFR:** "🟡 İNCELEME GEREKLİ · güven %49", why: "bir
+karşı tarafının kendi parasının %4,6 kadarı Terörün Finansmanı listesinden
+geliyor", then the five contacts above with Gate.io's unnamed hot wallet
+first ($8.33M to two OFAC terrorist-financing addresses, 0.9% of what it
+sends). Score and coverage are unchanged: 15.0, 90.9%.
+
+**What this does not fix.** The exchanges are still unnamed, and that is the
+most visible gap against AMLBot. The owner's test withdrawals from Gate.io,
+Binance, Bybit, KuCoin, Bitget, OKX, HTX and MEXC to any wallet, followed
+by `labeler trace-tx <txid> -from-exchange <name>`, name each exchange's
+withdrawal wallet as a curated label; the deposit heuristic (D19) then names
+the deposit wallets that sweep to it.

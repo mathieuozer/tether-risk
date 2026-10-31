@@ -181,6 +181,10 @@ type screenResponse struct {
 	// Depth says whether tracing had finished when this was scored.
 	Depth *depthResponse `json:"depth,omitempty"`
 
+	// Contacts are direct counterparties' own flows with listed addresses,
+	// shown beside the score and never in it (D48).
+	Contacts []contactResponse `json:"contacts"`
+
 	LabelSnapshotID int64  `json:"label_snapshot_id"`
 	ConfigVersion   string `json:"config_version"`
 
@@ -266,6 +270,47 @@ type flagResponse struct {
 	Address   string  `json:"address,omitempty"`
 }
 
+type contactResponse struct {
+	Address  string  `json:"address"`
+	Entity   string  `json:"entity,omitempty"`
+	Category string  `json:"category,omitempty"`
+	Inbound  bool    `json:"inbound"`
+	FlowUSD  float64 `json:"flow_usd"`
+	TotalUSD float64 `json:"total_usd"`
+	RiskyUSD float64 `json:"risky_usd"`
+	// SharePct is risky_usd as a percentage of total_usd; 0 when partial.
+	SharePct float64 `json:"share_pct"`
+	// Partial: the counterparty's own history is not stored, so the flows
+	// and total are what other addresses revealed.
+	Partial bool                  `json:"partial"`
+	Risks   []contactRiskResponse `json:"risks"`
+}
+
+type contactRiskResponse struct {
+	Category  string  `json:"category"`
+	USD       float64 `json:"usd"`
+	Transfers uint64  `json:"transfers"`
+	Addresses int     `json:"addresses"`
+	// Entity and Address name the listed address with the most flow.
+	Entity  string `json:"entity,omitempty"`
+	Address string `json:"address"`
+}
+
+func toContacts(cs []scoring.Contact) []contactResponse {
+	out := make([]contactResponse, 0, len(cs))
+	for _, c := range cs {
+		r := contactResponse{Address: c.Address, Entity: c.Entity, Category: c.Category, Inbound: c.Inbound,
+			FlowUSD: round(c.FlowUSD, 2), TotalUSD: round(c.TotalUSD, 2), RiskyUSD: round(c.RiskyUSD, 2),
+			SharePct: round(c.SharePct, 2), Partial: c.Partial, Risks: make([]contactRiskResponse, 0, len(c.Risks))}
+		for _, k := range c.Risks {
+			r.Risks = append(r.Risks, contactRiskResponse{Category: k.Category, USD: round(k.USD, 2), Transfers: k.Transfers,
+				Addresses: k.Addresses, Entity: k.Entity, Address: k.Address})
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
 type activityResponse struct {
 	InUSD             float64         `json:"in_usd"`
 	OutUSD            float64         `json:"out_usd"`
@@ -278,6 +323,14 @@ type activityResponse struct {
 	Assets            []assetResponse `json:"assets"`
 	UnpricedTransfers uint64          `json:"unpriced_transfers"`
 	UnpricedTokens    uint64          `json:"unpriced_tokens"`
+	// Held: net token holdings from stored history, in token units; present
+	// only when the address's whole history is stored (D48).
+	Held []heldResponse `json:"held"`
+}
+
+type heldResponse struct {
+	Asset  string  `json:"asset"`
+	Amount float64 `json:"amount"`
 }
 
 type depthResponse struct {
@@ -546,6 +599,7 @@ func toResponse(res *scoring.Result) screenResponse {
 		Flags:             toFlags(res.Flags),
 		Verdict:           toVerdict(res.Verdict),
 		Depth:             toDepth(res.Depth),
+		Contacts:          toContacts(res.Contacts),
 	}
 }
 
@@ -592,6 +646,10 @@ func toActivity(a *scoring.Activity) *activityResponse {
 		out.Assets = append(out.Assets, assetResponse{
 			Asset: as.Asset, InUSD: round(as.InUSD, 2), OutUSD: round(as.OutUSD, 2), Transfers: as.Transfers,
 		})
+	}
+	out.Held = make([]heldResponse, 0, len(a.Held))
+	for _, h := range a.Held {
+		out.Held = append(out.Held, heldResponse{Asset: h.Asset, Amount: round(h.Amount, 6)})
 	}
 	return out
 }

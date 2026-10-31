@@ -284,6 +284,40 @@ sources:
       distributing any of its products. As with Binance (D19), only written
       permission from OKX would change this (docs/DECISIONS.md D31).
 
+  - id: gate_por
+    name: "Gate.io proof-of-reserves addresses"
+    status: blocked
+    confidence: 0.9
+    checked: 2026-09-28
+    blocked_reason: >
+      github.com/gateio/proof-of-reserves (GPL-3.0) holds the zk verifier,
+      asset prices and example user data, not wallet addresses. The wallet
+      list is shown only on gate.io, whose terms are not cleared for copying
+      (the same position as Binance, D19). A test withdrawal names its
+      hot wallet instead (docs/DECISIONS.md D48).
+    substitutes: ["controlled test transfers (labeler trace-tx)"]
+
+  - id: bybit_por
+    name: "Bybit proof-of-reserves addresses"
+    status: blocked
+    confidence: 0.9
+    checked: 2026-09-28
+    blocked_reason: >
+      github.com/bybit-exchange/merkle-proof (MIT) is the Merkle verifier
+      with mock data; no address list is published in the repository.
+    substitutes: ["controlled test transfers (labeler trace-tx)"]
+
+  - id: bitget_por
+    name: "Bitget proof-of-reserves addresses"
+    status: blocked
+    confidence: 0.9
+    checked: 2026-09-28
+    blocked_reason: >
+      github.com/BitgetLimited/proof-of-reserves has no licence and holds a
+      Merkle tree only; no address list. KuCoin, MEXC and WhiteBIT publish
+      no proof-of-reserves repository at all (GitHub search, 2026-09-28).
+    substitutes: ["controlled test transfers (labeler trace-tx)"]
+
   # -------------------------------------------------------------------------
   # Curated in-repo list. SPEC.md §6.5.
   # -------------------------------------------------------------------------
